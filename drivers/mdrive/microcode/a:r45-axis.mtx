@@ -1,0 +1,118 @@
+RR = 0
+LB CF
+PR "MI r45"
+E
+VA HE = 0
+LB HH
+OE EA
+DE = 1
+SL 0
+H
+P = 0
+CL P0
+HE = -1
+RE = 0
+T = 0
+R = HL * DR
+PZ = P
+ET = 0
+BR HP
+E
+LB HP
+CL M1, R <> T
+H
+BR HQ, RE = 1
+PD = P - R
+CL AB, PD < 0
+CL HX, PD <= DB
+BR HP
+E
+LB HQ
+P = 0
+BR HY
+E
+LB H1
+ET = 0
+HM 1
+H
+RT
+E
+LB H2
+ET = 0
+HM 2
+H
+RT
+E
+LB H3
+ET = 0
+HM 3
+H
+RT
+E
+LB H4
+ET = 0
+HM 4
+H
+RT
+E
+LB H5
+CL H2, DR = 1
+CL H4, DR <> 1
+BR HX, ET <> 0
+P = P / 2
+MA 0
+H
+BR HY
+E
+LB H6
+CL H3, DR = 1
+CL H1, DR <> 1
+BR HX, ET <> 0
+P = 0
+CL H4, DR = 1
+CL H2, DR <> 1
+BR HX, ET <> 0
+P = P / 2
+MA 0
+H
+BR HY
+E
+LB H7
+CL H1, DR = 1
+CL H3, DR <> 1
+RT
+E
+LB H8
+CL H4, DR = 1
+CL H2, DR <> 1
+RT
+E
+LB HY
+HE = 0
+BR HZ
+E
+LB HX
+HE = 1
+BR HZ
+E
+LB HZ
+CL P1
+DD = 0
+SL 0
+H
+OE 0
+OL = 0
+TE = 0
+E
+LB P0
+A = 63000
+D = 1200000
+VM = 8192
+VI = W0
+SF = F0
+X = X0
+DB = Z0
+RC = J0
+HC = K0
+RT
+E

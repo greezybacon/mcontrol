@@ -1,0 +1,20 @@
+
+#if False
+#   if False
+#   elseif True
+RR = 2
+#   endif
+#elseif True
+#   if False
+#   elseif reversed
+RR = 1
+#   elseif False
+RR = 4
+#   else
+RR = 0
+#   endif
+#endif
+
+LB CF
+ PR "MI $rev"
+E

@@ -1,0 +1,27 @@
+#define JITTER
+
+VA J=0          'Start  Jitter
+                '0 = false, this does not stop Jitter
+                '1 = true, Start Jittering for JC Cycles or New I
+                '2 = in jitter loops
+                '999 = close loop
+VA JM=25500     ' Jitter Max Limit
+VA JN=12500     ' Jitter Min Limit
+VA JJ=1024      ' Jitter Initial Drop Value
+VA JS=512       ' Jitter Drop Step Value
+
+'=========================================================================
+'SUB NM       Set Max
+'=========================================================================
+LB NM
+    R = JM
+    RT
+E
+
+'=========================================================================
+'SUB NN      Set Min
+'=========================================================================
+LB NN
+    R = JN
+    RT
+E

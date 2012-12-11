@@ -1,0 +1,37 @@
+'*************************************************************************
+' ERROR SUBS
+'*************************************************************************
+'=========================================================================
+'SUB EA       ERROR ON Event
+'=========================================================================
+LB EA
+ CL E0,ER=86
+ 'add other codes here
+ ER=0
+ ST=0
+ RT
+E
+'=========================================================================
+'SUB E0       ERROR - 86
+'=========================================================================
+LB E0
+ ET=1               'Error Track
+ IC R4
+ T=R+1          'Allows restart (MA & SL)
+ PD=P-PZ        'Det difference between current position and
+            'last stopped position
+ CL AB,PD<0     'insure positive
+ CL EB,PD<=X        'Rotor Lock
+ PZ=P           'Reset for next stop
+ RT
+E
+'=========================================================================
+'SUB EB     Error Rotor Lock
+'=========================================================================
+LB EB
+ R=0        'Set R and T to P prevent
+ T=0        'Restating in MA or SL
+ RE=1       'Mark Rotor Lock
+ ET=0       'Clear Error Track as RE will govern
+ RT
+E

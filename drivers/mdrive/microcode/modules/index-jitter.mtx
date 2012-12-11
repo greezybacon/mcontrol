@@ -1,0 +1,103 @@
+#include "jitter.mtx"
+
+VA I=0          'Index position Request
+VA JF = 0       'Jitter Flag Steps (DI)
+                '0 = do nothing
+                '1 = going to I index position
+                '2 = jitter (+)
+                '3 = jitter (-)
+                '4 = Jitter cycles finished goto JP
+                '999 = closing down
+
+'=========================================================================
+'SUB YL     Motion index loop with jitter
+'=========================================================================
+LB YL
+ BR YI, I<>JP
+ BR YO, J = 0
+ BR YI, R2 > JC
+ BR YJ, J = 1
+ BR YP, JF = 3
+ BR YN, JF = 2
+ BR YL, JF <> 999
+ BR MZ
+E
+
+'=========================================================================
+'SUB YI     Motion index loop do index
+'=========================================================================
+LB YI
+ J = 0
+ JF = 1
+ R2 = 0
+ JP = I
+ R = I
+ T = P
+ CL P1
+ CL ME
+ PD= I - P
+ CL AB,PD<0
+ BR YI, PD > DB
+ JF = 0
+ BR YL
+E
+
+'=========================================================================
+'SUB YO         J=0 check
+'=========================================================================
+LB YO
+    PD= I - P
+    CL AB,PD<0
+    BR YI, PD > DB
+    H 1
+    BR YL
+E
+
+
+'=========================================================================
+'SUB YJ         Start Jitter
+'=========================================================================
+LB YJ
+    R2 = 0
+    J = 2       'reset wait for next jitter start
+    BR YP
+E
+
+'=========================================================================
+'SUB YP        Move Positive
+'=========================================================================
+LB YP
+    JF = 2  'Moving positive
+    R = JP + JS
+    T = P
+    CL NM, R > JM
+    CL ME
+    BR YL
+E
+
+'=========================================================================
+'SUB YN         Move Negative
+'=========================================================================
+LB YN
+    JF = 3  'Moving Negative
+    R = JP - JS
+    T = P
+    CL NN, R < JN
+    CL ME
+    IC R2
+    BR YL
+E
+
+'=========================================================================
+'CALL DI    Dosis Index with Jitter (I & J)
+'=========================================================================
+LB DI
+ CL MC
+ CL P3
+ I=P            'set I to current
+ J=0            'jitter
+ JP=I
+ DD=4
+ R2=0
+ BR YL
+E

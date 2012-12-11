@@ -1,0 +1,39 @@
+VA LO=12200 'Access Door (LIFT) Open Position
+VA LC=50    'Access Door (LIFT) Close Position
+
+'=========================================================================
+'CALL AO    Access Open to LO
+'=========================================================================
+LB AO
+ OE EA
+ OL 0
+ CL MC      'Motion Cleanup
+ R=LO
+ CL ME
+ BR ZZ,RE=1     'Can not make it Stop
+E
+'=========================================================================
+'CALL AC    Access Close to LC
+'=========================================================================
+LB AC
+ OE EA
+ OL 0
+ BF=999
+ CL MC      'Motion Cleanup
+ R=LC
+ CL ME
+ BR ZZ
+E
+'=========================================================================
+'CALL AJ    Access Open to LO and start JL
+'=========================================================================
+LB AJ
+ OE EA
+ OL 0
+ LJ=0
+ BF=0
+ CL MC      'Motion Cleanup
+ R=LO
+ CL ME
+ BR GF     'Jump to fing JP
+E

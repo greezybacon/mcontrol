@@ -1,0 +1,22 @@
+'=========================================================================
+'CALL HV    Homing to MID Sensor
+'=========================================================================
+LB HV                   'one time set up for each EX HV
+ OE EA
+ DE 1                   'Ensure Power On
+ SL 0
+ H
+ P=0
+ CL P0                  'homing profile
+ HE=-1
+ RE=0
+ T=0
+ ET=0                   'Clear Error Track
+ PZ=P
+
+ CL H1,DR=1             'Try the first way  
+ CL H3,DR<>1            'Try the first way
+ BR H6, ET<>0           'did not see the sensor stalled
+ P = 0                  'saw the sensor set p
+ BR H5, ET=0            'saw the sensor
+E

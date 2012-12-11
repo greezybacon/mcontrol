@@ -1,0 +1,7 @@
+*.sw*
+*.o
+*.so
+*.pyc
+__pycache__/*
+gmon.out
+lib/python/build

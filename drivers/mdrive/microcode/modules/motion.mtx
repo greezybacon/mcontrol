@@ -1,0 +1,195 @@
+VA R=0      'Requested Position
+VA T=0      'Target Position
+VA PD=0     'Position to Target/Request Delta
+VA PZ=0     'Last starting position
+VA ET=0     'Error Tracking
+            '   Did we have an erro the last time through the loop
+            '   0 = No      FALSE
+            '   1 = Yes     TRUE
+VA DD=0     'Dosis Motion Decisions Flag
+            '   0 = unset
+            '   1 = ABS Move
+            '       :R = ABS Position and is moved using MA
+            '   2 = Relative Move
+            '       :R = is added to current then moves using MA
+            '   3 = Slew speed
+            '       :R = Velocity
+            '   4 = Index with jitter
+            '       :I next index position
+            '       :J jitter numbers
+
+'=========================================================================
+'CALL DA    Dosis Move ABS (MA R)
+'=========================================================================
+LB DA
+ CL MC
+ DD=1
+ BR ML
+E
+'=========================================================================
+'CALL DM    Dosis Move Relative (MA P+R)
+'=========================================================================
+LB DM
+ CL MC
+ DD=2
+ BR ML
+E
+'=========================================================================
+'CALL DS    Dosis Speed (SL R)
+'=========================================================================
+LB DS
+ CL MC
+ P=0
+ R=0
+ T=0
+ DD=3
+ BR ML
+E
+
+'=========================================================================
+'SUB MC     Motion CleanUP
+'=========================================================================
+LB MC
+ ER 0
+ ST 0
+ OE EA
+ R4 = 0
+ R1 = 0
+ DE=1       'Ensure Power is on
+ SL 0       'Stop Just in-case
+ H
+ CL P1      'set  motion profile
+ CL AB,PD<0 'insure positive
+ RE=0       'Clear Rotor Lock
+ R=P        'init R
+ T=R        'init T
+ PZ=P
+ ET=0       'Clear Error Track
+
+#if "bulk-door.mtx" in modules
+ DF=0
+ LF=0
+ BF=0
+ FF=0
+#endif
+
+#if "index-jitter.mtx" in modules
+ JF=0
+ I=JP         'so all loop will pass Motion loop test except DI
+#endif
+
+ R1=0
+ RT
+E
+'=========================================================================
+'SUB MG     Motion Rotor Check and stop
+'=========================================================================
+LB MG
+ CL MH,RM=0     'no check
+ IC R1
+ CL MH,RM < R1  'ok keep going
+ R=T            'stop motion to read error
+ R1=0           'reset for next run
+LB MH
+ RT
+E
+
+'=========================================================================
+'SUB MI     Motion Decisions
+'=========================================================================
+LB MI
+ ET=0       'Clear Error Track
+ CL M1,DD=1
+ CL M2,DD=2
+ CL M3,DD=3
+ RT
+E
+'=========================================================================
+'SUB MB     Motion Stop check Band
+'=========================================================================
+LB MB
+  PD=P-T    'Det difference between current position and targe
+  CL AB,PD<0    'insure positive
+  CL LS,PD<=DB  'Good Stop let system rest
+  CL MX,PD>DB   'Not at target try again.
+ RT
+E
+'=========================================================================
+'SUB MX     Motion retry not at location
+'=========================================================================
+LB MX
+ T=P        'Allow system to retry
+ RT
+E
+'=========================================================================
+'SUB MZ     Motion Close
+'=========================================================================
+LB MZ
+ SL 0
+ H
+ CL P1
+ BR ZZ
+E
+'=========================================================================
+'SUB ME     Motion Execute (complete /Rotor Lock)
+'=========================================================================
+LB ME
+ ET=0
+ CL M1,R<>T     'Need to apply motion
+ H
+ BR ME,ET=1 'Had an error try to get moving again
+ PD=P-T     'Det difference between current position and targe
+ CL AB,PD<0 'insure positive
+ BR MJ, RE=1
+ BR ME,PD>DB
+LB MJ
+ RT
+E
+'=========================================================================
+'SUB M1     Issue MA (ABS R)
+'=========================================================================
+LB M1
+#if reversed
+ R = R * -1
+#endif
+ T=R
+ RE=0
+ ET=0
+ ER 0
+ ST 0
+ MA R
+ H 1
+ RT
+E
+'=========================================================================
+'SUB M2     Issue MA (with reletative R)
+'=========================================================================
+LB M2
+#if reversed
+ R = R * -1
+#endif
+ R=R+P
+ T=R
+ RE=0
+ ET=0
+ ER 0
+ ST 0
+ MA R
+ H 1
+ RT
+E
+'=========================================================================
+'SUB M3     Issue SL
+'=========================================================================
+LB M3
+#if reversed
+ R = R * -1
+#endif
+ T=R
+ RE=0
+ ER 0
+ ST 0
+ SL R
+ H 1
+ RT
+E

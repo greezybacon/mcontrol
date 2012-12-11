@@ -1,0 +1,164 @@
+VA JW=2     'Jitter Pause (to close bulk door)
+VA BM=750   'Bulk Door Lower Jitter Position 
+VA KR=3     'Number of Door jitters to cycle before pause
+VA KQ=90    'mSec to wait for bulk door pause in opening
+
+VA DF=0     'Bulk Door Flag
+            '   0 = not set
+            '   999 - Exit
+VA DJ=0     'Door Steps 
+            '   0 = Unknown 
+            '   1 = Try to Close
+            '   2 = Try To Open
+VA KF=0     'Bulk Door Flag for reading IO 
+
+'=========================================================================
+'SUB KV     Bulk Door Ensure at rest position Close
+'=========================================================================
+LB KV
+ BR KZ,DF=999
+ R=BM
+ PD=P-BM    'Det difference between current position and targe
+ CL AB,PD<0 'insure positive
+ CL ME,PD>DB
+ CL KP,R2>KR
+ IC R2
+ DJ=2
+ BR KL
+E
+
+'=========================================================================
+'SUB KP     Bulk Door Pause on Opening
+'=========================================================================
+LB KP
+ H KQ
+ R2=0
+ RT
+E
+
+
+'=========================================================================
+'SUB KU     Bulk Door Do the Jitter
+'=========================================================================
+LB KU
+ BR KZ,DF=999
+ BR KV,DJ=0 'try to Close
+ BR KV,DJ=1     'try to Close
+ BR KW,DJ=2 'Try to Open
+ BR KL
+E
+'=========================================================================
+'SUB KW     Bulk Door Det direction Open
+'=========================================================================
+LB KW
+ BR KZ,DF=999
+ R=JP
+ CL KX, R>JM
+ CL KY, R<JN
+ CL ME
+ H JW
+ DJ=1
+ BR KL
+E
+'=========================================================================
+'SUB KX     Bulk Door keep R below max
+'=========================================================================
+LB KX
+ R = JM
+ RT
+E
+'=========================================================================
+'SUB KY     Bulk Door keep R above min
+'=========================================================================
+LB KY
+ R=JN
+ RT
+E
+'=========================================================================
+'SUB KT     Bulk Door Input Trip
+'=========================================================================
+LB KT
+ KF = IL    'Set Input Lower to KF
+ CL KC, KF & 4 = 4  'increase
+ CL KD, KF & 8 = 8  'decrease
+ CL KE, KF & 12 = 12    'reset
+ KF=0
+ H 2    'let the motor clear
+ TE=1
+ RT
+E
+'=========================================================================
+'SUB KC     Bulk Door Input Trip INCREASE
+'=========================================================================
+LB KC
+ JP = JP+JS
+ RT
+E
+'=========================================================================
+'SUB KD     Bulk Door Input Trip DECREASE
+'=========================================================================
+LB KD
+ R3 = JS/2
+ CL KM,JP>2000
+ CL KN,JP>4000
+ CL KO,JP>6000
+ JP = JP-R3
+ RT
+E
+'=========================================================================
+'SUB KM     Bulk Door Input Trip DECREASE (60%)
+'=========================================================================
+LB KM
+ R3=JS*6/10
+ RT
+E
+'=========================================================================
+'SUB KN     Bulk Door Input Trip DECREASE (70%)
+'=========================================================================
+LB KN
+ R3=JS*7/10
+ RT
+E
+'=========================================================================
+'SUB KO     Bulk Door Input Trip DECREASE (to 4000)
+'=========================================================================
+LB KO
+ R3=JP-4000
+ RT
+E
+
+'=========================================================================
+'SUB KE     Bulk Door Input Trip RESET
+'=========================================================================
+LB KE
+ JP = JJ
+ RT
+E
+'=========================================================================
+'SUB KZ     Bulk Door Stop
+'=========================================================================
+LB KZ
+ R=BC
+ CL ME
+ BR ZZ
+E
+
+'=========================================================================
+'CALL JD    Jitter Bulk Door (OAxis)
+'=========================================================================
+LB JD
+ CL MC
+ CL P1
+ TI 1,KT    'Set trip on IO 1 to KT
+ TE=1       'Trip enabled
+ JP=JJ      'Set JP = to Inital Drop JJ
+ DF=0
+ DJ=0
+ R2=0
+LB KL
+ BR KZ,DF=999
+ BR KU,I2=1 'Jitter
+ BR KV,I2=0 'Rest
+ BR KL
+E
+

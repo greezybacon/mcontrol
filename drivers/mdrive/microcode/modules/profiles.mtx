@@ -1,0 +1,40 @@
+' vim: set ft=vb:
+
+'*************************************************************************
+' Motion Profiles
+'*************************************************************************
+#if "homing.mtx" in modules
+'=========================================================================
+'CALL P0    Set Motion Profile 0 (HOMING)
+'=========================================================================
+LB P0
+ A = $homing.accel
+ D = $homing.decel
+ VM = $homing.vmax
+ VI = W0
+ SF = F0
+ X = X0
+ DB = Z0
+ RC = J0
+ HC = K0
+ RT
+E
+#endif
+
+#if "normal" in vars() and profiles > 1
+'=========================================================================
+'CALL P1    Set Motion Profile 1
+'=========================================================================
+LB P1
+ A = $normal.accel
+ D = $normal.decel
+ VM = $normal.vmax
+ VI = W1
+ SF = F1
+ X = X1
+ DB = Z1
+ RC = J1
+ HC = K1
+ RT
+E
+#endif

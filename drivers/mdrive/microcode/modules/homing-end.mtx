@@ -1,0 +1,29 @@
+VA HO=0         'Home offset used on end sensors to place p=0 on the sensor
+                'positive always DR will cover
+
+'=========================================================================
+'CALL HS    Homing to End Sensor
+'=========================================================================
+LB HS                   'one time set up for each EX HS
+ OE EA
+ DE 1                   'Ensure Power On
+ SL 0
+ H
+ P=0
+ CL P0                  'homing profile
+ HE=-1
+ RE=0
+ T=0
+ ET=0                   'Clear Error Track
+ PZ=P
+
+ CL H8,I1=1
+ CL H7,I1<>1
+ BR HX, ET<>0           'did not see the sensor stalled
+ P = HO *DR             'saw the sensor set p to home offset
+ MA 0
+ H
+ BR HY, ET=0            'saw the sensor
+E
+
+

@@ -1,0 +1,26 @@
+'=========================================================================
+'SUB ML     Motion Loop
+'=========================================================================
+LB ML
+ ET=0
+ BR MZ,DD=0     'Loop Closed jump out
+ CL MG,RE<>0    'Check to see if we need to pause motion
+ CL MI,R<>T     'Need to apply motion
+ BR ML,ET=1 'Had an error try to get moving again
+ CL LS,DD=3 'Sleep if in slew mode
+ CL AB,PD<0 'insure positive No issues to handle/let system rest
+ BR ML,DD=3 'In Slew do not need to check DeadBand
+ CL MB,MV=0 'Motion Stop det action check DeadBand
+ BR ML
+E
+
+'=========================================================================
+'CALL DZ    Dosis Loops Close
+'=========================================================================
+LB DZ
+ SL 0
+ H
+ DD=0
+ CL P1
+ BR MZ
+E

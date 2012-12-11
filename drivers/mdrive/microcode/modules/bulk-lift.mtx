@@ -1,0 +1,244 @@
+VA BF=0     'Bulk Flag 
+            '   0 = unset 
+            '   1 = Pause (Have enough pills)
+            '   2 = Need  (Need Pills)
+            '   3 = See   (See Pills falling)
+            '   4 = Close (Have enough to finish)
+            '   9 = Closed waiting next command
+            '   999 = exit
+
+VA LF=0     'Bulk Lift Flag
+            '   0 = not set
+            '   1 = Find Jitter Point JP
+            '   2 = Hold
+            '   3 = Jitter Need
+            '   4 = Jitter See
+            '   8 = closing 
+            '   9 = close
+
+VA LJ=0     'Lift Jitter Steps (JD JL)
+            '   0 = Unknown 
+            '   1 = need JP
+            '   2 = Have JP
+            '   3 = Lift Dropping
+            '   4 = Lift Raising
+            '   5 = Lift Cycling
+
+
+VA FF=0     'Current Frame Number
+VA FS=0     'Frame Start current Bulk Door
+VA FZ=0     'Frame Start current CYCLE
+VA FA=15    'Frame Transition A (Door)
+VA FB=90    'Frame Transition B (Ramp)
+VA FP=0     'Frame delta
+
+'=========================================================================
+'CALL JL    Jitter Bulk Lift (PAxis)
+'=========================================================================
+LB JL
+ BR GP, BF=0    'pause
+ BR GP, BF=1    'pause
+ BR GJ, BF=2    'Need Pills
+ BR GJ, BF=3    'See Pills
+ BR GZ, BF=4    'Close
+ BR GY, BF=9    'Closed awaiting next command
+ BR JL, BF<>999
+ OL 0
+ H 1
+ OL 1
+ H 2
+ OL 0
+ BF=0
+ LF=0
+ LJ=0
+ BR ZZ
+E
+'=========================================================================
+'SUB GF     Find Jitter Point JP
+'=========================================================================
+LB GF
+ BR JL,BF=999
+ BR GZ,BF=4     'jump to close
+ LF=1       'Set Finding JP
+ LJ=1       'Need JP
+ OL 1       'Move to Rest
+ R=JN
+ CL P1
+ CL ME      'move to min location to start
+ CL P2
+ R=JM       'try to move to max location
+ CL ME
+ JP=P
+ LJ=2       'Have JP
+ FS=FF      'set Farme start to Current Frame
+ FZ=FF      'set Farme start to Current Frame
+ BR JL
+E
+'=========================================================================
+'SUB GP     Jitter Lift Pause
+'=========================================================================
+LB GP
+ OL 1
+ H 1
+ OL 0
+ FS=FF      'set Farme start to Current Frame
+ FZ=FF      'set Farme start to Current Frame
+ R=JP
+ JT = JP+DB
+ CL ME,P>JT
+ CL LS,LF=2
+ LF=2
+ LJ=0
+ BR JL
+E
+'=========================================================================
+'SUB GJ     Jitter Lift Jitter
+'=========================================================================
+LB GJ
+ BR GF,LF=9     'if closed and then need more
+ BR JL,BF=999
+ BR GZ,BF=4     'jump to close
+ BR GP,BF=1     'jump to pause
+ CL G0,BF=2     'Need
+ CL G1,BF=3     'See
+ OL 2
+ BR G4,LJ=0         'Some place to start
+ BR G4,LJ=2     'At Top need to fall
+ BR G4,LJ=4     'At Top need to fall
+ BR G5,LJ=3     'At Bottom need to raise
+ BR JL
+E
+'=========================================================================
+'SUB G0     Jitter Lift Check the Need
+'=========================================================================
+LB G0
+ FP=FF-FZ
+ BR G2, FP>FB       'Cycle Ramp
+ FP=FF-FS
+ CL G3, FP>FA       'Open Door next step
+ LF=3           'Jitter for need
+ RT
+E
+'=========================================================================
+'SUB G1     Jitter Lift reset when see
+'=========================================================================
+LB G1
+ CL G8,LF<>4    'Check to decrease
+ FS=FF      'Reset Counter
+ FZ=FF      'Reset Counter
+ LF=4       'Jitter See
+ RT
+E
+
+'=========================================================================
+'SUB G8     Jitter Lift Do not decrease every SEE
+'=========================================================================
+LB G8
+ FP=FF-FZ
+ CL G7,FP>=FA   'decrease door
+ RT
+E
+
+'=========================================================================
+'SUB G7     Jitter Lift See pills decrease door
+'=========================================================================
+LB G7
+ OL 9
+ H 2
+ OL 0
+ RT
+E
+'=========================================================================
+'SUB G2     Jitter Lift Cycle the Ramp
+'=========================================================================
+LB G2
+ PD=JM - JP
+ CL AB,PD<0 'insure positive
+ BR G9, PD<DB
+ OL 9       'close the door and decrease
+ H 2
+ OL 0
+ LJ=5       'Cycling Ramp
+ R=JN
+ CL P1
+ CL ME
+ JP=JN
+ LJ=1       'Need to FInd JP
+ FZ=FF
+ FS=FF
+ BR GF
+LB G9
+ LJ=2       'Have JP
+ FS=FF      'set Farme start to Current Frame
+ FZ=FF      'set Farme start to Current Frame
+ BR JL
+E
+
+'=========================================================================
+'SUB G3     Jitter Lift Send Step the Door
+'=========================================================================
+LB G3
+ OL 7       'Jitter with Increase
+ H 2        'Hold to ensure it gets there
+ OL 0
+ FS=FF
+ RT
+E
+'=========================================================================
+'SUB G4     Jitter Lift Drop
+'=========================================================================
+LB G4
+ CL P1
+ R=JP-JJ
+ CL G6, R<JN
+ CL ME
+ LJ=3
+ BR JL
+E
+'=========================================================================
+'SUB G5     Jitter Lift Raise
+'=========================================================================
+LB G5
+ CL P3
+ R=JP
+ CL ME
+ LJ=4
+ BR JL
+E
+'=========================================================================
+'SUB G6     Jitter Lift Set Min
+'=========================================================================
+LB G6
+ R=JN
+ RT
+E
+'=========================================================================
+'SUB GZ     Jitter Lift Close (Not door Lift min pos)
+'=========================================================================
+LB GZ
+ BR JL,BF<>4    ' incase command changes
+ LF=8
+ OL 13      'make bulk door reset
+ H 2
+ OL 0
+ R=JN
+ CL P1
+ CL ME      'move to min location to start
+ PD=P-JN    'Det difference between current position and targe
+ CL AB,PD<0 'insure positive
+ BR GZ,PD>DB    'Keep Trying
+ BF=9
+ LF=9
+ LJ=0
+ BR JL
+E
+'=========================================================================
+'SUB GY     Jitter Lift Closed Waiting
+'=========================================================================
+LB GY
+ OL 1
+ H 2
+ OL 0
+ H 2
+ BR JL
+E

@@ -1,0 +1,122 @@
+VA R = 0
+VA T = 0
+VA PD = 0
+VA PZ = 0
+VA ET = 0
+VA DD = 0
+LB DA
+CL MC
+DD = 1
+BR ML
+E
+LB DM
+CL MC
+DD = 2
+BR ML
+E
+LB DS
+CL MC
+P = 0
+R = 0
+T = 0
+DD = 3
+BR ML
+E
+LB MC
+ER = 0
+ST = 0
+OE EA
+R4 = 0
+R1 = 0
+DE = 1
+SL 0
+H
+CL P1
+CL AB, PD < 0
+RE = 0
+R = P
+T = R
+PZ = P
+ET = 0
+R1 = 0
+RT
+E
+LB MG
+CL MH, RM = 0
+IC R1
+CL MH, RM < R1
+R = T
+R1 = 0
+LB MH
+RT
+E
+LB MI
+ET = 0
+CL M1, DD = 1
+CL M2, DD = 2
+CL M3, DD = 3
+RT
+E
+LB MB
+PD = P - T
+CL AB, PD < 0
+CL LS, PD <= DB
+CL MX, PD > DB
+RT
+E
+LB MX
+T = P
+RT
+E
+LB MZ
+SL 0
+H
+CL P1
+BR ZZ
+E
+LB ME
+ET = 0
+CL M1, R <> T
+H
+BR ME, ET = 1
+PD = P - T
+CL AB, PD < 0
+BR MJ, RE = 1
+BR ME, PD > DB
+LB MJ
+RT
+E
+LB M1
+T = R
+RE = 0
+ET = 0
+ER = 0
+ST = 0
+MA R
+H 1
+RT
+E
+LB M2
+R = R + P
+T = R
+RE = 0
+ET = 0
+ER = 0
+ST = 0
+MA R
+H 1
+RT
+E
+LB M3
+T = R
+RE = 0
+ER = 0
+ST = 0
+SL R
+H 1
+RT
+E
+RR = 0
+LB CF
+PR "MI r1"
+E

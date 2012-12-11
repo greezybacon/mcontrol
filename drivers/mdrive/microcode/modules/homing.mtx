@@ -1,0 +1,162 @@
+VA HE=0     'Homing Error (Do you have an error)
+        '   -1= started     UNKNOWN
+        '   0 = ok      FALSE
+        '   1 = Error   TRUE
+        'note if HE=-1 & BY=1 then Homing is running
+        'if HE=-1 & BY=0 then Homing started and program exited
+
+'=========================================================================
+'CALL HH    Homing to Hard Stop
+'=========================================================================
+LB HH       'one time set up for each EX HH
+ OE EA
+ DE 1       'Ensure Power On
+ SL 0
+ H
+ P=0
+ CL P0      'homing profile
+ HE=-1
+ RE=0
+ T=0
+ R=HL*DR
+ PZ=P
+ ET=0       'Clear Error Track
+ BR HP
+E
+
+'=========================================================================
+'SUB HP     Homing Hard Stop Loop
+'=========================================================================
+LB HP                   'Homing loop
+  CL M1,R<>T
+  H                     'Hold for completion or error
+  BR HQ,RE=1
+  PD=P-R                'Det difference between current position and
+                        'Max Homing limit
+  CL AB,PD<0            'insure positive
+  CL HX,PD<=DB          'At Max Homing limit
+  BR HP                 'Keep trying until limit or Rotor Lock
+E
+
+'=========================================================================
+'SUB HQ         Homing Hard stop good set P
+'=========================================================================
+LB HQ
+ P = 0
+ BR HY
+E
+
+'=========================================================================
+'SUB H1         Home in the Negative direction (HM1) near side of sensor
+'=========================================================================
+LB H1
+ ET=0
+ HM 1
+ H
+ RT
+E
+
+'=========================================================================
+'SUB H2         Home in the Negative direction (HM2) far side of sensor
+'=========================================================================
+LB H2
+ ET=0
+ HM 2
+ H
+ RT
+E
+
+'=========================================================================
+'SUB H3         Home in the Positive direction (HM3) near side of sensor
+'=========================================================================
+LB H3
+ ET=0
+ HM 3
+ H
+ RT
+E
+
+'=========================================================================
+'SUB H4        Home in the Positive direction (HM4) far side of sensor
+'=========================================================================
+LB H4
+ ET=0
+ HM 4
+ H
+ RT
+E
+
+'=========================================================================
+'SUB H5       Saw the sensor in the negative direction
+'=========================================================================
+LB H5
+ CL H2,DR=1
+ CL H4,DR<>1
+ BR HX, ET<>0   'did not see the sensor stalled
+ P = P/2
+ MA 0
+ H
+ BR HY
+E
+
+'=========================================================================
+'SUB H6       did NOT see the sensor in the negative direction
+'=========================================================================
+LB H6
+ CL H3,DR=1
+ CL H1,DR<>1
+ BR HX, ET<>0   'did not see the sensor stalled
+ P = 0
+ CL H4,DR=1
+ CL H2,DR<>1
+ BR HX, ET<>0   'did not see the sensor stalled
+ P = P/2
+ MA 0
+ H
+ BR HY
+E
+
+'=========================================================================
+'SUB H7      End Sensor NOT on switch
+'=========================================================================
+LB H7
+ CL H1,DR=1
+ CL H3,DR<>1
+ RT
+E
+
+'=========================================================================
+'SUB H8      End Sensor ON switch
+'=========================================================================
+LB H8
+ CL H4,DR=1
+ CL H2,DR<>1   
+ RT
+E
+
+'=========================================================================
+'SUB HY     Homing Complete Good
+'=========================================================================
+LB HY
+ HE=0       'Homing Passed NO Homing Error
+ BR HZ
+E
+'=========================================================================
+'SUB HX     Homing Complete Failed
+'=========================================================================
+LB HX
+ HE=1       'Homing Failed Homing Error
+ BR HZ
+E
+'=========================================================================
+'SUB HZ     Homing Finish (STOP EXIT)
+'=========================================================================
+LB HZ
+ CL P1      'set motion profile 1
+ DD 0
+ SL 0
+ H
+ OE 0       'Turn off On Error
+ OL 0       'Turn off all outputs
+ TE 0       'Turn off Trip
+E
