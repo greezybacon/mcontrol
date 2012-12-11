@@ -119,7 +119,7 @@ mdrive_write_simple(mdrive_axis_t * axis, struct motor_query * query,
         .expect_data = false,
         .result = &resp
     };
-    if (RESPONSE_OK != mdrive_send_get_response(axis, &options))
+    if (RESPONSE_OK != mdrive_communicate(axis, &options))
         return -EIO;
 
     return 0;

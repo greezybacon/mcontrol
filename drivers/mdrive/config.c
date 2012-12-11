@@ -53,7 +53,7 @@ mdrive_config_commit(mdrive_axis_t * device) {
         .waittime = &timeout
     };
 
-    if (mdrive_send_get_response(device, &options) != RESPONSE_OK)
+    if (mdrive_communicate(device, &options) != RESPONSE_OK)
         return false;
 
     return mdrive_config_inspect(device) == 0;

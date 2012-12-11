@@ -23,7 +23,7 @@ struct mdrive_send_opts {
 };
 
 extern int
-mdrive_send_get_response(mdrive_axis_t *, const struct mdrive_send_opts *);
+mdrive_communicate(mdrive_axis_t *, const struct mdrive_send_opts *);
 
 extern int
 mdrive_connect(mdrive_address_t *, mdrive_axis_t *);

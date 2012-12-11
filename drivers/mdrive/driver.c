@@ -128,7 +128,7 @@ int mdrive_reboot(mdrive_axis_t * device) {
             options.waittime = NULL;
 
         options.command = cmd->text;
-        mdrive_send_get_response(device, &options);
+        mdrive_communicate(device, &options);
 
         // Sense firmware upgrade mode
         if (result.buffer[0] == '$')

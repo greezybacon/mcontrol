@@ -79,7 +79,7 @@ mdrive_firmware_write(mdrive_axis_t * axis, const char * filename) {
         { ":IMSInc\r", "::v\r", "::c\r", "::p\r", "::s\r", "::e\r", NULL };
     for (char ** magic = magic_codes; *magic; magic++) {
         options.command = *magic;
-        mdrive_send_get_response(axis, &options);
+        mdrive_communicate(axis, &options);
     }
 
     // The unit will respond after the ':e' before it is really ready
@@ -128,7 +128,7 @@ mdrive_firmware_write(mdrive_axis_t * axis, const char * filename) {
         // Retry the send until we get a clear ACK from the unit
         do {
             result.ack = false;
-            mdrive_send_get_response(axis, &options);
+            mdrive_communicate(axis, &options);
         } while (!result.ack);
     } while (ch != EOF);
     fclose(file);

@@ -48,7 +48,7 @@ mdrive_get_string(mdrive_axis_t * axis, const char * variable,
         .expect_data = true,
         .result = &result
     };
-    if (mdrive_send_get_response(axis, &options) != RESPONSE_OK)
+    if (mdrive_communicate(axis, &options) != RESPONSE_OK)
         return -EIO;
 
     return snprintf(value, size, "%s", result.buffer);
@@ -67,7 +67,7 @@ mdrive_get_integer(mdrive_axis_t * axis, const char * variable, int * value) {
         .result = &result
     };
 
-    if (mdrive_send_get_response(axis, &options) != RESPONSE_OK)
+    if (mdrive_communicate(axis, &options) != RESPONSE_OK)
         return EIO;
 
     errno = 0;
@@ -101,7 +101,7 @@ mdrive_get_integers(mdrive_axis_t * axis, const char * vars[],
         .expect_data = true,
         .result = &result
     };
-    if (mdrive_send_get_response(axis, &options) != RESPONSE_OK)
+    if (mdrive_communicate(axis, &options) != RESPONSE_OK)
         return EIO;
 
     errno = 0;
@@ -143,7 +143,7 @@ mdrive_get_error(mdrive_axis_t * axis) {
         .result = &result,
         .expect_err = true      // Don't retry on error condition
     };
-    mdrive_send_get_response(axis, &options);
+    mdrive_communicate(axis, &options);
     errno = 0;
     code = strtol(result.buffer, NULL, 10);
     if (errno != EINVAL)
@@ -664,7 +664,7 @@ mdrive_write_buffer(mdrive_axis_t * axis, const char * buffer, int length) {
 }
 
 /**
- * mdrive_send_get_response
+ * mdrive_communicate
  *
  * Send a message to the device and wait for the response. If unable to
  * communicate with the unit, the transmission will be automatically retried
@@ -706,7 +706,7 @@ mdrive_write_buffer(mdrive_axis_t * axis, const char * buffer, int length) {
  * documentation of mdrive_classify_response for details.
  */
 int
-mdrive_send_get_response(mdrive_axis_t * axis,
+mdrive_communicate(mdrive_axis_t * axis,
         const struct mdrive_send_opts * options) {
 
     int i, status=0, length, txid;
@@ -744,7 +744,7 @@ mdrive_send_get_response(mdrive_axis_t * axis,
     }
 
     // Use 60ms waittime if no waittime is specified in the options
-    if (axis->stats.latency == 0)
+    if (axis->stats.latency == 0 || axis->echo == EM_QUIET)
         // Start with a reasonable value (20ms)
         axis->stats.latency = (int)20e6;
     if (options->waittime)
@@ -929,7 +929,7 @@ int mdrive_send(mdrive_axis_t * axis, const char * command) {
         .expect_data = false,
         .result = NULL
     };
-    return mdrive_send_get_response(axis, &opts);
+    return mdrive_communicate(axis, &opts);
 }
 
 int
