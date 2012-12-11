@@ -197,8 +197,8 @@ mdrive_name_poke(mdrive_axis_t * axis, struct motor_query * query,
             "BR N2, SN <> %1$s",
             "DN = %2$d ' %1$1.1s",
             "PY = 1",
+            "PR SN",
         "LB N2",
-        "RT",
         "E",
         NULL
     };
@@ -211,16 +211,18 @@ mdrive_name_poke(mdrive_axis_t * axis, struct motor_query * query,
 
     // Leave program mode
     mdrive_send(axis, "PG");
-    mdrive_send(axis, "S");
     
     // Wait just a second
     struct timespec waittime = { .tv_nsec = 400e6 };
     nanosleep(&waittime, NULL);
 
     // Call and drop the naming routine now that we're done
+    // XXX: Technically, since the above script will send the serial number
+    //      when executed, we could use mdrive_communicate and get the
+    //      response, but we wouldn't have the confidence that the unit is
+    //      responding to its name. Therefore, we'll quietly discard the
+    //      received serial number
     mdrive_send(axis, "EX N");
-
-    nanosleep(&waittime, NULL);
 
     // Now, assume that the axis address is changed.  Leave the axis address
     // as the global one for further naming. To communicate with the renamed
