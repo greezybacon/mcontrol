@@ -1,7 +1,10 @@
 *.sw*
 *.o
 *.so
+gmon.out
+
+# Python library stuff
 *.pyc
 __pycache__/*
-gmon.out
 lib/python/build
+lib/python/mcontrol/*.c
