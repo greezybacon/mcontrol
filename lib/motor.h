@@ -16,7 +16,7 @@ struct backend_motor {
     Profile     profile;        // Client's requested motion profile
     OpProfile   op_profile;     // Client's requested operating guidelines
 
-    long long   subscriptions;  // Bitmask of subscribed events
+    unsigned short subscriptions[EV__LAST];  // Bitmask of subscribed events
 };
 
 extern void mcInitialize(void);

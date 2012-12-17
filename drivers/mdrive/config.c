@@ -36,6 +36,9 @@ mdrive_config_rollback(mdrive_axis_t * device) {
  *
  * Sends the save command (S) to commit changes to NVRAM
  *
+ * Parameters:
+ * device - (mdrive_axis_t *) Device to commit config changes
+ *
  * Returns:
  * (bool) - TRUE if commit was completed successfully and FALSE otherwise
  */
@@ -47,13 +50,11 @@ mdrive_config_commit(mdrive_axis_t * device) {
 
     struct timespec timeout = { .tv_nsec = 750e6 };
     struct mdrive_send_opts options = {
-        .command = "S",
         .expect_data = false,
-        .result = NULL,
         .waittime = &timeout
     };
 
-    if (mdrive_communicate(device, &options) != RESPONSE_OK)
+    if (mdrive_communicate(device, "S", &options) != RESPONSE_OK)
         return false;
 
     return mdrive_config_inspect(device) == 0;
@@ -142,11 +143,10 @@ mdrive_config_set_baudrate(mdrive_axis_t * axis, int speed) {
     if (!mdrive_config_commit(axis)) // Saves the configuration
         return EIO;
 
-    mdrive_reboot(axis);            // Reboot the unit for BD to take 
-                                    // effect; however we won't be able to
-                                    // talk to the unit because we'll still
-                                    // be at the wrong speed
-
+    // Reboot the unit for BD to take effect; however we won't be able to
+    // talk to the unit because we'll still be at the wrong speed
+    mdrive_reboot(axis);            
+                                    
     // NOTE: If the mdrive_set_baudrate fails, there will be no automated
     // way to correct it since we cannot set the baudrate and the unit is
     // already rebooted in the new baud setting.
@@ -156,7 +156,7 @@ mdrive_config_set_baudrate(mdrive_axis_t * axis, int speed) {
     // NOTE: That other motors are allowed to be at different baudrates
     axis->speed = selected->human;
 
-    // Re-detect communication settings
+    // Re-detect communication settings (reset by reboot)
     mdrive_config_inspect(axis);
 
     return 0;
@@ -251,9 +251,11 @@ mdrive_config_inspect(mdrive_axis_t * axis) {
     if (mdrive_config_inspect_echo(axis))
         return EIO;
 
+    // Inspect ES setting (for E-stop)
+
     // Configure motor in best performance mode for this driver
-    mdrive_set_echo(axis, EM_PROMPT, true);
-    mdrive_set_checksum(axis, CK_ON, true);
+    mdrive_set_echo(axis, EM_PROMPT, false);
+    mdrive_set_checksum(axis, CK_ON, false);
 
     return 0;
 }

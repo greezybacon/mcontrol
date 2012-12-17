@@ -10,13 +10,11 @@ typedef int motor_t;                // Id of motor kept by client
 
 enum event_name {
     EV__FIRST = 1,
-    EV_MOTION_STARTED = EV__FIRST,
-    EV_MOTION_COMPLETED,
+    EV_MOTION = EV__FIRST,
     EV_POSITION,                    // Position reached
     EV_INPUT,                       // Input changed
 
     EV_EXCEPTION,
-    EV_MOTOR_STALLED,
     EV_OVERTEMP,
 
     EV_MOTOR_RESET,                 // Fired after motor is reset
@@ -29,12 +27,27 @@ enum event_name {
 
 typedef enum event_name event_t;
 
-typedef struct event_data event_data_t;
-typedef void (*event_cb_t)(event_data_t *evt);
+typedef struct event_info event_info_t;
+typedef void (*event_cb_t)(event_info_t *evt);
 
-union event_user_data {                         // Data associated with the event
-    int64_t     number;
+typedef union event_data event_data_t;
+union event_data {                  // Data associated with the event
+    long long   number;
     char        string[256];
+
+    struct {
+        bool        completed;      // Move finished normally
+        bool        stalled;        // Move interrupted by stall
+        bool        cancelled;      // Move replaced with another move
+        bool        stopped;        // Stop was issued
+        bool        in_progress;    // Still moving (progress update)
+        bool        pos_known;      // Position element is valid
+        unsigned char tries;        // Number of tries if completed
+                                    // successfully after retrying
+        unsigned    error;          // urevs of slip
+        long long   position;       // Current position (urevs), if known
+    } motion;
+
     struct {
         char    level;
         char    channel;
@@ -42,12 +55,12 @@ union event_user_data {                         // Data associated with the even
     } trace;
 };
 
-struct event_data {
+struct event_info {
     event_t     event;
     motor_t     motor;
 
-    union event_user_data * event_data;
-    void *      user_data;
+    union event_data * data;
+    void *      user;
 };
 
 enum motion_increment {
@@ -107,6 +120,10 @@ struct motion_profile {
                                      // indication of the unit and the
                                      // commanded position. This determines
                                      // when a stall is flagged.
+    struct motion_profile_attrs {
+        unsigned        hardware    :1;     // Profile saved in microcode
+        unsigned        number      :3;     // Profile number (8 max)
+    } attrs;
 };
 
 typedef struct operating_profile OpProfile;
@@ -155,12 +172,15 @@ enum move_type {
     MCABSOLUTE = 1,
     MCRELATIVE,
     MCSLEW,
-    MCJITTER
+    MCJITTER,
 };
 typedef enum move_type move_type_t;
 
-typedef struct motor_profile profile_t;
-struct motor_profile {
+// Types used by the stop driver entry
+enum stop_type {
+    MCSTOP = 1,     // Stop movement only
+    MCHALT,         // Abort movement and microcode execution
+    MCESTOP,        // Halt all accessible motors
 };
 
 typedef struct motion_instruction motion_instruction_t;

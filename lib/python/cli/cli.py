@@ -70,6 +70,14 @@ Version 0.1-beta
             what, ': ' + hint if hint else ''),
             self.context['stderr'])
 
+    def onecmd(self, str):
+        try:
+            return super(Shell, self).onecmd(str)
+        except Exception as e:
+            self.error("{0}: {1}".format(
+                type(e).__name__, e))
+            raise
+
     def run(self):
         shell = self
         while True:
@@ -82,19 +90,22 @@ Version 0.1-beta
 
 # Warning: Major magic mojo
 #
-# Import modules from the module director and finds all the subclasses of
+# Import modules from the module directory and finds all the subclasses of
 # the Mixin class. Of those, the Shell.mixin() method is called to add the
 # module pieces into the cli environment
-from modules import *
+import modules
 from types import ModuleType
 
-for module in dir():
-    obj = vars()[module]
-    if type(obj) is ModuleType:
-        for name in dir(obj):
-            cls = vars(obj)[name]
-            if type(cls) is type and issubclass(cls, Mixin):
-                Shell.mixin(cls)
+# More on dynamic importing here
+# http://docs.python.org/2/library/functions.html#__import__
+mods = __import__('modules', globals(), locals(),
+        modules.__all__, -1)
+
+for name in modules.__all__:
+    mod = getattr(mods, name)
+    for name, cls in vars(mod).items():
+        if type(cls) is type and issubclass(cls, modules.Mixin):
+            Shell.mixin(cls)
 
 if __name__ == '__main__':
     Shell().run()

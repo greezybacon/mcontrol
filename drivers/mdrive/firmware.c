@@ -77,10 +77,8 @@ mdrive_firmware_write(mdrive_axis_t * axis, const char * filename) {
     // :e -- Enter into programming mode
     char * magic_codes[] =
         { ":IMSInc\r", "::v\r", "::c\r", "::p\r", "::s\r", "::e\r", NULL };
-    for (char ** magic = magic_codes; *magic; magic++) {
-        options.command = *magic;
-        mdrive_communicate(axis, &options);
-    }
+    for (char ** magic = magic_codes; *magic; magic++)
+        mdrive_communicate(axis, *magic, &options);
 
     // The unit will respond after the ':e' before it is really ready
     sleep(2);
@@ -123,12 +121,11 @@ mdrive_firmware_write(mdrive_axis_t * axis, const char * filename) {
         // Add carriage return and null-terminate
         *pBuffer++ = '\r';
         *pBuffer = 0;
-        options.command = buffer;
 
         // Retry the send until we get a clear ACK from the unit
         do {
             result.ack = false;
-            mdrive_communicate(axis, &options);
+            mdrive_communicate(axis, buffer, &options);
         } while (!result.ack);
     } while (ch != EOF);
     fclose(file);

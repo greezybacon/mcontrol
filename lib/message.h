@@ -61,7 +61,7 @@ struct event_message {
     motor_t         motor;          // Device signaling the event
     int32_t         id;             // Subscription owner of the event
     event_t         event;          // Type of event
-    union event_user_data data;
+    union event_data data;
 };
 
 // Thanks to http://stackoverflow.com/a/1872506

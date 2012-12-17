@@ -20,6 +20,6 @@ def raise_status(status, message):
     else:
         raise RuntimeError("{0}: {1}".format(status, message))
 
+include "profile.pyx"
 include "motor.pyx"
 include "trace.pyx"
-include "profile.pyx"

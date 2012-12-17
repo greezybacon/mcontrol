@@ -37,10 +37,10 @@ struct callback_list {
 static int callback_uid = 0;
 static struct callback_list * callbacks = NULL;
 static timer_t callback_timer = (timer_t) 0;
-static pthread_t timer_thread_id = (pthread_t) 0;
+static pthread_t timer_thread_id = (pid_t) 0;
 static pthread_mutex_t callback_list_lock;
 
-static const int TIMER_SIGNAL = SIGUSR2;
+static const int TIMER_SIGNAL = SIGINT;
 
 static void *
 _mcCallbackThread(void *arg) {
@@ -52,16 +52,39 @@ _mcCallbackThread(void *arg) {
     pthread_sigmask(SIG_BLOCK, &mask, NULL);
 
     int signal;
+    struct timespec now;
     while (true) {
-        // Await delivery of the timer signal to this thread
-        // TODO: Display/recover from error here
-        if (sigwait(&mask, &signal) != 0) break;
+        // Adjust timer time
+        signal = 0;
+        if (callbacks) {
+            // Await delivery of the timer signal to this thread
+            if (EINTR == clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME,
+                    &callbacks->abstime, NULL))
+                // SIGINT means callbacks have changed
+                continue;
+        }
+        // Wait for the SIGINT signal
+        else if (sigwait(&mask, &signal) != 0)
+            // TODO: Display/recover from error here
+            break;
+        else if (signal == TIMER_SIGNAL)
+            // TIMER_SIGNAL is used to signal changes to the callback list
+            // and should just result in the timer_settime call and another
+            // wait.
+            continue;
 
-        // Perform the callback
         if (callbacks == NULL)
             continue;
-        else
-            callbacks->callback(callbacks->arg);
+
+        // Double check the time
+        clock_gettime(CLOCK_REALTIME, &now);
+        if (now.tv_sec < callbacks->abstime.tv_sec
+                || now.tv_nsec < callbacks->abstime.tv_nsec)
+            // Timer expiration is still in the future
+            continue;
+
+        // Perform the callback
+        callbacks->callback(callbacks->arg);
 
         // Remove the HEAD entry from the callback list
         pthread_mutex_lock(&callback_list_lock);
@@ -77,8 +100,6 @@ _mcCallbackThread(void *arg) {
         }
 
         pthread_mutex_unlock(&callback_list_lock);
-        struct itimerspec exp = { .it_value = callbacks->abstime };
-        timer_settime(callback_timer, TIMER_ABSTIME, &exp, NULL);
     }
     return NULL;
 }
@@ -98,7 +119,7 @@ mcCallbackAbs(const struct timespec * when, callback_function callback,
 
     pthread_mutex_lock(&callback_list_lock);
 
-    struct callback_list * current = callbacks, * tail;
+    struct callback_list * current = callbacks, * tail = NULL;
     while (current) {
         if ((current->abstime.tv_sec > when->tv_sec)
                 && (current->abstime.tv_nsec > when->tv_nsec)) {
@@ -116,13 +137,15 @@ mcCallbackAbs(const struct timespec * when, callback_function callback,
         current = current->next;
     }
     // End of list
-    if (tail) {
-        tail->next = info;
-        info->prev = tail;
+    if (!current) {
+        if (tail) {
+            tail->next = info;
+            info->prev = tail;
+        }
+        // Empty list?
+        else
+            callbacks = info;
     }
-    // Empty list?
-    else 
-        callbacks = info;
 
     pthread_mutex_unlock(&callback_list_lock);
 
@@ -132,19 +155,9 @@ mcCallbackAbs(const struct timespec * when, callback_function callback,
         pthread_attr_init(&attr);
         pthread_create(&timer_thread_id, &attr, _mcCallbackThread, NULL);
     }
-
-    // Setup the timer
-    if (callback_timer == 0) {
-        struct sigevent timer_ev = {
-            .sigev_notify = SIGEV_THREAD_ID,
-            .sigev_signo = TIMER_SIGNAL
-        };
-        timer_create(CLOCK_REALTIME, &timer_ev, &callback_timer);
-    }
-
-    // Adjust timer time
-    struct itimerspec exp = { .it_value = callbacks->abstime };
-    timer_settime(callback_timer, TIMER_ABSTIME, &exp, NULL);
+    else
+        // Signal the thread of callback changes
+        pthread_kill(timer_thread_id, TIMER_SIGNAL);
 
     return info->id;
 }
@@ -168,12 +181,16 @@ mcCallbackCancel(int callback_id) {
     while (current) {
         if (current->id == callback_id) {
             // Remove the link from the list
-            if (current->prev && current->next)
+            if (current->prev && current->next) {
                 current->prev->next = current->next;
+                current->next->prev = current->prev;
+            }
             else if (current->prev)
-                current->prev = NULL;
-            else if (current == callbacks && current->next)
+                current->prev->next = NULL;
+            else if (current == callbacks && current->next) {
                 callbacks = current->next;
+                callbacks->prev = NULL;
+            }
             else
                 callbacks = NULL;
 
@@ -183,7 +200,7 @@ mcCallbackCancel(int callback_id) {
         current = current->next;
     }
 
-    pthread_mutex_lock(&callback_list_lock);
+    pthread_mutex_unlock(&callback_list_lock);
 
     return (current != NULL) ? 0 : EINVAL;
 }

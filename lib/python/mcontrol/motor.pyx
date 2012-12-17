@@ -1,6 +1,6 @@
-# cython: profile=True
-
 cimport mcontrol.constants as k
+from cpython cimport bool
+from mcontrol cimport defs
 
 all_units = {
     k.MILLI_INCH:   "mil",
@@ -17,9 +17,11 @@ class CommFailure(Exception): pass
 
 cdef class Motor:
 
-    cdef int id
+    cdef readonly int id
     cdef int _units
     cdef long long _scale
+    cdef bool _has_profile
+    cdef MotorProfile _profile
 
     def __init__(self, connection, recovery=False):
         cdef int status
@@ -87,6 +89,13 @@ cdef class Motor:
 
             return not not moving
 
+    property profile:
+        def __get__(self):
+            if not self._has_profile:
+                self._profile = MotorProfile(self)
+                self._has_profile = True
+            return self._profile
+
     def move(self, how_much, units=None):
         if units is None:
             units = self.units
@@ -106,6 +115,22 @@ cdef class Motor:
 
         if status != 0:
             raise RuntimeError(status)
+
+    def slew(self, rate, units=None):
+        if units is None:
+            units = self.units
+
+        raise_status(
+            mcSlewUnits(self.id, rate, units),
+            "Unable to slew motor")
+
+    def stop(self):
+        raise_status(
+            mcStop(self.id),
+            "Unable to stop motor")
+
+    def on(self, event):
+        return Event(self, event)
 
     def load_firmware(self, filename):
         cdef String buf = bufferFromString(filename)
@@ -129,13 +154,35 @@ cdef class Motor:
 
     search = classmethod(search)
 
+cdef extern from "drivers/mdrive/mdrive.h":
+    ctypedef enum mdrive_read_variable:
+        MDRIVE_SERIAL,
+        MDRIVE_PART,
+        MDRIVE_FIRMWARE,
+        MDRIVE_MICROCODE,
+
+        MDRIVE_BAUDRATE,
+        MDRIVE_CHECKSUM,
+        MDRIVE_ECHO,
+        MDRIVE_ADDRESS,
+        MDRIVE_NAME,
+        MDRIVE_RESET,
+        MDRIVE_HARD_RESET,
+
+        MDRIVE_STATS_RX,
+        MDRIVE_STATS_TX,
+
+        MDRIVE_IO_TYPE,
+        MDRIVE_IO_INVERT,
+        MDRIVE_IO_DRIVE
+
 cdef class MdriveMotor(Motor):
 
     property address:
         def __get__(self):
             cdef String buf
             cdef int status
-            status = mcQueryString(self.id, 10007, &buf)
+            status = mcQueryString(self.id, MDRIVE_ADDRESS, &buf)
             if status != 0:
                 raise RuntimeError(status)
             return buf.buffer.decode('latin-1')
@@ -143,7 +190,7 @@ cdef class MdriveMotor(Motor):
         def __set__(self, address):
             cdef String buf = bufferFromString(address[0])
             cdef int status
-            status = mcPokeString(self.id, 10007, &buf)
+            status = mcPokeString(self.id, MDRIVE_ADDRESS, &buf)
 
             if status != 0:
                 raise RuntimeError(status)
@@ -151,7 +198,7 @@ cdef class MdriveMotor(Motor):
     property baudrate:
         def __get__(self):
             cdef int val, status
-            status = mcQueryInteger(self.id, 10004, &val)
+            status = mcQueryInteger(self.id, MDRIVE_BAUDRATE, &val)
 
             if status != 0:
                 raise RuntimeError(status)
@@ -160,19 +207,112 @@ cdef class MdriveMotor(Motor):
 
         def __set__(self, rate):
             cdef int status
-            status = mcPokeInteger(self.id, 10004, rate)
+            status = mcPokeInteger(self.id, MDRIVE_BAUDRATE, rate)
 
             if status != 0:
                 raise RuntimeError(status)
+
+    property serial:
+       def __get__(self):
+            cdef String buf
+            raise_status(mcQueryString(self.id, MDRIVE_SERIAL, &buf),
+                "Unable to fetch serial number")
+            return buf.buffer.decode('latin-1')
+
+    property part:
+        def __get__(self):
+            cdef String buf
+            raise_status(mcQueryString(self.id, MDRIVE_PART, &buf),
+                "Unable to fetch part number")
+            return buf.buffer.decode('latin-1')
+
+    property firmware:
+        def __get__(self):
+            cdef String buf
+            raise_status(mcQueryString(self.id, MDRIVE_FIRMWARE, &buf),
+                "Unable to fetch firmware version")
+            return buf.buffer.decode('latin-1')
 
     def name_set(self, address, serial_number):
         cdef String addr = bufferFromString(address[0])
         cdef String sn = bufferFromString(serial_number)
         cdef int status
         print("Calling mcPokeStringItem")
-        status = mcPokeStringItem(self.id, 10008, &addr, &sn);
+        status = mcPokeStringItem(self.id, 10008, &addr, &sn)
         raise_status(status, "Unable to name motor")
 
     def search(cls):
         return Motor.search('mdrive')
     search = classmethod(search)
+
+cdef void pyEventCallback(event_info_t * info) with gil:
+    assert info.user != NULL
+    assert type(<object>info.user) is Event
+    cdef object data = None
+    if info.event == EV_MOTION and info.data:
+        data = mdFromEventData(info.data)
+    (<object>info.user).callback(data)
+
+cdef class MotionDetails(object):
+
+    cdef public bool completed
+    cdef public bool stalled
+    cdef public bool cancelled
+    cdef public bool stopped
+    cdef public bool in_progress
+    cdef public bool pos_known
+    cdef public int error
+    cdef public object position
+
+cdef MotionDetails mdFromEventData(event_data_t * data):
+    if data == NULL:
+        return None
+
+    cdef MotionDetails self = MotionDetails()
+    self.completed = data.motion.completed
+    self.stalled = data.motion.stalled
+    self.cancelled = data.motion.cancelled
+    self.stopped = data.motion.stopped
+    self.in_progress = data.motion.in_progress
+    if data.motion.pos_known:
+        self.position = data.motion.position
+    else:
+        self.position = None
+    return self
+
+cdef class Event(object):
+    EV_MOTION = defs.EV_MOTION
+
+    cdef readonly Motor motor
+    cdef readonly int event
+    cdef readonly int id
+    cdef object _callback
+    cdef public object data
+
+    def __init__(self, motor, event):
+        self.motor = motor
+        self.event = event
+        self._callback = None
+        self.register()
+
+    def __dealloc__(self):
+        mcUnsubscribe(self.motor.id, self.id)
+
+    def register(self):
+        raise_status(
+            mcSubscribeWithData(
+                self.motor.id, self.event, &self.id,
+                pyEventCallback, <void *>self),
+            "Unable to subscribe to event")
+
+    cdef void callback(Event self, object data):
+
+        if self._callback:
+            self._callback(self)
+
+    def call(self, callback):
+        self._callback = callback
+        return self
+
+    def wait(self):
+        mcEventWait(self.motor.id, self.event)

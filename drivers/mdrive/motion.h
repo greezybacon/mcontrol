@@ -2,7 +2,7 @@ extern int
 mdrive_move(Driver * self, motion_instruction_t * command);
 
 extern int
-mdrive_stop(Driver * self);
+mdrive_stop(Driver * self, enum stop_type);
 
 extern long long
 mdrive_steps_to_microrevs(mdrive_axis_t * device, int position);

@@ -3,6 +3,16 @@ cdef extern from "motor.h":
         MCPOSITION
         MCMOVING
 
+        MCPROFILE
+        MCACCEL
+        MCDECEL
+        MCVMAX
+        MCVINITIAL
+        MCDEADBAND
+        MCRUNCURRENT
+        MCHOLDCURRENT
+        MCSLIPMAX
+
     ctypedef enum motion_increment:
         MILLI_INCH
         INCH

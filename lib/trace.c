@@ -15,7 +15,7 @@
 
 // Max number of characters written per trace call (for formatted messages
 // using mcTraceF). Remote clients will be limited by the buffer size
-// declared in the event_user_data.event structure.
+// declared in the event_data.event structure.
 static const int MAX_TRACE_SIZE = 512;
 
 static const int MAX_TRACE_CHANNELS = sizeof(long long);

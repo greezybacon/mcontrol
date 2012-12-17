@@ -109,35 +109,32 @@ int mdrive_reboot(mdrive_axis_t * device) {
         { NULL, 0 }
     };
     mdrive_response_t result;
+    struct timespec waittime;
     struct mdrive_send_opts options = {
         .expect_data = false,
         .result = &result,
         .expect_err = true,
         .raw = true
     };
-    struct timespec waittime;
+    // Don't retry the reboot in party-mode (the unit won't give any
+    // indication of acceptance)
+    if (device->party_mode)
+        options.tries = 1;
 
     for (struct cmd_wait * cmd = cmds; cmd->text; cmd++) {
         if (cmd->wait) {
-            waittime = (struct timespec) {
-                .tv_nsec = cmd->wait
-            };
+            waittime = (struct timespec) { .tv_nsec = cmd->wait };
             options.waittime = &waittime;
         }
         else
             options.waittime = NULL;
 
-        options.command = cmd->text;
-        mdrive_communicate(device, &options);
+        mdrive_communicate(device, cmd->text, &options);
 
         // Sense firmware upgrade mode
         if (result.buffer[0] == '$')
             device->upgrade_mode = true;
     }
-
-    if (device->party_mode)
-        // Send a CTRL+J to activate party mode
-        mdrive_send(device, "");
 
     return 0;
 }
@@ -200,7 +197,7 @@ DriverClass mdrive_driver = {
     .read = mdrive_read_variable,
     .write = mdrive_write_variable,
 
-    .subscribe = mdrive_subscribe,
+    .notify = mdrive_notify,
     .unsubscribe = mdrive_unsubscribe,
 
     .load_firmware = mdrive_load_firmware,

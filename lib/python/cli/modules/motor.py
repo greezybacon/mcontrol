@@ -1,7 +1,9 @@
 from cli import Shell
 
-from mcontrol import all_units, Profile
+from mcontrol import all_units, Profile, Event
 from mcontrol import NoDaemonException
+
+from lib import term
 
 class MotorContext(Shell):
 
@@ -59,44 +61,32 @@ class MotorContext(Shell):
         """
         Set the units and scale of the motor. For example
 
-        scale 0.7 per inch
-        scale 0.7 inch per rev
+        scale 0.7 inch
 
-        Means 0.7 revolutions per inch of travel, or 0.7 inches of travel
-        per revolution
+        Means 0.7 inches of travel per revolution
         """
-        scale, *per, units = string.split(' ', 2)
-        if len(per) == 1:
-            per = per[0]
-        else:
-            units, per = per
-            scale = 1 / float(scale)
-        if per not in ("per", "/"):
+        def usage():
             self.error("Incorrect usage", "see 'help set scale'")
-            return
+
+        parts = string.split(' ')
+        scale = 1e6 / float(parts.pop(0))
+        units = parts.pop(0)
+        if len(parts):
+            return usage()
 
         self._do_set_units(units)
-        self.motor.scale = float(scale) * 1e6
-
-    def _do_set_name(self, name):
-        if ':' not in name:
-            self.error("Naming format is <addr>:<serial number>")
-            return
-
-        name, sn = name.split(':')
-        try:
-            print("Setting %s to %s" % (sn, name.lower()))
-            self.motor.name_set(name.lower(), sn)
-        except AttributeError:
-            self.error("Motor does not support naming")
-        except Exception as e:
-            self.error("{0}: Unable to name motor".format(e.message))
+        self.motor.scale = float(scale)
 
     def do_move(self, where):
         func = self.motor.move
         units = None
+        wait = False
 
         parts = where.split()
+        if 'wait' in parts:
+            wait = True
+            parts.remove('wait')
+
         if parts[0] == 'to':
             func = self.motor.moveTo
             parts.pop(0)
@@ -111,10 +101,69 @@ class MotorContext(Shell):
         if len(parts) == 1:
             try:
                 func(int(parts[0]), units)
+                if wait:
+                    self.motor.on(Event.EV_MOTION).wait()
                 return
             except:
                 raise
         self.error("Incorrect usage", "see 'help move'")
+
+    def _move_done(self, event):
+        if event.data.completed:
+            term.output("%(BOL)%(BOLD)%(WHITE)"
+                ">>> Move completed%(NORMAL)\n",
+                self.context['stderr'])
+        self.context['stderr'].flush()
+        try:
+            import readline
+            self.context['stderr'].write(self.prompt)
+            readline.redisplay()
+        except ImportError:
+            pass
+
+    def do_slew(self, line):
+        """
+        Slew the motor at the given rate. Units if not specified are assumed
+        to be in the scale units per second
+
+        Example: slew 200 mil
+        Slew motor at 200 mils per second
+        """
+        parts = line.split()
+        val = parts.pop(0)
+        units = None
+        if len(parts):
+            for id, name in all_units.items():
+                if name == parts[-1]:
+                    units = id
+                    break
+            else:
+                self.error("{0}: Unsupported units".format(what))
+            parts.pop()
+        if len(parts):
+            return self.error("Incorrect usage", "see 'help slew")
+
+        self.motor.slew(float(val), units)
+
+    def do_stop(self, line):
+        """
+        Stop the motor immediately
+        """
+        self.motor.stop()
+
+    def do_info(self, line):
+        """
+        Display information about the connection motor such a serial and
+        part numbers, firmware version, etc. It will also display
+        information about the motor's motion details if the profile and
+        scale have been setup (see set scale)
+        """
+        term.output("%(BOLD)%(WHITE)  Serial: %(NORMAL){0}".format(
+            self.motor.serial), self.context['stdout'])
+        term.output("%(BOLD)%(WHITE)   Model: %(NORMAL){0}".format(
+            self.motor.part), self.context['stdout'])
+        term.output("%(BOLD)%(WHITE)Firmware: %(NORMAL){0}".format(
+            self.motor.firmware), self.context['stdout'])
 
     def do_profile(self, info):
         """
@@ -123,5 +172,34 @@ class MotorContext(Shell):
         profile get accel inch
         profile set accel 490 revs
         """
-        op, setting, units = info.split()
+        parts = info.split()
+        getset = parts.pop(0)
+        if getset not in ('get','set'):
+            return self.error("Incorrect operation", "See 'help profile'")
 
+        component = parts.pop(0)
+        if component not in ('run_current',):
+            return self.error("Incorrect setting", "See 'help profile'")
+
+        val = parts.pop(0)
+        try:
+            val = int(val)
+        except ValueError:
+            return self.error("Invalid value", "Integer required")
+
+        units = None
+        if len(parts):
+            for id, name in all_units.items():
+                if name == parts[-1]:
+                    units = id
+                    break
+            else:
+                self.error("{0}: Unsupported units".format(what))
+
+            parts.pop(0)
+
+        if len(parts):
+            return SyntaxError("See 'help profile'")
+
+        self.motor.profile.run_current_set(val)
+        self.motor.profile.commit()

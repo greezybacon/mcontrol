@@ -149,7 +149,7 @@ class TerminalController(object):
         if s == '$$': return s
         else: return str(getattr(self, s[2:-1]))
 
-from motor import *
+from mcontrol import *
 
 ms = 'abcdef'
 motors = [{
@@ -176,7 +176,7 @@ def report():
 
 def run_a_bunch(motor, range=1000):
     m = motor['motor']
-    m.units = MILLI_INCH
+    m.units = [x for x in all_units if all_units[x] == 'mil'][0]
     m.scale = 1000
 
     while True:

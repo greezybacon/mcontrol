@@ -39,16 +39,15 @@ int
 mdrive_get_string(mdrive_axis_t * axis, const char * variable,
         char * value, int size) {
     char buffer[48];
-    mdrive_response_t result = {};
+    mdrive_response_t result = { .txid = 0 };
 
     snprintf(buffer, sizeof buffer, "PR %s", variable);
 
     struct mdrive_send_opts options = {
-        .command = buffer,
         .expect_data = true,
         .result = &result
     };
-    if (mdrive_communicate(axis, &options) != RESPONSE_OK)
+    if (mdrive_communicate(axis, buffer, &options) != RESPONSE_OK)
         return -EIO;
 
     return snprintf(value, size, "%s", result.buffer);
@@ -57,21 +56,25 @@ mdrive_get_string(mdrive_axis_t * axis, const char * variable,
 int
 mdrive_get_integer(mdrive_axis_t * axis, const char * variable, int * value) {
     char buffer[16];
-    mdrive_response_t result = {};
+    mdrive_response_t result = { .txid = 0 };
 
     snprintf(buffer, sizeof buffer, "PR %s", variable);
 
     struct mdrive_send_opts options = {
-        .command = buffer,
         .expect_data = true,
         .result = &result
     };
 
-    if (mdrive_communicate(axis, &options) != RESPONSE_OK)
+    if (mdrive_communicate(axis, buffer, &options) != RESPONSE_OK)
         return EIO;
 
     errno = 0;
-    *value = strtol(result.buffer, NULL, 10);
+    char * nondigit;
+    *value = strtol(result.buffer, &nondigit, 10);
+
+    if (*nondigit != 0)
+        // Garbage in the resulting buffer
+        return EIO;
 
     // TODO: Return some error indication
     return errno;
@@ -89,7 +92,7 @@ mdrive_get_integers(mdrive_axis_t * axis, const char * vars[],
 
     char buffer[64], * pbuf = buffer;
     int cValues = count;
-    mdrive_response_t result = {};
+    mdrive_response_t result = { .txid = 0 };
 
     pbuf += snprintf(buffer, sizeof buffer, "PR %s", *vars++);
     while (--count)
@@ -97,11 +100,10 @@ mdrive_get_integers(mdrive_axis_t * axis, const char * vars[],
             ",\" \",%s", *vars++);
 
     struct mdrive_send_opts options = {
-        .command = buffer,
         .expect_data = true,
         .result = &result
     };
-    if (mdrive_communicate(axis, &options) != RESPONSE_OK)
+    if (mdrive_communicate(axis, buffer, &options) != RESPONSE_OK)
         return EIO;
 
     errno = 0;
@@ -138,12 +140,11 @@ mdrive_get_error(mdrive_axis_t * axis) {
 
     // This will also clear the error flag, if set
     struct mdrive_send_opts options = {
-        .command = "PR ER",
         .expect_data = true,
         .result = &result,
         .expect_err = true      // Don't retry on error condition
     };
-    mdrive_communicate(axis, &options);
+    mdrive_communicate(axis, "PR ER", &options);
     errno = 0;
     code = strtol(result.buffer, NULL, 10);
     if (errno != EINVAL)
@@ -252,13 +253,6 @@ mdrive_classify_response(mdrive_axis_t * axis, mdrive_response_t * response) {
             return RESPONSE_BAD_CHECKSUM;
     }
 
-    // If the unit sends a standard prompt (>), then the request was
-    // correctly received and processed. On Manchac custom firmware, EM=1
-    // will still send the prompt; however, on stock firmware, only the CRLF
-    // will be transmitted.
-    if (response->prompt || response->crlf)
-        return RESPONSE_OK;
-
     // If an error is indicated by the response, clear the error and signal
     // the error to create an event
     if (response->error) {
@@ -272,7 +266,9 @@ mdrive_classify_response(mdrive_axis_t * axis, mdrive_response_t * response) {
             mdrive_clear_error(axis);
 
         if (response->code) {
-            mdrive_signal_event(axis, response->code);
+            int event;
+            mdrive_error_to_event(response->code, &event);
+            mdrive_signal_event(axis, event, NULL);
             if (response->code == MDRIVE_EOVERRUN)
                 return RESPONSE_RETRY;
             else
@@ -280,8 +276,22 @@ mdrive_classify_response(mdrive_axis_t * axis, mdrive_response_t * response) {
         }
         else if (response->nack)
             return RESPONSE_NACK;
+
         // Else: erroneous error indication
     }
+
+    // If the unit sends a standard prompt (>), then the request was
+    // correctly received and processed. On Manchac custom firmware, EM=1
+    // will still send the prompt; however, on stock firmware, only the CRLF
+    // will be transmitted.
+    else if (response->prompt || response->crlf)
+        return RESPONSE_OK;
+
+    else if (response->nack && response->length == 0
+            && axis->checksum == CK_OFF)
+        // Device is _really_ in checksum mode, and this is still an
+        // unexpected response
+        axis->checksum = CK_ON;
 
     return RESPONSE_UNKNOWN;
 }
@@ -646,7 +656,16 @@ mdrive_write_buffer(mdrive_axis_t * axis, const char * buffer, int length) {
     // clock_nanosleep() will too. No need checking twice
     clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &txwait, NULL);
 
-    write(axis->device->fd, buffer, length);
+    int pos = 0, written;
+    // Write data to the file descriptor. If interrupted and not all data
+    // was written out, loop and continue writing the rest of the
+    // transmission
+    do {
+        written = write(axis->device->fd, buffer + pos, length - pos);
+        if (written == -1)
+            return errno;
+        pos += written;
+    } while (pos < length);
 
     // There's no point in considering the transmission time in the
     // receive timeout
@@ -678,12 +697,11 @@ mdrive_write_buffer(mdrive_axis_t * axis, const char * buffer, int length) {
  *
  * Parameters:
  * axis - Mdrive device to communicate with
+ * command - (const char *) Command to send to the device. The command
+ *     should be considered raw -- that is, without the device address
+ *     prefixed or the CR or LF suffixed. Null termination is also assumed
  * options - (struct mdrive_send_opts) a struct is used to make adding
  *          additional, optional parameters easier {
- *     command - (const char *) Command to send to the device. The command
- *         should be considered raw -- that is, without the device address
- *         prefixed or the CR or LF suffixed. Null termination is also
- *         assumed
  *     expect_data - (bool) If the driver should expect a response from the
  *         device (other that the usual prompt, ACK, or NACK). Refer to the
  *         paragraph above concerning the transmission timeouts.
@@ -698,7 +716,7 @@ mdrive_write_buffer(mdrive_axis_t * axis, const char * buffer, int length) {
  *     expect_err - (bool) error indication by the unit is considered ok
  *     raw - (bool) omit the trailing \r or \n char
  *     tries - (short) attempt the transmission this number of times (rather
- *          than the default value of 1 + MAX_RETRIES
+ *          than the default value of 1 + MAX_RETRIES)
  * }
  *
  * Returns:
@@ -706,7 +724,7 @@ mdrive_write_buffer(mdrive_axis_t * axis, const char * buffer, int length) {
  * documentation of mdrive_classify_response for details.
  */
 int
-mdrive_communicate(mdrive_axis_t * axis,
+mdrive_communicate(mdrive_axis_t * axis, const char * command,
         const struct mdrive_send_opts * options) {
 
     int i, status=0, length, txid;
@@ -719,15 +737,15 @@ mdrive_communicate(mdrive_axis_t * axis,
     // short commands to timeout early and longer commands can have the
     // additional wait time (requires checksum mode and responds == true)
     int onechartime = mdrive_xmit_time(axis->device, 1);
-    struct timespec now, timeout, first_waittime = {},
+    struct timespec now, timeout, first_waittime = { .tv_sec = 0 },
         more_waittime = { .tv_nsec = (int)25e6 + onechartime * 62 };
 
     if (axis->party_mode)
         // NOTE: Dec the buffer size to save room for the checksum byte
         length = snprintf(buffer, sizeof buffer-1, "%c%s%s", axis->address,
-            options->command, (options->raw) ? "" : "\n");
+            command, (options->raw) ? "" : "\n");
     else
-        length = snprintf(buffer, sizeof buffer-1, "%s%s", options->command,
+        length = snprintf(buffer, sizeof buffer-1, "%s%s", command,
             (options->raw) ? "" : "\r");
 
     if (axis->checksum) {
@@ -743,10 +761,10 @@ mdrive_communicate(mdrive_axis_t * axis,
         buffer[++length] = 0;
     }
 
-    // Use 60ms waittime if no waittime is specified in the options
+    // Use 55ms waittime if no waittime is specified in the options
     if (axis->stats.latency == 0 || axis->echo == EM_QUIET)
-        // Start with a reasonable value (20ms)
-        axis->stats.latency = (int)20e6;
+        // Start with a reasonable value (15ms)
+        axis->stats.latency = (int)15e6;
     if (options->waittime)
         first_waittime = *options->waittime;
     else
@@ -776,10 +794,11 @@ mdrive_communicate(mdrive_axis_t * axis,
     while (i--) {
 
         // Store in current stack frame for distinction against recursive
-        // calls to mdrive_send...()
+        // calls to mdrive_communicate...()
         txid = ++axis->device->txid;
 
-        mdrive_write_buffer(axis, buffer, length);
+        if (mdrive_write_buffer(axis, buffer, length))
+            return RESPONSE_IOERROR;
 
         clock_gettime(CLOCK_REALTIME, &now);
         tsAdd(&now, &first_waittime, &timeout);
@@ -798,13 +817,13 @@ wait_longer:
                     &axis->device->rxlock, &timeout)) {
 
                 pthread_mutex_unlock(&axis->device->rxlock);
-                if (axis->echo == EM_QUIET && !options->expect_data) {
+                if (axis->echo == EM_QUIET && !options->expect_data)
                     // No response from unit. If the unit is EM=2
                     // (EM_QUIET), this is likely just a command with no
                     // response, which indicates success -- even if checksum
                     // is enabled
                     return RESPONSE_OK;
-                }
+
                 // Non-responsive unit
                 axis->stats.timeouts++;
                 mcTraceF(30, MDRIVE_CHANNEL_RX, "Timed out: %d", axis->echo);
@@ -925,11 +944,10 @@ resend:
 
 int mdrive_send(mdrive_axis_t * axis, const char * command) {
     struct mdrive_send_opts opts = {
-        .command = command,
         .expect_data = false,
         .result = NULL
     };
-    return mdrive_communicate(axis, &opts);
+    return mdrive_communicate(axis, command, &opts);
 }
 
 int

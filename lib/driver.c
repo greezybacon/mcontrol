@@ -165,7 +165,8 @@ mcDriverConnect(const char * cxn_string, Driver ** driver) {
 
     // Return a driver requested by the same connection string
     for (struct driver_instance_list * m = motors->head; m; m=m->next) {
-        if (strncmp(m->cxn_string, cxn_string, sizeof m->cxn_string) == 0) {
+        if (strncmp(m->cxn_string, cxn_string, sizeof m->cxn_string) == 0
+                && strlen(m->cxn_string) == strlen(cxn_string)) {
             *driver = m->driver;
             return 0;
         }
@@ -182,9 +183,6 @@ mcDriverConnect(const char * cxn_string, Driver ** driver) {
     if (motors->driver == NULL)
         return ENOMEM;
     
-    snprintf(motors->cxn_string, sizeof motors->cxn_string,
-        "%s", cxn_string);
-
     motors->driver->id = motor_uid++;
     motors->driver->class = class;
 
@@ -192,10 +190,12 @@ mcDriverConnect(const char * cxn_string, Driver ** driver) {
 
     int status = class->initialize(motors->driver,
             cxn_string + matches[2].rm_so);
+    if (status)
         return status;
 
-    // Subscribe to events received from the motor
-    motors->driver->class->subscribe(motors->driver, mcSignalEvent);
+    // Cache the driver instance with the connection string
+    snprintf(motors->cxn_string, sizeof motors->cxn_string,
+        "%s", cxn_string);
 
     return 0;
 }

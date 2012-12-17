@@ -1,4 +1,4 @@
-from pyPEG import keyword, ignore
+from .pyPEG import keyword, ignore
 import re
 
 # Bare -- commands that (can) take no arguments
@@ -7,8 +7,8 @@ bare = {'E', 'S', 'H', 'RT'}
 commands = {'CL', 'DC', 'IC', 'H', 'HM', 'MA', 'MR', 'OE', 'PR', 'SL', 'TI',
     'BR'}
 # Read-only -- assignment is not allowed
-read_only = {'BY', 'EF', 'I1', 'I2', 'I3', 'I4', 'I5', 'I6', 'IF', 'IH',
-    'IL', 'IN', 'IT', 'MV', 'PC', 'PN', 'SN', 'V', 'VC', 'VR'}
+read_only = {'BY', 'DN', 'EF', 'I1', 'I2', 'I3', 'I4', 'I5', 'I6', 'IF',
+    'IH', 'IL', 'IN', 'IT', 'MV', 'PC', 'PN', 'SN', 'V', 'VC', 'VR'}
 # Read-write -- assignment in the form of VAR = VAL, VAL2
 read_write = {'A', 'C1', 'C2', 'CM', 'CR', 'D', 'D1', 'D2', 'D3', 'D4',
     'D5', 'DB', 'DE', 'EE', 'ES', 'ER', 'FC', 'FM', 'HC', 'HT', 'JE', 'LM',
@@ -35,9 +35,11 @@ def call():         return keyword("CL"), _ws1, name, _ws, 0, (",", _ws, express
 def return_():      return keyword("RT")
 def command():      return re.compile('|'.join(bare))
 def atom():         return [literal, name, configvar]
-def expression():   return atom, _ws, 0, ([compare, math], _ws, expression)
+def expression():   return 0, (unary, _ws), atom, _ws, 0, ([compare, math], \
+                            _ws, expression)
 def compare():      return re.compile(r"<>|<=|>=|<|>|=")
-def math():         return re.compile(r"[+*/&\|!^-]")
+def unary():        return re.compile(r"[!-]")
+def math():         return re.compile(r"[+*/&\|^-]")
 
 def statement():    return [call, branch, return_, label,
                             declaration, assignment, command], 0, comment, _newline

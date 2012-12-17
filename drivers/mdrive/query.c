@@ -4,6 +4,7 @@
 #include "query.h"
 #include "motion.h"
 #include "config.h"
+#include "profile.h"
 
 #include <stdio.h>
 #include <errno.h>
@@ -16,6 +17,9 @@ static PEEK(mdrive_bd_peek);
 static POKE(mdrive_name_poke);
 static POKE(mdrive_checksum_poke);
 static PEEK(mdrive_sn_peek);
+static PEEK(mdrive_vr_peek);
+static PEEK(mdrive_pn_peek);
+static PEEK(mdrive_profile_peek);
 
 static struct query_variable query_xref[] = {
     { 9, MCPOSITION,        "P",    NULL,   mdrive_write_simple },
@@ -25,13 +29,23 @@ static struct query_variable query_xref[] = {
     { 3, MCINPUT,           "I%d",  NULL,   NULL },
     { 6, MCOUTPUT,          "O%d",  NULL,   NULL },
 
+    // Profile peeks
+    { 5, MCACCEL,           NULL,   mdrive_profile_peek, NULL },
+    { 5, MCDECEL,           NULL,   mdrive_profile_peek, NULL },
+    { 5, MCVMAX,            NULL,   mdrive_profile_peek, NULL },
+    { 5, MCVINITIAL,        NULL,   mdrive_profile_peek, NULL },
+    { 5, MCDEADBAND,        NULL,   mdrive_profile_peek, NULL },
+    { 5, MCRUNCURRENT,      NULL,   mdrive_profile_peek, NULL },
+    { 5, MCHOLDCURRENT,     NULL,   mdrive_profile_peek, NULL },
+    { 5, MCSLIPMAX,         NULL,   mdrive_profile_peek, NULL },
+
     { 4, MDRIVE_IO_TYPE,    "S%d",  NULL,   NULL },
     { 4, MDRIVE_IO_INVERT,  "S%d",  NULL,   NULL },
     { 4, MDRIVE_IO_DRIVE,   "S%d",  NULL,   NULL },
 
     { 5, MDRIVE_SERIAL,     "SN",   mdrive_sn_peek, NULL },
-    { 2, MDRIVE_PART,       "PN",   NULL,   NULL },
-    { 2, MDRIVE_FIRMWARE,   "VR",   NULL,   NULL },
+    { 5, MDRIVE_PART,       "PN",   mdrive_pn_peek, NULL },
+    { 5, MDRIVE_FIRMWARE,   "VR",   mdrive_vr_peek, NULL },
     { 2, MDRIVE_MICROCODE,  "AA",   NULL,   NULL },
     { 5, MDRIVE_BAUDRATE,   "BD",   mdrive_bd_peek, mdrive_bd_poke },
     { 1, MDRIVE_CHECKSUM,   "CK",   NULL,   mdrive_checksum_poke },
@@ -115,11 +129,10 @@ mdrive_write_simple(mdrive_axis_t * axis, struct motor_query * query,
     }
 
     struct mdrive_send_opts options = {
-        .command = cmd,
         .expect_data = false,
         .result = &resp
     };
-    if (RESPONSE_OK != mdrive_communicate(axis, &options))
+    if (RESPONSE_OK != mdrive_communicate(axis, cmd, &options))
         return -EIO;
 
     return 0;
@@ -186,20 +199,19 @@ mdrive_name_poke(mdrive_axis_t * axis, struct motor_query * query,
     mdrive_set_checksum(axis, CK_OFF, false);
     mdrive_set_echo(axis, EM_QUIET, true);
 
-    // Clear any existing 'N' routine
-    mdrive_send(axis, "CP N");
-    mdrive_send(axis, "PG 100");
-
     // Upload the naming routine
     char buffer[64];
     char * routine[] = {
+        "ER",                       // Clear any current error
+        "CP N",                     // Clear any existing 'N' routine
+        "PG 100",
         "LB N",
-            "BR N2, SN <> %1$s",
-            "DN = %2$d ' %1$1.1s",
-            "PY = 1",
-            "PR SN",
+            "BR N2, SN <> %1$s",    // All other motors skip
+            "DN = %2$d ' %1$1.1s",  // Set device name (2nd arg, 1st req'd)
+            "PY = 1",               // Enable party mode
         "LB N2",
-        "E",
+        "E",                        // Program ends here
+        "PG",                       // Exit program mode
         NULL
     };
     
@@ -209,19 +221,11 @@ mdrive_name_poke(mdrive_axis_t * axis, struct motor_query * query,
         mdrive_send(axis, buffer);
     }
 
-    // Leave program mode
-    mdrive_send(axis, "PG");
-    
     // Wait just a second
-    struct timespec waittime = { .tv_nsec = 400e6 };
+    struct timespec waittime = { .tv_nsec = 600e6 };
     nanosleep(&waittime, NULL);
 
-    // Call and drop the naming routine now that we're done
-    // XXX: Technically, since the above script will send the serial number
-    //      when executed, we could use mdrive_communicate and get the
-    //      response, but we wouldn't have the confidence that the unit is
-    //      responding to its name. Therefore, we'll quietly discard the
-    //      received serial number
+    // Call the naming routine now that we're done
     mdrive_send(axis, "EX N");
 
     // Now, assume that the axis address is changed.  Leave the axis address
@@ -231,8 +235,8 @@ mdrive_name_poke(mdrive_axis_t * axis, struct motor_query * query,
     fake_axis.address = query->string[0];
     fake_axis.party_mode = true;
 
-    // Activate party mode on the new axis
-    mdrive_send(&fake_axis, "");
+    // Activate party mode and enable command acceptance on the new axis
+    mdrive_set_echo(&fake_axis, EM_PROMPT, false);
 
     // Attempt to read the serial number
     if (0 > mdrive_get_string(&fake_axis, "SN", buffer, sizeof buffer))
@@ -243,8 +247,9 @@ mdrive_name_poke(mdrive_axis_t * axis, struct motor_query * query,
 
     // Everything looks good. Clear the naming routine and save the settings
     // on the newly-named axis
-    mdrive_send(&fake_axis, "CP N");
-    mdrive_send(&fake_axis, "S");
+    struct mdrive_send_opts opts = { .waittime = &waittime };
+    mdrive_communicate(&fake_axis, "CP N", &opts);
+    mdrive_config_commit(&fake_axis);
 
     return 0;
 }
@@ -261,4 +266,68 @@ mdrive_sn_peek(mdrive_axis_t * axis, struct motor_query * query,
 
     return snprintf(query->string, sizeof query->string, "%s",
         axis->serial_number);
+}
+
+static int
+mdrive_pn_peek(mdrive_axis_t * axis, struct motor_query * query,
+        struct query_variable * q) {
+    if (axis == NULL)
+        return -EINVAL;
+
+    if (*axis->part_number == 0)
+        mdrive_get_string(axis, q->variable, axis->part_number,
+            sizeof axis->part_number);
+
+    return snprintf(query->string, sizeof query->string, "%s",
+        axis->part_number);
+}
+
+static int
+mdrive_vr_peek(mdrive_axis_t * axis, struct motor_query * query,
+        struct query_variable * q) {
+    if (axis == NULL)
+        return -EINVAL;
+
+    if (*axis->firmware_version == 0)
+        mdrive_get_string(axis, q->variable, axis->firmware_version,
+            sizeof axis->firmware_version);
+
+    return snprintf(query->string, sizeof query->string, "%s",
+        axis->firmware_version);
+}
+
+static int
+mdrive_profile_peek(mdrive_axis_t * axis, struct motor_query * query,
+        struct query_variable * q) {
+    if (axis == NULL)
+        return -EINVAL;
+
+    mdrive_lazyload_profile(axis);
+
+    switch (query->query) {
+        case MCACCEL:
+            query->number = axis->profile.accel.raw;
+            break;
+        case MCDECEL:
+            query->number = axis->profile.decel.raw;
+            break;
+        case MCVINITIAL:
+            query->number = axis->profile.vstart.raw;
+            break;
+        case MCVMAX:
+            query->number = axis->profile.vmax.raw;
+            break;
+        case MCRUNCURRENT:
+            query->number = axis->profile.current_run;
+            break;
+        case MCHOLDCURRENT:
+            query->number = axis->profile.current_hold;
+            break;
+        case MCSLIPMAX:
+            query->number = axis->profile.slip_max.raw;
+            break;
+        default:
+            return -EINVAL;
+    }
+    return 0;
 }

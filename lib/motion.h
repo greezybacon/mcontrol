@@ -9,6 +9,9 @@ PROXYDEF(mcMoveAbsoluteUnits, int, int distance, unit_type_t units);
 PROXYDEF(mcMoveRelative, int, int distance);
 PROXYDEF(mcMoveRelativeUnits, int, int distance, unit_type_t units);
 
+PROXYDEF(mcSlew, int, int rate);
+PROXYDEF(mcSlewUnits, int, int rate, unit_type_t units);
+
 IMPORTANT PROXYDEF(mcStop, int);
 
 /*

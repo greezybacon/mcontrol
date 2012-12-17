@@ -1,8 +1,8 @@
 from . import overloaded
 
-import grammar
+from . import grammar
 
-from pyPEG import Symbol
+from .pyPEG import Symbol
 import re
 
 
@@ -200,7 +200,7 @@ class Compiler(object):
         else:
             self.PUSH("VA {0}".format(*B))
 
-    @visit.when('number', 'compare', 'math', 'command')
+    @visit.when('number', 'compare', 'math', 'command', 'unary')
     def visit(self, node):
         self.PUSH(node.what)
 
@@ -241,7 +241,11 @@ class Compiler(object):
         self.label = l.name
         if l.defined:
             raise CompileError("Label '{0}' redefined, from {1}"
-                .format(name, node.line))
+                .format(l.name, node.__name__.line))
+        elif l.name in grammar.internal:
+            raise CompileError(
+                "{0}: Internal variable used as label, from {1}"
+                .format(l.name, node.__name__.line))
         else:
             l.defined = True
             l.where = node.__name__.line
@@ -261,7 +265,7 @@ class Compiler(object):
             self.names[name.name] = name = Label.fromName(name)
         elif type(name) is not Label:
             raise CompileError('{0} used as a label'.format(
-                type(name).name))
+                name.name))
         return name
 
     def FIND_VAR(self, name):
@@ -269,8 +273,8 @@ class Compiler(object):
         if type(name) is Name:
             self.names[name.name] = name = Variable.fromName(name)
         elif type(name) is not Variable:
-            raise CompileError('{0} used as a variable'.format(
-                type(name).name))
+            raise CompileError('{0} used as a variable, from {1}'.format(
+                name.name, name.line))
         return name
 
     @visit.when('call', 'branch')

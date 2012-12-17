@@ -1,12 +1,13 @@
 from . import overloaded
-from compiler import Compiler
-from grammar import language
+from .compiler import Compiler
+from .grammar import language
 
-from pyPEG import parse
+from .pyPEG import parse
 from ast import literal_eval
 import fileinput
 import operator
 import sys
+from functools import reduce
 
 class Parser(object):
 
@@ -46,6 +47,10 @@ class pragma_dispatcher(overloaded):
 class PreparserError(Exception): pass
 
 class Preparser(object):
+    library = {
+        '__builtin__': None,
+        'defined': lambda x: x in locals()
+    }
 
     def __init__(self, environ=None):
         self.depth = 0
@@ -54,7 +59,7 @@ class Preparser(object):
         self.environ = environ or {}
 
     def eval(self, condition):
-        return eval(condition, {'__builtin__':None}, self.environ)
+        return eval(condition, self.library, self.environ)
 
     def parse(self, ast):
         self.tree = []
@@ -89,7 +94,11 @@ class Preparser(object):
 
     @handle.when('if')
     def handle(self, keyword, args, node):
-        self.matched.append(self.eval(args))
+        try:
+            self.matched.append(self.eval(args))
+        except:
+            # Assume false since evaluation failed
+            self.matched.append(False)
         self.skip.append(not self.matched[-1])
         self.depth += 1
 
@@ -133,7 +142,7 @@ class Preparser(object):
             val = what.pop()
             try:
                 val = literal_eval(val)
-            except ValueError, e:
+            except ValueError as e:
                 raise ValueError("#define {0}: {1}: {2}".format(
                     what, val, e.message))
         what = what[0]
@@ -150,5 +159,4 @@ class Preparser(object):
         dir = os.path.dirname(node.__name__.line[1])
         filename = dir + '/' + filename
 
-        from parse import Parser
         self.tree.extend(Parser(self.environ).parse(filename))

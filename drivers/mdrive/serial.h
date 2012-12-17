@@ -12,18 +12,18 @@ extern int
 mdrive_send(mdrive_axis_t *, const char *);
 
 struct mdrive_send_opts {
-    const char *        command;        // What to send
     bool                expect_data;    // Expect data back
     mdrive_response_t * result;         // Summary of transaction
     const struct timespec * waittime;   // Non-standard waittime
     bool                expect_err;     // Expect an error response (used 
                                         // for retrieving the current error)
     bool                raw;            // Don't send EOL char
-    short               tries;          // Number of tries (other than def)
+    unsigned short      tries;          // Number of tries (other than def)
 };
 
 extern int
-mdrive_communicate(mdrive_axis_t *, const struct mdrive_send_opts *);
+mdrive_communicate(mdrive_axis_t *, const char *,
+    const struct mdrive_send_opts *);
 
 extern int
 mdrive_connect(mdrive_address_t *, mdrive_axis_t *);

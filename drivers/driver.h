@@ -23,16 +23,13 @@ struct motor_query {
     union {
         long long   number;             // As a number
         char        string[32];         // As a string
+        Profile *   profile;            // Peek/Poke an entire profile
     };
-};
-
-typedef struct motor_driver_config driver_config_t;
-struct motor_driver_config {
 };
 
 typedef struct motor_driver_data Driver;
 
-typedef int (*driver_event_callback_t)(Driver * driver, int event);
+typedef int (*driver_event_callback_t)(Driver *, struct event_info *);
 
 typedef struct motor_driver DriverClass;
 struct motor_driver {
@@ -48,7 +45,7 @@ struct motor_driver {
 
     // Motion instructions
     int (*move)(Driver *, motion_instruction_t *);
-    int (*stop)(Driver *);
+    int (*stop)(Driver *, enum stop_type);
     int (*reset)(Driver *);
     int (*home)(Driver *);
 
@@ -57,8 +54,6 @@ struct motor_driver {
     int (*write)(Driver *, struct motor_query *);
 
     // Events
-    int (*subscribe)(Driver *, driver_event_callback_t);
-    int (*unsubscribe)(Driver *, driver_event_callback_t);
     /**
      * notify
      *
@@ -73,6 +68,9 @@ struct motor_driver {
      * will have to be called again to receive further notifications of the
      * same event.
      *
+     * Call the notify method with the callback set to NULL to cancel a
+     * notification request registered for the given event and argument.
+     *
      * Arguments:
      * XXX: Use a structure for better future-proofing
      * event_t event - Event to be notified of
@@ -81,6 +79,7 @@ struct motor_driver {
      */
     int (*notify)(Driver *, event_t, int, driver_event_callback_t);
     // XXX: Pause/unpause events ?
+    int (*unsubscribe)(Driver *, driver_event_callback_t);
 
     // Special
     int (*load_firmware)(Driver *, const char *);

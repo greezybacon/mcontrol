@@ -16,6 +16,7 @@
 static const int CLIENT_MAX_CALLBACKS = 32;
 static struct client_callback * events = NULL;
 static int client_callback_count = 0;
+static int registration_uid = 0;
 
 /**
  * mcSubscribeWithData
@@ -26,10 +27,13 @@ static int client_callback_count = 0;
  * function.
  */
 int
-mcSubscribeWithData(motor_t motor, event_t event, event_cb_t callback,
-        void * data) {
+mcSubscribeWithData(motor_t motor, event_t event, int * reg_id,
+        event_cb_t callback, void * data) {
     if (events == NULL)
         events = calloc(CLIENT_MAX_CALLBACKS+1, sizeof *events);
+
+    if (reg_id == NULL)
+        return EINVAL;
 
     if (client_callback_count == CLIENT_MAX_CALLBACKS)
         return ER_TOO_MANY;
@@ -40,6 +44,7 @@ mcSubscribeWithData(motor_t motor, event_t event, event_cb_t callback,
     
     *e = (struct client_callback) {
         .motor = motor,
+        .id = ++registration_uid,
         .active = true,
         .event = event,
         .callback = callback,
@@ -47,10 +52,10 @@ mcSubscribeWithData(motor_t motor, event_t event, event_cb_t callback,
     };
     client_callback_count++;
 
+    *reg_id = e->id;
+
     // Async receive events
     mcAsyncReceive();
-
-    printf("Motor: %d, waiting for %d\n", motor, event);
 
     if (motor != -1)
         // Server side registration
@@ -75,17 +80,16 @@ mcSubscribeWithData(motor_t motor, event_t event, event_cb_t callback,
  *      payload delivered to the event handler routine
  */
 int
-mcSubscribe(motor_t motor, event_t event, event_cb_t callback) {
-    return mcSubscribeWithData(motor, event, callback, NULL);
+mcSubscribe(motor_t motor, event_t event, int * reg_id, event_cb_t callback) {
+    return mcSubscribeWithData(motor, event, reg_id, callback, NULL);
 }
 
 int
-mcUnsubscribe(motor_t motor, event_t event, event_cb_t callback) {
+mcUnsubscribe(motor_t motor, int eventid) {
     struct client_callback * e = events;
 
     // Match by motor id, event id, and callback function pointer
-    while (e->motor && (e->motor != motor || e->event != event
-            || e->callback != callback))
+    while (e->motor && (e->motor != motor || e->id != eventid))
         e++;
 
     if (e->motor == 0)
@@ -97,7 +101,7 @@ mcUnsubscribe(motor_t motor, event_t event, event_cb_t callback) {
     client_callback_count--;
 
     if (motor != -1)
-        mcEventUnregister(motor, event);
+        mcEventUnregister(motor, e->event);
 
     return 0;
 }
@@ -113,36 +117,45 @@ mcUnsubscribe(motor_t motor, event_t event, event_cb_t callback) {
  * event to a respective callback function, signal handler, etc.
  */
 int
-mcSignalEvent(Driver * driver, int event) {
+mcSignalEvent(Driver * driver, struct event_info * info) {
     // Multiplex (Driver *) driver to all motors that point to the driver
     // instance. For each motor, consult the mask of subscribed events by
     // the client. For each client that has subscribed to the received
     // event, use mcEventSend to signal the client of the event.
+    if (!info)
+        return EINVAL;
+
     Motor motors[32];
     int count = mcMotorsForDriver(driver, motors, sizeof motors);
 
     struct event_message evt = {
-        .event = event,
-        // TODO: Add in event data (number|string)
+        .event = info->event
     };
+    // TODO: Add in event data (number|string)
+    if (info->data)
+        evt.data = *info->data;
 
-    if (event > EV__LAST || event < EV__FIRST)
+    if (info->event > EV__LAST || info->event < EV__FIRST)
         // Strange
         return -1;
 
-    int64_t mask = 1 << event;
     int status;
+    Motor * m = motors;
 
-    for (int i=0; i<count; i++) {
-        if (!(motors[i].subscriptions & mask))
+    for (int i=count; i; i--, m++) {
+        if (m->subscriptions[info->event] < 1)
             continue;
 
         evt.id = 1;
-        evt.motor = motors[i].id;
-        status = mcEventSend(motors[i].client_pid, &evt);
+        evt.motor = m->id;
+        status = mcEventSend(m->client_pid, &evt);
         if (status < 0)
             // Client went away -- and didn't say bye!
-            mcDisconnect(motors[i].id);
+            mcDisconnect(m->id);
+
+        // XXX: Reregistration might be necessary, if requested by the
+        //      subscriber. Otherwise, the event entry should be marked
+        //      inactive.
     }
 }
 
@@ -171,7 +184,13 @@ PROXYIMPL(mcEventRegister, int event) {
     if (args->event > EV__LAST || args->event < EV__FIRST)
         RETURN( EINVAL );
 
-    m->subscriptions |= 1 << args->event;
+    // Subscribe to events received from the motor
+    if (m->driver->class->notify == NULL)
+        RETURN( ENOTSUP );
+
+    m->driver->class->notify(m->driver, args->event, 0, mcSignalEvent);
+
+    m->subscriptions[args->event]++;
     RETURN( 0 );
 }
 
@@ -197,7 +216,7 @@ PROXYIMPL(mcEventUnregister, int event) {
     if (args->event > EV__LAST || args->event < EV__FIRST)
         RETURN( EINVAL );
 
-    m->subscriptions &= ~ (1 << args->event);
+    m->subscriptions[args->event]--;
     RETURN( 0 );
 }
 
@@ -211,6 +230,16 @@ PROXYIMPL(mcEventUnregister, int event) {
 int
 mcDispatchSignaledEvent(response_message_t * event) {
     struct client_callback * reg = events;
+
+    if (!reg)
+        // Events not initialized yet
+        return 0;
+
+    if (!event)
+        return EINVAL;
+    else if (!event->payload)
+        return EINVAL;
+
     struct event_message * evt = (void *) event->payload;
 
     // Walk to high-water-mark of the callback registrations using the
@@ -221,11 +250,11 @@ mcDispatchSignaledEvent(response_message_t * event) {
                 && reg->active
                 && !reg->waiting) {
             if (reg->callback) {
-                struct event_data notify = {
+                struct event_info notify = {
                     .motor = reg->motor,
                     .event = reg->event,
-                    .user_data = reg->data,
-                    .event_data = &evt->data
+                    .user = reg->data,
+                    .data = &evt->data
                 };
                 // XXX: Should the (struct client_callback) just be passed ?
                 reg->callback(&notify);

@@ -4,29 +4,30 @@ cdef int ANY_MOTOR = -1
 
 import logging
 
-cdef void pyTraceCallback(event_data_t * data):
-    if data.event != EV_TRACE:
+cdef void pyTraceCallback(event_info_t * info) with gil:
+    if info.event != EV_TRACE:
         # Spurious event
         return
 
-    cdef bytes text = data.event_data.trace.buffer
+    cdef bytes text = info.data.trace.buffer
 
-    assert data.user_data != NULL
-    (<object>data.user_data).emit(
-        data.event_data.trace.level,
-        data.event_data.trace.channel, text.decode('latin-1'))
+    assert info.user != NULL
+    (<object>info.user).emit(
+        info.data.trace.level,
+        info.data.trace.channel, text.decode('latin-1'))
 
 cdef class Trace:
     cdef int id
+    cdef int event_id
 
     def __init__(self, level=20):
-        mcSubscribeWithData(ANY_MOTOR, EV_TRACE, pyTraceCallback,
-            <void *>self)
+        mcSubscribeWithData(ANY_MOTOR, EV_TRACE, &self.event_id,
+            pyTraceCallback, <void *>self)
         self.id = mcTraceSubscribeRemote(ANY_MOTOR, level, 0)
 
     def __dealloc__(self):
         mcTraceUnsubscribeRemote(ANY_MOTOR, self.id)
-        mcUnsubscribe(ANY_MOTOR, EV_TRACE, pyTraceCallback)
+        mcUnsubscribe(ANY_MOTOR, self.event_id)
 
     def add(self, channel):
         cdef String buf = bufferFromString(channel)

@@ -13,25 +13,42 @@
 
 int
 mdrive_move(Driver * self, motion_instruction_t * command) {
+    if (self == NULL)
+        return EINVAL;
+    mdrive_axis_t * device = self->internal;
 
-    mdrive_axis_t * motor = self->internal;
     char buffer[24];
-    int steps = mdrive_microrevs_to_steps(motor, command->amount);
+    int steps = mdrive_microrevs_to_steps(device, command->amount),
+        urevs = command->amount;
+
+    struct motion_details move_info = {
+        .urevs = urevs,
+        .pstart = device->position,
+        .type = command->type
+    };
 
     switch (command->type) {
         case MCABSOLUTE:
             snprintf(buffer, sizeof buffer, "MA %d", steps);
-            mdrive_set_profile(motor, &command->profile);
+            mdrive_set_profile(device, &command->profile);
             break;
 
         case MCRELATIVE:
             snprintf(buffer, sizeof buffer, "MR %d", steps);
-            mdrive_set_profile(motor, &command->profile);
+            mdrive_set_profile(device, &command->profile);
+            // XXX: Ensure device position is known
+            device->movement.urevs = mdrive_steps_to_microrevs(device,
+                device->position + steps);
             break;
 
         case MCSLEW:
+            if (device->movement.type == MCSLEW
+                    && device->movement.urevs == urevs)
+                // Requested slew rate is already in progress
+                return 0;
             snprintf(buffer, sizeof buffer, "SL %d", steps);
-            mdrive_set_profile(motor, &command->profile);
+            mdrive_set_profile(device, &command->profile);
+            // XXX: Device position will no longer be known
             break;
 
         case MCJITTER:
@@ -40,17 +57,16 @@ mdrive_move(Driver * self, motion_instruction_t * command) {
         default:
             return ENOTSUP;
     }
-    if (RESPONSE_OK != mdrive_send(motor, buffer))
+    if (RESPONSE_OK != mdrive_send(device, buffer))
         return EIO;
-
-    motor->movement = (struct motion_details) {
-        .urevs = command->amount,
-        .pstart = motor->position
-    };
-    clock_gettime(CLOCK_REALTIME, &motor->movement.start);
+    
+    device->movement = move_info;
+    clock_gettime(CLOCK_REALTIME, &device->movement.start);
 
     // Signal completion event
-    mdrive_on_async_complete(motor, true);
+    if (command->type != MCSLEW)
+        // XXX: Ensure device position is known
+        mdrive_on_async_complete(device, true);
 
     return 0;
 }
@@ -76,10 +92,14 @@ mdrive_move(Driver * self, motion_instruction_t * command) {
  * decelerate to the unit's VI (initial-velocity, profile.vstart).
  * Therefore, the acceleration half (left-side) will be (1/2 * b * h), or
  * (1/2) * (t - 0) * (V@t=t), where V@t=t is velocity at time t=t,
- * (VI + A * * t), where A is the unit's acceleration in urevs/sec^2, and
+ * (VI + A * t^2), where A is the unit's acceleration in urevs/sec^2, and
  * the deceleration half (right-side) will be (1/2) * (V@t=t * decel_time),
  * where decel_time is the velocity at t=t minus VI, quantity over the
- * units's deceleration (D), or ((V@t=t - VI) / D)
+ * units's deceleration (D), or ((V@t=t - VI) / D).
+ *
+ * Lastly, the device's intial velocity must also be integrated, since the
+ * above triangle graph will technicall sit upon a "box" with the height of
+ * the unit's VI.
  *
  * Returns:
  * (double) Estimated unit travel (in urevs) if the unit accelerates from
@@ -87,14 +107,9 @@ mdrive_move(Driver * self, motion_instruction_t * command) {
  */
 static double
 __urevs_from_midpoint(mdrive_axis_t * device, double t) {
-    // return (
-    //          1/2 * (vstart + (accel * t)) * t 
-    //        + 1/2 * (vstart + (accel * t)) * decel_time)
-    int vel_at_t = device->profile.vstart.raw
-        + (device->profile.accel.raw * t);
-    double decel_time = (1.0 * vel_at_t - device->profile.vstart.raw)
-        / device->profile.decel.raw;
-    return (vel_at_t >> 1) * (t + decel_time);
+    int vel_at_t = device->profile.accel.raw * t;
+    double decel_time = (1.0 * vel_at_t) / device->profile.decel.raw;
+    return ((vel_at_t >> 1) + device->profile.vstart.raw) * (t + decel_time);
 }
 
 /**
@@ -108,7 +123,7 @@ __urevs_from_midpoint(mdrive_axis_t * device, double t) {
  */
 static double
 __decel_lambda(mdrive_axis_t * device, double t) {
-    return -(signed)device->profile.decel.raw;
+    return -(double)device->profile.decel.raw;
 }
 
 struct newton_raphson_state {
@@ -180,20 +195,21 @@ _newton_raphson_xcel(mdrive_axis_t * device, double answer, double x0,
         .prime = prime,
         .device = device
     };
-    double s0, s1, s2, next, val;
+    int rounds;
+    double s0, s1, s2, next;
     s0 = _newton_raphson_iter(&state);
     s1 = _newton_raphson_iter(&state);
     s2 = _newton_raphson_iter(&state);
-    while (true) {
-        next = s2 - (((s2 - s1) * (s2 - s1)) / (s0 - (2 * s1) + s2));
-        // Less than 1 milli-second will be lost in the comm noise and
-        // device latency variation
-        if (abs(s2 - s1) < 0.001)
-            return next;
-        s0 = s1;
-        s1 = s2;
-        s2 = _newton_raphson_iter(&state);
-    }
+    do {
+        rounds = 4;
+        while (rounds--) {
+            next = s2 - (((s2 - s1) * (s2 - s1)) / (s0 - (2 * s1) + s2));
+            s0 = s1;
+            s1 = s2;
+            s2 = _newton_raphson_iter(&state);
+        }
+    } while (abs(answer - func(device, next)) > tolerance);
+    return next;
 }
 
 int
@@ -314,6 +330,8 @@ void *
 mdrive_async_completion_correct(void * arg) {
     mdrive_axis_t * device = arg;
 
+    device->cb_complete = 0;
+
     struct timespec now;
     clock_gettime(CLOCK_REALTIME, &now);
 
@@ -323,11 +341,11 @@ mdrive_async_completion_correct(void * arg) {
     int travel_time = (now.tv_sec - device->movement.start.tv_sec) * (int)1e6;
     travel_time += (now.tv_nsec - device->movement.start.tv_nsec) / 1000;
 
-    const char * vars[] = {"MV", "ST", "P", "V"};
-    int moving, stalled, pos, vel;
-    int * vals[] = { &moving, &stalled, &pos, &vel };
+    const char * vars[] = {"ST", "P", "V"};
+    int stalled, pos, vel;
+    int * vals[] = { &stalled, &pos, &vel };
 
-    if (mdrive_get_integers(device, vars, vals, 4))
+    if (mdrive_get_integers(device, vars, vals, 3))
         return NULL;
 
     // Add (half-of) comm latency time (ns -> us)
@@ -338,20 +356,23 @@ mdrive_async_completion_correct(void * arg) {
     // Add in starting position
     expected += device->movement.pstart;
 
+    int error = pos - expected;
+
     // Record the last-known position
-    if (!moving) {
+    if (vel == 0) {
         device->position = pos;
         // Disarm the timer
         device->trip.completion = false;
+        union event_data data = {
+            .motion.completed = !stalled,
+            .motion.stalled = stalled,
+            .motion.position = mdrive_steps_to_microrevs(device, pos),
+            .motion.error = error
+        };
+        mdrive_signal_event(device, EV_MOTION, &data);
     } else
         // TODO: Estimate resting position (and time) of the motor
-        device->position =
-            mdrive_microrevs_to_steps(device, device->movement.urevs);
-
-    int error = pos - expected;
-
-    mcTraceF(10, MDRIVE_CHANNEL, "Pos: %d, Error: %d", device->position,
-        error);
+        device->position = expected;
 }
 
 int
@@ -359,8 +380,11 @@ mdrive_on_async_complete(mdrive_axis_t * device, bool cancel) {
     // If not currently waiting on the completion of this device, setup a
     // new timeout and callback
     if (device->trip.completion) {
-        if (cancel)
-            ;   // TODO: Signal motion-complete cancel event
+        if (cancel) {
+            if (device->cb_complete)
+                mcCallbackCancel(device->cb_complete);
+            // TODO: Signal motion-complete cancel event
+        }
         else
             return EBUSY;
     }
@@ -385,7 +409,8 @@ mdrive_on_async_complete(mdrive_axis_t * device, bool cancel) {
 
     // Call mdrive_async_completion_correct at the projected end-time of
     // this motion command
-    mcCallbackAbs(&exp, mdrive_async_completion_correct, device);
+    device->cb_complete =mcCallbackAbs(&exp, mdrive_async_completion_correct,
+        device);
 
     device->trip.completion = true;
 
@@ -395,9 +420,6 @@ mdrive_on_async_complete(mdrive_axis_t * device, bool cancel) {
 int
 mdrive_lazyload_motion_config(mdrive_axis_t * device) {
     if (!device->loaded.encoder) {
-        // TODO: Move all 'dis to the config.c module and make it
-        //       configurable with a poke
-
         // Fetch microstep and encoder settings
         const char * vars[] = { "MS", "EE" };
         int * vals[] = { &device->steps_per_rev, &device->encoder };
@@ -443,8 +465,20 @@ mdrive_steps_to_microrevs(mdrive_axis_t * device, int steps) {
 }
 
 int
-mdrive_stop(Driver * self) {
+mdrive_stop(Driver * self, enum stop_type type) {
     mdrive_axis_t * axis = self->internal;
+    mdrive_axis_t global = *axis;
 
-    return mdrive_send(axis, "\x1b");
+    switch (type) {
+        case MCSTOP:
+            return mdrive_send(axis, "SL 0");
+        case MCHALT:
+            return mdrive_send(axis, "\x1b");
+        case MCESTOP:
+            global.address = '*';
+            // XXX: Send with checksum toggled too, for safety
+            return mdrive_send(&global, "\x1b");
+        default:
+            return ENOTSUP;
+    }
 }
