@@ -72,9 +72,9 @@ Version 0.1-beta
 
     def onecmd(self, str):
         try:
-            return super(Shell, self).onecmd(str)
+            return cmd.Cmd.onecmd(self, str)
         except Exception as e:
-            self.error("{0}: {1}".format(
+            self.error("{0}: (Unhandled) {1}".format(
                 type(e).__name__, e))
             raise
 

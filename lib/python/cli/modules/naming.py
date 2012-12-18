@@ -54,7 +54,7 @@ class NamingContext(Shell):
     """)
 
     def __init__(self, port, context):
-        super(NamingContext, self).__init__(context)
+        Shell.__init__(self, context)
         self.context['port'] = port
 
         self.do_connect("mdrive://{0}".format(port))

@@ -14,7 +14,7 @@ class MicrocodeMixin(Mixin):
         inserted.
         """
         if not os.path.exists(what):
-            self.error('{0}: File does not exist'.format(what)
+            self.error('{0}: File does not exist'.format(what))
         else:
             what = os.path.abspath(what)
         self.motor.load_microcode(what)

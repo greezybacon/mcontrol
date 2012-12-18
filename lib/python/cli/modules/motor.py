@@ -10,7 +10,7 @@ class MotorContext(Shell):
     intro = None
 
     def __init__(self, parent, motor, name=""):
-        super(MotorContext, self).__init__(context=parent.context)
+        Shell.__init__(self, context=parent.context)
         self.motor = motor
         self.name = name
         self.prompt = Shell.prompt[:-2] + ":{0}> ".format(name)
