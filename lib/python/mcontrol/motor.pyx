@@ -11,12 +11,21 @@ all_units = {
     k.MILLI_DEGREE: "milli-deg",
     k.MILLI_ROTATION: "milli-rev",
 
+    "inch":         k.INCH,
     "mil":          k.MILLI_INCH,
+    "m":            k.METER,
     "mm":           k.MILLI_METER,
     "milli-g":      k.MILLI_G,
     "milli-deg":    k.MILLI_DEGREE,
     "milli-rev":    k.MILLI_ROTATION
 }
+
+def scale_up(value, units):
+    if units in (k.INCH, 'inch'):
+        return value * 1000, 'mil'
+    elif units in (k.METER, 'm'):
+        return value * 1000, 'mm'
+    return value, units
 
 class NoDaemonException(Exception): pass
 class CommFailure(Exception): pass
@@ -84,6 +93,11 @@ cdef class Motor:
                 raise RuntimeError(status)
 
             return position
+
+        def __set__(self, position):
+            raise_status(
+                mcPokeInteger(self.id, k.MCPOSITION, position),
+                "Unable to set device position")
 
     property moving:
         def __get__(self):
@@ -180,7 +194,9 @@ cdef extern from "drivers/mdrive/mdrive.h":
 
         MDRIVE_IO_TYPE,
         MDRIVE_IO_INVERT,
-        MDRIVE_IO_DRIVE
+        MDRIVE_IO_DRIVE,
+
+        MDRIVE_ENCODER
 
 cdef class MdriveMotor(Motor):
 
@@ -238,6 +254,19 @@ cdef class MdriveMotor(Motor):
             raise_status(mcQueryString(self.id, MDRIVE_FIRMWARE, &buf),
                 "Unable to fetch firmware version")
             return buf.buffer.decode('latin-1')
+
+    property encoder:
+        def __get__(self):
+            cdef int val
+            raise_status(
+                mcQueryInteger(self.id, MDRIVE_ENCODER, &val),
+                "Unable to fetch device encoder settings")
+            return not not val
+
+        def __set__(self, val):
+            raise_status(
+                mcPokeInteger(self.id, MDRIVE_ENCODER, val),
+                "Unable to set device encoder setting")
 
     def name_set(self, address, serial_number):
         cdef String addr = bufferFromString(address[0])

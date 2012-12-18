@@ -55,5 +55,20 @@ cdef class MotorProfile(object):
         self._profile.decel.measure.value = value
         self._profile.decel.measure.units = units
 
+    def vmax_set(self, value, units=k.MICRO_REVS):
+        self._profile.vmax.measure.value = value
+        self._profile.vmax.measure.units = units
+
+    def vstart_set(self, value, units=k.MICRO_REVS):
+        self._profile.vstart.measure.value = value
+        self._profile.vstart.measure.units = units
+
+    def slip_set(self, value, units=k.MICRO_REVS):
+        self._profile.slip_max.measure.value = value
+        self._profile.slip_max.measure.units = units
+
+    def hold_current_set(self, value):
+        self._profile.current_hold = value
+
     def run_current_set(self, value):
         self._profile.current_run = value

@@ -290,6 +290,9 @@ enum mdrive_read_variable {
     MDRIVE_IO_TYPE,
     MDRIVE_IO_INVERT,
     MDRIVE_IO_DRIVE,
+
+    // Odd setting checksum
+    MDRIVE_ENCODER,
 };
 
 // Error codes

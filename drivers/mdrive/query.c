@@ -20,6 +20,7 @@ static PEEK(mdrive_sn_peek);
 static PEEK(mdrive_vr_peek);
 static PEEK(mdrive_pn_peek);
 static PEEK(mdrive_profile_peek);
+static POKE(mdrive_ee_poke);
 
 static struct query_variable query_xref[] = {
     { 9, MCPOSITION,        "P",    NULL,   mdrive_write_simple },
@@ -38,6 +39,7 @@ static struct query_variable query_xref[] = {
     { 5, MCRUNCURRENT,      NULL,   mdrive_profile_peek, NULL },
     { 5, MCHOLDCURRENT,     NULL,   mdrive_profile_peek, NULL },
     { 5, MCSLIPMAX,         NULL,   mdrive_profile_peek, NULL },
+    { 1, MDRIVE_ENCODER,    "EE",   NULL,   mdrive_ee_poke },
 
     { 4, MDRIVE_IO_TYPE,    "S%d",  NULL,   NULL },
     { 4, MDRIVE_IO_INVERT,  "S%d",  NULL,   NULL },
@@ -65,6 +67,10 @@ mdrive_read_variable(Driver * self, struct motor_query * query) {
     struct query_variable * q;
     char variable[4];
     int intval;
+
+    if (query == NULL)
+        return EINVAL;
+
     for (q = query_xref; q->type; q++)
         if (q->query == query->query)
             break;
@@ -74,7 +80,7 @@ mdrive_read_variable(Driver * self, struct motor_query * query) {
         case 1:
         case 9:
             if (mdrive_get_integer(motor, q->variable, &intval))
-                return -EIO;
+                return EIO;
             if (q->type == 9)
                 query->number = mdrive_steps_to_microrevs(motor, intval);
             else
@@ -86,14 +92,14 @@ mdrive_read_variable(Driver * self, struct motor_query * query) {
         case 3:
             snprintf(variable, sizeof variable, q->variable, query->arg.number);
             if (mdrive_get_integer(motor, variable, &intval))
-                return -EIO;
+                return EIO;
             query->number = intval;
             break;
         case 5:
             if (q->read)
                 return q->read(motor, query, q);
         default:
-            return -ENOTSUP;
+            return ENOTSUP;
     }
     return 0;
 }
@@ -106,7 +112,7 @@ mdrive_write_variable(Driver * self, struct motor_query * query) {
             break;
 
     if (q->write == NULL)
-        return -ENOTSUP;
+        return ENOTSUP;
     
     return q->write(self->internal, query, q);
 }
@@ -115,7 +121,6 @@ int
 mdrive_write_simple(mdrive_axis_t * axis, struct motor_query * query,
         struct query_variable * q) {
 
-    mdrive_response_t resp;
     char cmd[16];
     switch (q->type) {
         case 1:
@@ -125,15 +130,11 @@ mdrive_write_simple(mdrive_axis_t * axis, struct motor_query * query,
             snprintf(cmd, sizeof cmd, "%s=%s", q->variable, query->string);
             break;
         default:
-            return -ENOTSUP;
+            return ENOTSUP;
     }
 
-    struct mdrive_send_opts options = {
-        .expect_data = false,
-        .result = &resp
-    };
-    if (RESPONSE_OK != mdrive_communicate(axis, cmd, &options))
-        return -EIO;
+    if (RESPONSE_OK != mdrive_send(axis, cmd))
+        return EIO;
 
     return 0;
 }
@@ -142,7 +143,7 @@ static int
 mdrive_address_poke(mdrive_axis_t * axis, struct motor_query * query,
         struct query_variable * q) {
     if (axis == NULL)
-        return -EINVAL;
+        return EINVAL;
 
     return mdrive_config_set_address(axis, *query->string);
 }
@@ -151,7 +152,7 @@ static int
 mdrive_bd_peek(mdrive_axis_t * axis, struct motor_query * query,
         struct query_variable * q) {
     if (axis == NULL)
-        return -EINVAL;
+        return EINVAL;
     
     const struct baud_rate * s;
     for (s=baud_rates; s->human; s++)
@@ -159,7 +160,7 @@ mdrive_bd_peek(mdrive_axis_t * axis, struct motor_query * query,
             break;
     if (s->human == 0)
         // Speed is not corrent -- unknown?
-        return -EIO;
+        return EIO;
 
     query->number = s->human;
     return 0;
@@ -169,7 +170,7 @@ static int
 mdrive_bd_poke(mdrive_axis_t * axis, struct motor_query * query,
         struct query_variable * q) {
     if (axis == NULL)
-        return -EINVAL;
+        return EINVAL;
 
     return mdrive_config_set_baudrate(axis, query->number);
 }
@@ -178,7 +179,7 @@ static int
 mdrive_checksum_poke(mdrive_axis_t * axis, struct motor_query * query,
         struct query_variable * q) {
     if (axis == NULL)
-        return -EINVAL;
+        return EINVAL;
     return mdrive_set_checksum(axis, query->number, false);
 }
 
@@ -258,7 +259,7 @@ static int
 mdrive_sn_peek(mdrive_axis_t * axis, struct motor_query * query,
         struct query_variable * q) {
     if (axis == NULL)
-        return -EINVAL;
+        return EINVAL;
 
     if (*axis->serial_number == 0)
         mdrive_get_string(axis, q->variable, axis->serial_number,
@@ -272,7 +273,7 @@ static int
 mdrive_pn_peek(mdrive_axis_t * axis, struct motor_query * query,
         struct query_variable * q) {
     if (axis == NULL)
-        return -EINVAL;
+        return EINVAL;
 
     if (*axis->part_number == 0)
         mdrive_get_string(axis, q->variable, axis->part_number,
@@ -286,7 +287,7 @@ static int
 mdrive_vr_peek(mdrive_axis_t * axis, struct motor_query * query,
         struct query_variable * q) {
     if (axis == NULL)
-        return -EINVAL;
+        return EINVAL;
 
     if (*axis->firmware_version == 0)
         mdrive_get_string(axis, q->variable, axis->firmware_version,
@@ -297,10 +298,28 @@ mdrive_vr_peek(mdrive_axis_t * axis, struct motor_query * query,
 }
 
 static int
+mdrive_ee_poke(mdrive_axis_t * axis, struct motor_query * query,
+        struct query_variable * q) {
+    if (axis == NULL)
+        return EINVAL;
+
+    if (axis->encoder == query->number)
+        return 0;
+
+    int status = mdrive_write_simple(axis, query, q);
+    if (status)
+        return status;
+
+    // Reload motion configuration from the unit
+    axis->loaded.encoder = false;
+    return 0;
+}
+
+static int
 mdrive_profile_peek(mdrive_axis_t * axis, struct motor_query * query,
         struct query_variable * q) {
     if (axis == NULL)
-        return -EINVAL;
+        return EINVAL;
 
     mdrive_lazyload_profile(axis);
 
@@ -327,7 +346,7 @@ mdrive_profile_peek(mdrive_axis_t * axis, struct motor_query * query,
             query->number = axis->profile.slip_max.raw;
             break;
         default:
-            return -EINVAL;
+            return EINVAL;
     }
     return 0;
 }

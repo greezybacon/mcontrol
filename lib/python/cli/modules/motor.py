@@ -170,6 +170,10 @@ class MotorContext(Shell):
         # TODO: Collect current unit/scale
         self.motor.units = all_units['milli-rev']
         self.motor.scale = 1000
+        try:
+            self.motor.encoder = 1
+        except:
+            raise
         rate = 500
         if 'left' in parts:
             rate = -rate

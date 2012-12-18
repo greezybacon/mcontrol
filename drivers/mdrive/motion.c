@@ -31,14 +31,14 @@ mdrive_move(Driver * self, motion_instruction_t * command) {
         case MCABSOLUTE:
             snprintf(buffer, sizeof buffer, "MA %d", steps);
             mdrive_set_profile(device, &command->profile);
+            // XXX: Ensure device position is known
+            move_info.urevs = mdrive_steps_to_microrevs(device,
+                steps - device->position);
             break;
 
         case MCRELATIVE:
             snprintf(buffer, sizeof buffer, "MR %d", steps);
             mdrive_set_profile(device, &command->profile);
-            // XXX: Ensure device position is known
-            device->movement.urevs = mdrive_steps_to_microrevs(device,
-                device->position + steps);
             break;
 
         case MCSLEW:
@@ -357,10 +357,59 @@ mdrive_async_completion_correct(void * arg) {
     expected += device->movement.pstart;
 
     int error = pos - expected;
+    bool completed = true;
 
+    if (vel != 0) {
+        // (perhaps it's safe to) Assume that the unit is decelerating.
+        // Currently, the velocity of the unit is given. The unit will
+        // continue to decelerate at a constant rate of D which we have in
+        // the unit's profile.
+        //
+        // Find the intersection of the decel curve with the current
+        // velocity:
+        //   v
+        //   ^
+        //   |     ------------\
+        //   |  - - - - - - - - X
+        //   |                  |\
+        //   +------------------+-x----------> t
+        //                  Now | L Resting time
+        //
+        // The change in time is the base of the triangle. The slope of the
+        // decel line is the unit's decel value, which will also equal the
+        // rise over the run or v / dt. Therefore, dt = v / D, if D is
+        // considered a positive value.
+        double dt = 1. * mdrive_steps_to_microrevs(device, abs(vel))
+            / device->profile.decel.raw;
+        struct timespec callback = {
+            .tv_nsec = (int)1e9 * dt - (device->stats.latency >> 1) + 1e6
+        };
+        mcTraceF(10, MDRIVE_CHANNEL, "Early. Callback in %dms",
+		callback.tv_nsec / (int)1e6);
+
+        if (callback.tv_nsec < 1e6)
+            // For all intents and purposes, the unit is stopped, because we
+            // won't be able to communicate with it again until well after
+            // it stops. Estimate the resting position of the unit and move
+            // on.  dt is units of seconds and vel is units of steps per
+            // second.  The area under the above triangle will be the
+            // distance travelled by the unit, which is 1/2 * b * h
+            // or 1/2 * dt * v
+            device->position = pos + dt * (vel >> 1);
+        else {
+            // Call this routine again at the estimated time of completion
+            // (minus about half of the unit's latency)
+            device->cb_complete = mcCallback(&callback,
+                mdrive_async_completion_correct, device);
+            completed = false;
+        }
+    }
     // Record the last-known position
-    if (vel == 0) {
+    else
+        // Device is rested and current position is known
         device->position = pos;
+
+    if (completed) {
         // Disarm the timer
         device->trip.completion = false;
         // Notify interested subscribers of motion event
@@ -372,10 +421,7 @@ mdrive_async_completion_correct(void * arg) {
             .motion.error = error
         };
         mdrive_signal_event(device, EV_MOTION, &data);
-    } else
-        // TODO: Estimate resting position (and time) of the motor
-        device->position = expected;
-
+    }
     return NULL;        // Just for compiler warnings
 }
 

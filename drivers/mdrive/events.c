@@ -109,13 +109,16 @@ mdrive_signal_error_event(mdrive_axis_t * axis, int error) {
         return EINVAL;
 
     union event_data data;
-    int temp;
+    int temp,
+        status = mdrive_signal_event(axis, xref->event_code, &data);
 
     // Update stats for interesting events
     switch (error) {
         case MDRIVE_ESTALL:
             axis->stats.stalls++;
             data.motion.stalled = true;
+            // Clear the stall flag on the device
+            mdrive_send(axis, "ST");
             break;
 
         case MDRIVE_ETEMP:
@@ -125,8 +128,7 @@ mdrive_signal_error_event(mdrive_axis_t * axis, int error) {
                 axis->address, temp);
             break;
     }
-
-    return mdrive_signal_event(axis, xref->event_code, &data);
+    return status;
 }
 
 /**
