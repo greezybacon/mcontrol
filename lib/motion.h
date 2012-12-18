@@ -14,11 +14,8 @@ PROXYDEF(mcSlewUnits, int, int rate, unit_type_t units);
 
 IMPORTANT PROXYDEF(mcStop, int);
 
-/*
-PROXYDEF(mcHome, int);
-PROXYDEF(mcJitter, int, int loops, int max_travel);
-PROXYDEF(mcJitterUnits, int, int loops, int max_travel, unit_type_t units);
-*/
+// XXX: What about profile (slew rate, etc)
+PROXYDEF(mcHome, int, enum home_type type, enum home_direction direction);
 
 PROXYDEF(mcUnitScaleSet, int, unit_type_t units, long long urevs);
 PROXYDEF(mcUnitScaleGet, int, OUT unit_type_t * units, OUT long long * urevs);

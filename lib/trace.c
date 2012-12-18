@@ -35,23 +35,16 @@ static int subscriber_serial = 0;
 // 2. Used to lock mcTraceWrite so calls from multiple threads are
 //    serialized to help ensure that the subscriber callback functions need
 //    not be thread safe.
-static pthread_mutex_t * trace_lock = NULL;
+static pthread_mutex_t trace_lock = PTHREAD_MUTEX_INITIALIZER;
 
-static void
+static inline void
 mcTraceLock(void) {
-    if (trace_lock == NULL) {
-        trace_lock = calloc(1, sizeof *trace_lock);
-        pthread_mutex_init(trace_lock, NULL);
-    }
-    pthread_mutex_lock(trace_lock);
+    pthread_mutex_lock(&trace_lock);
 }
 
-static void
+static inline void
 mcTraceUnlock(void) {
-    if (trace_lock == NULL)
-        return;
-
-    pthread_mutex_unlock(trace_lock);
+    pthread_mutex_unlock(&trace_lock);
 }
 
 /**
@@ -143,13 +136,14 @@ mcTrace(int level, int channel, const char * buffer, int length) {
 void
 mcTraceF(int level, int channel, const char * fmt, ...) {
     va_list args;
-    char * buffer;
-    int length;
 
     mcTraceLock();
 
     long long mask = mcTraceSubscribersLookup(level, channel);
     if (mask) {
+        char * buffer;
+        int length;
+
         buffer = malloc(MAX_TRACE_SIZE);
 
         va_start(args, fmt);

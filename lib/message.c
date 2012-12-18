@@ -355,7 +355,7 @@ mcInboxExpunge(void) {
     mq_setattr(_inbox, &attributes, NULL);
 }
 
-int
+static int
 construct_request_raw(request_message_t * message, int type,
         void * payload, int payload_size) {
 
@@ -376,7 +376,7 @@ construct_request_raw(request_message_t * message, int type,
     return 0;
 }
 
-int
+static int
 construct_request(motor_t motor, request_message_t * message,
         int type, void * payload, int payload_size) {
 
@@ -388,7 +388,7 @@ construct_request(motor_t motor, request_message_t * message,
     return status;
 }
 
-int
+static int
 construct_response(request_message_t * message, response_message_t * response,
         void * payload, int payload_size) {
 

@@ -65,6 +65,8 @@ for name in sorted(proxies):
 extern %(ret)s %(name)s(%(motor_arg)s%(args)s);
 
 struct _%(name)s_args {
+    bool inproc;        // If the call is made in-process (server-server)
+    bool outofproc;     // If the call is made out-of-process (client-server)
     %(ret)s returned;
     %(args_no_pointer)s
 };""" % items)

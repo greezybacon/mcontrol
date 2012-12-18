@@ -265,9 +265,10 @@ mcEnumDriversNext(void ** enum_id) {
 
 void
 mcDriverLoad(const char * path) {
-    char cwd[128], modulepath[256];
+    char modulepath[256];
 
     if (path[0] != '/') {
+        char cwd[128];
         getcwd(cwd, sizeof cwd);
         snprintf(modulepath, sizeof modulepath, "%s/%s", cwd, path);
     } else {

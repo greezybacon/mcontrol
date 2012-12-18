@@ -203,13 +203,17 @@ PROXYIMPL(mcSlewUnits, int rate, unit_type_t units) {
     RETURN( m->driver->class->move(m->driver, &command) );
 }
 
-PROXYIMPL(mcHome) {
-}
+PROXYIMPL(mcHome, enum home_type type, enum home_direction direction) {
+    UNPACK_ARGS(mcHome, args);
 
-PROXYIMPL(mcJitter, int loops, int max_travel) {
-}
+    Motor * m = find_motor_by_id(motor, message->pid);
+    if (m == NULL)
+        RETURN( EINVAL );
 
-PROXYIMPL(mcJitterUnits, int loops, int max_travel, unit_type_t units) {
+    if (m->driver->class->home == NULL)
+        RETURN( ENOTSUP );
+
+    RETURN( m->driver->class->home(m->driver, args->type, args->direction) );
 }
 
 PROXYIMPL(mcUnitScaleSet, unit_type_t units, long long urevs) {

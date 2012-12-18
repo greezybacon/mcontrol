@@ -12,4 +12,7 @@ extern int
 mcCallbackAbs(const struct timespec * when, callback_function callback,
     void * arg);
 
+extern int
+mcCallbackCancel(int id);
+
 #endif

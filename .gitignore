@@ -8,3 +8,8 @@ gmon.out
 __pycache__/*
 lib/python/build
 lib/python/mcontrol/*.c
+
+# Auto-generated headers and code
+lib/client.c
+lib/client.h
+lib/dispatch.h

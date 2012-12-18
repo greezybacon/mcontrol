@@ -78,7 +78,7 @@ int mdrive_init(Driver * self, const char * cxn) {
     device->driver = self;
 
     // XXX: Move to mdrive_connect
-    if (mdrive_config_inspect(device))
+    if (mdrive_config_inspect(device, true))
         return ER_COMM_FAIL;
 
     return 0;
@@ -142,14 +142,6 @@ int mdrive_reboot(mdrive_axis_t * device) {
 int mdrive_reset(Driver * self) {
     mdrive_axis_t * device = self->internal;
     return mdrive_reboot(device);
-}
-
-int mdrive_home(Driver * self) {
-    mdrive_axis_t * motor = self->internal;
-
-    // XXX: Move to configuration or to firmware:
-    // "EX CF" -> "xx xx M1 ..." <-- #3 is homing label
-    mdrive_send(motor, "EX M1");
 }
 
 int

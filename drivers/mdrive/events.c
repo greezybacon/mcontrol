@@ -1,6 +1,9 @@
 #include "mdrive.h"
 
+#include "events.h"
+
 #include "config.h"
+#include "serial.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -81,26 +84,49 @@ mdrive_unsubscribe(Driver * self, driver_event_callback_t callback) {
 }
 
 /**
- * mdrive_error_to_event
+ * mdrive_signal_error_event
  *
- * Convenience method to convert between MDrive error codes (stock and
- * custom) and the corresponding event codes (EV_*)
+ * Convenience method to signal an event based on an error code from a
+ * device. This function will call and return the value from
+ * mdrive_signal_event if the error code received has a matching event code.
+ * This function will also keep track of error-related statistics, such as
+ * stalls.
  *
  * Returns:
  * (int) 0 upon successful lookup, EINVAL otherwise
  */
 int
-mdrive_error_to_event(int error, int * event) {
+mdrive_signal_error_event(mdrive_axis_t * axis, int error) {
+    if (axis == NULL)
+        return EINVAL;
+
     struct event_xref * xref = event_xrefs;
     while (xref->error && xref->error != error)
         xref++;
 
     if (xref->event_code == 0)
-        // Event code does not match a defined event name
+        // Error code does have a corresponding event
         return EINVAL;
 
-    *event = xref->event_code;
-    return 0;
+    union event_data data;
+    int temp;
+
+    // Update stats for interesting events
+    switch (error) {
+        case MDRIVE_ESTALL:
+            axis->stats.stalls++;
+            data.motion.stalled = true;
+            break;
+
+        case MDRIVE_ETEMP:
+            mdrive_get_integer(axis, "IT", &temp);
+            mcTraceF(10, MDRIVE_CHANNEL,
+                "WARNING: %c: Unit reports over temperature: %d",
+                axis->address, temp);
+            break;
+    }
+
+    return mdrive_signal_event(axis, xref->event_code, &data);
 }
 
 /**
@@ -109,6 +135,12 @@ mdrive_error_to_event(int error, int * event) {
  * Used internally to broadcast an event to all registered event callbacks.
  * The event received should correspond to an event or error code listed in
  * the event_xrefs[] array defined at the top of this module.
+ *
+ * Parameters:
+ * axis - (mdrive_axis_t *) Device signaling the event
+ * code - (int) event code to be signaled. Use codes from {enum event_name}.
+ * data - (union event_data *) information to be coupled with the event
+ *      code. Can be set to NULL if no other data is pertinent
  *
  * Returns:
  * (int) EINVAL if AXIS is null or the mdrive event code does not have a
@@ -120,16 +152,11 @@ mdrive_signal_event(mdrive_axis_t * axis, int code, union event_data * data) {
         return EINVAL;
 
     // TODO: Send "EV=0" to the unit to signal the receipt of the event
-
     // Update stats for interesting events
     switch (code) {
-        case EV_MOTION:
-            if (data && data->motion.stalled)
-                axis->stats.stalls++;
-            break;
-        case EV_MOTOR_RESET:
+        case MDRIVE_RESET:
             axis->stats.reboots++;
-            mdrive_config_inspect(axis);
+            mdrive_config_inspect(axis, true);
             // Reset lazy loaded flags
             axis->loaded.mask = 0;
             break;

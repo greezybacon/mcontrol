@@ -326,7 +326,7 @@ mdrive_estimate_position_at(mdrive_axis_t * device,
  * following error can be projected, and the estimated time of completion
  * can be adjusted based on the position error.
  */
-void *
+static void *
 mdrive_async_completion_correct(void * arg) {
     mdrive_axis_t * device = arg;
 
@@ -363,9 +363,11 @@ mdrive_async_completion_correct(void * arg) {
         device->position = pos;
         // Disarm the timer
         device->trip.completion = false;
+        // Notify interested subscribers of motion event
         union event_data data = {
             .motion.completed = !stalled,
             .motion.stalled = stalled,
+            .motion.pos_known = true,
             .motion.position = mdrive_steps_to_microrevs(device, pos),
             .motion.error = error
         };
@@ -373,6 +375,8 @@ mdrive_async_completion_correct(void * arg) {
     } else
         // TODO: Estimate resting position (and time) of the motor
         device->position = expected;
+
+    return NULL;        // Just for compiler warnings
 }
 
 int
@@ -409,8 +413,8 @@ mdrive_on_async_complete(mdrive_axis_t * device, bool cancel) {
 
     // Call mdrive_async_completion_correct at the projected end-time of
     // this motion command
-    device->cb_complete =mcCallbackAbs(&exp, mdrive_async_completion_correct,
-        device);
+    device->cb_complete = mcCallbackAbs(&exp,
+        mdrive_async_completion_correct, device);
 
     device->trip.completion = true;
 
@@ -482,3 +486,20 @@ mdrive_stop(Driver * self, enum stop_type type) {
             return ENOTSUP;
     }
 }
+
+int
+mdrive_home(Driver * self, enum home_type type, enum home_direction dir) {
+    mdrive_axis_t * motor = self->internal;
+
+    switch (type) {
+        case MCHOMEDEF:
+            // XXX: Move to configuration or to firmware:
+            // "EX CF" -> "xx xx M1 ..." <-- #3 is homing label
+            return mdrive_send(motor, "EX M1");
+        case MCHOMESTOP:
+            // TODO: Home to hard stop, use microcode if supported
+        default:
+            return ENOTSUP;
+    }
+}
+

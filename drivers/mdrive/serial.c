@@ -136,7 +136,7 @@ mdrive_get_integers(mdrive_axis_t * axis, const char * vars[],
 int
 mdrive_get_error(mdrive_axis_t * axis) {
     int code;
-    mdrive_response_t result = {};
+    mdrive_response_t result = { .txid = 0 };
 
     // This will also clear the error flag, if set
     struct mdrive_send_opts options = {
@@ -266,9 +266,7 @@ mdrive_classify_response(mdrive_axis_t * axis, mdrive_response_t * response) {
             mdrive_clear_error(axis);
 
         if (response->code) {
-            int event;
-            mdrive_error_to_event(response->code, &event);
-            mdrive_signal_event(axis, event, NULL);
+            mdrive_signal_error_event(axis, response->error);
             if (response->code == MDRIVE_EOVERRUN)
                 return RESPONSE_RETRY;
             else
@@ -501,8 +499,7 @@ mdrive_async_read(void * arg) {
 
     // Wait time for a single char at the device speed
     // XXX: dev->speed is allowed to be changed on the fly
-    struct timespec now,
-        onechartime = { .tv_nsec = mdrive_xmit_time(dev, 2) };
+    struct timespec now;
 
     int length;
     char buffer[512];
@@ -689,11 +686,12 @@ mdrive_write_buffer(mdrive_axis_t * axis, const char * buffer, int length) {
  * communicate with the unit, the transmission will be automatically retried
  * up to MAX_RETRIES times.
  *
- * The timeout period for the received response is autosensed at 60ms plus
- * time to receive 2 chars. If an incomplete response is received, an
- * additional 20ms + the time to receive the rest of the buffer (62 chars)
- * will be added to the timeout time. In order to make use of the delayed
- * response detection, set the <expects_data> flag.
+ * The timeout period for the received response is autosensed at 55ms. This
+ * value will float as the current latency of the unit plus 40ms. If an
+ * incomplete response is received, an additional 25ms + the time to receive
+ * the rest of the buffer (62 chars) will be added to the timeout time. In
+ * order to make use of the delayed response detection, set the
+ * <expects_data> flag.
  *
  * Parameters:
  * axis - Mdrive device to communicate with
@@ -794,7 +792,9 @@ mdrive_communicate(mdrive_axis_t * axis, const char * command,
     while (i--) {
 
         // Store in current stack frame for distinction against recursive
-        // calls to mdrive_communicate...()
+        // calls to mdrive_communicate...(). txid is incremented for every
+        // transmit to incidate that any previously-received data is now
+        // invalid and does not belong to this transaction.
         txid = ++axis->device->txid;
 
         if (mdrive_write_buffer(axis, buffer, length))

@@ -183,6 +183,18 @@ enum stop_type {
     MCESTOP,        // Halt all accessible motors
 };
 
+// Types used by the home driver entry
+enum home_type {
+    MCHOMEDEF = 1,  // Use microcode-preferred homing method
+    MCHOMESTOP,     // Home to hard stop in the positive direction
+    MCHOMEMID,      // Home to midpoint (if supported)
+    MCHOMEEND,      // Home to endpoint
+};
+enum home_direction {
+    MCHOMERIGHT = 1, // Home in the positive direction
+    MCHOMELEFT,     // Home in the negative direction
+};
+
 typedef struct motion_instruction motion_instruction_t;
 struct motion_instruction {
     move_type_t     type;       // Relative, Absolute, Jitter, Slew

@@ -151,6 +151,38 @@ class MotorContext(Shell):
         """
         self.motor.stop()
 
+    def do_home(self, line):
+        """
+        Home the motor using the described method and direction. For
+        instance,
+
+        home stop left
+
+        Will home the motor to a hard stop in the left hand (negative)
+        direction. If homing to hard stop, the position counter will not be
+        reset after the device is homed. In that case, follow the command
+        with a 'set position 0' or whatever position is reflected by the
+        unit at the location of the hard stop.
+        """
+        parts = line.split()
+        # TODO: Collect current unit/scale
+        self.motor.units = 'milli-rev'
+        self.motor.scale = 500
+        rate = 500
+        if 'left' in parts:
+            rate = -rate
+        if 'stop' in parts:
+            # Software implementation of home to hard stop
+            self.motor.slew(rate)
+            event = self.motor.on(Event.EV_MOTION)
+            while self.motor.moving:
+                if event.isset:
+                    if event.data.stalled:
+                        break
+                    # Not a stall event, wait for a stall event
+                    info.reset()
+                time.sleep(0.1)
+
     def do_info(self, line):
         """
         Display information about the connection motor such a serial and

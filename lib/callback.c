@@ -36,9 +36,8 @@ struct callback_list {
 
 static int callback_uid = 0;
 static struct callback_list * callbacks = NULL;
-static timer_t callback_timer = (timer_t) 0;
-static pthread_t timer_thread_id = (pid_t) 0;
-static pthread_mutex_t callback_list_lock;
+static pthread_t timer_thread_id = (pthread_t) 0;
+static pthread_mutex_t callback_list_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static const int TIMER_SIGNAL = SIGINT;
 
@@ -78,8 +77,8 @@ _mcCallbackThread(void *arg) {
 
         // Double check the time
         clock_gettime(CLOCK_REALTIME, &now);
-        if (now.tv_sec < callbacks->abstime.tv_sec
-                || now.tv_nsec < callbacks->abstime.tv_nsec)
+        if (!(now.tv_sec >= callbacks->abstime.tv_sec
+                && now.tv_nsec >= callbacks->abstime.tv_nsec))
             // Timer expiration is still in the future
             continue;
 
@@ -101,12 +100,36 @@ _mcCallbackThread(void *arg) {
 
         pthread_mutex_unlock(&callback_list_lock);
     }
+    // Signal that the callback thread should be restarted
+    timer_thread_id = 0;
+
     return NULL;
 }
 
+/**
+ * mcCallbackAbs
+ *
+ * Client- or server-side callback registry. Enables a connected application
+ * to request a function to be called with a given argument at some time in
+ * the future.
+ *
+ * Parameters:
+ * when (struct timespec *) - Absolute time in unix epoch when the given
+ *      callback should be called back
+ * callback - (callback_funcion) Function to be called in the future
+ * arg - (void *) Argument to be passed to the function
+ *
+ * Returns:
+ * (int) - if > 0, id number of callback, which should be passed to
+ * mcCallbackCancel() if the callback is to be canceled. -EINVAL if invalid
+ * pointer was passed.
+ */
 int
 mcCallbackAbs(const struct timespec * when, callback_function callback,
-    void * arg) {
+        void * arg) {
+
+    if (when == NULL || callback == NULL)
+        return -EINVAL;
 
     // Setup the struct to hold the callback information
     struct callback_list * info = calloc(1, sizeof(struct callback_list));
@@ -156,7 +179,8 @@ mcCallbackAbs(const struct timespec * when, callback_function callback,
         pthread_create(&timer_thread_id, &attr, _mcCallbackThread, NULL);
     }
     else
-        // Signal the thread of callback changes
+        // Signal the thread of callback changes (a new thread doesn't need
+        // to be signaled)
         pthread_kill(timer_thread_id, TIMER_SIGNAL);
 
     return info->id;
@@ -180,17 +204,20 @@ mcCallbackCancel(int callback_id) {
     struct callback_list * current = callbacks;
     while (current) {
         if (current->id == callback_id) {
-            // Remove the link from the list
+            // Remove the link from the list -- middle of the list
             if (current->prev && current->next) {
                 current->prev->next = current->next;
                 current->next->prev = current->prev;
             }
+            // end of the list
             else if (current->prev)
                 current->prev->next = NULL;
+            // beginning of a list with two or more items
             else if (current == callbacks && current->next) {
                 callbacks = current->next;
                 callbacks->prev = NULL;
             }
+            // beginning and only item in the list
             else
                 callbacks = NULL;
 
@@ -203,9 +230,4 @@ mcCallbackCancel(int callback_id) {
     pthread_mutex_unlock(&callback_list_lock);
 
     return (current != NULL) ? 0 : EINVAL;
-}
-
-void __attribute__((constructor))
-__mcCallbackInit(void) {
-    pthread_mutex_init(&callback_list_lock, NULL);
 }

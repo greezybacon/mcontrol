@@ -286,6 +286,7 @@ cdef class Event(object):
     cdef readonly Motor motor
     cdef readonly int event
     cdef readonly int id
+    cdef readonly bool isset
     cdef object _callback
     cdef public object data
 
@@ -293,12 +294,14 @@ cdef class Event(object):
         self.motor = motor
         self.event = event
         self._callback = None
-        self.register()
+        self.reset()
 
     def __dealloc__(self):
         mcUnsubscribe(self.motor.id, self.id)
 
-    def register(self):
+    def reset(self):
+        self.isset = False
+        self.data = None
         raise_status(
             mcSubscribeWithData(
                 self.motor.id, self.event, &self.id,
@@ -306,7 +309,8 @@ cdef class Event(object):
             "Unable to subscribe to event")
 
     cdef void callback(Event self, object data):
-
+        self.isset = True
+        self.data = data
         if self._callback:
             self._callback(self)
 

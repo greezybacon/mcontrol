@@ -105,6 +105,7 @@ for name in sorted(proxies):
 %(ret)s %(name)s(%(motor_arg)s%(args)s) {
     %(null_pointer_checks)s
     struct _%(name)s_args payload = {
+        .outofproc = true,
         %(unpacked_args)s
     };
     response_message_t response;

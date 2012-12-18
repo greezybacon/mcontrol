@@ -70,19 +70,22 @@ struct event_message {
 #define CONCATENATE2(arg1, arg2)  arg1##arg2
 
 #define PROXYDEF(func, rettype, ...) \
-    extern void func##Impl(request_message_t * message)
+    extern void func##Impl(request_message_t * message) // ...
 
 #define PROXYIMPL(func, ...) \
     void func##Impl(request_message_t * message)
 
 #define UNPACK_ARGS(func, local) \
-    struct CONCATENATE(CONCATENATE(_,func),_args) * local = (void *) message->payload; \
+    struct CONCATENATE(CONCATENATE(_,func),_args) \
+        * local = (void *) message->payload, \
+        * __args = local; \
     motor_t motor = message->motor_id
 
 #define RETURN(what) \
     do { \
         args->returned = what; \
-        mcMessageReply(message, args, sizeof *args); \
+        if (__args->outofproc) \
+            mcMessageReply(message, args, sizeof *args); \
         return; \
     } while(0)
 
@@ -126,15 +129,15 @@ mcEventSend(int pid, struct event_message * evt);
 extern void
 mcMessageReply(request_message_t * message, void * payload, int payload_size);
 
-extern int
+static int
 construct_request_raw(request_message_t * message, int type, void * payload,
     int payload_size);
 
-extern int
+static int
 construct_request(motor_t motor, request_message_t * message, int type,
     void * payload, int payload_size);
 
-extern int
+static int
 construct_response(request_message_t * message, response_message_t * response,
     void * payload, int payload_size);
 

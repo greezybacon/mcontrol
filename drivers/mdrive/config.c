@@ -24,8 +24,8 @@ mdrive_config_rollback(mdrive_axis_t * device) {
     if (mdrive_send(device, "IP") != RESPONSE_OK)
         return false;
 
-    // XXX: This screws up the expected checksum and echo settings
-    if (mdrive_config_inspect(device))
+    // Inspect the reset configuration, but don't set anything new
+    if (mdrive_config_inspect(device, false))
         return false;
     
     return true;
@@ -57,7 +57,7 @@ mdrive_config_commit(mdrive_axis_t * device) {
     if (mdrive_communicate(device, "S", &options) != RESPONSE_OK)
         return false;
 
-    return mdrive_config_inspect(device) == 0;
+    return mdrive_config_inspect(device, true) == 0;
 }
 
 bool
@@ -157,7 +157,7 @@ mdrive_config_set_baudrate(mdrive_axis_t * axis, int speed) {
     axis->speed = selected->human;
 
     // Re-detect communication settings (reset by reboot)
-    mdrive_config_inspect(axis);
+    mdrive_config_inspect(axis, true);
 
     return 0;
 }
@@ -231,7 +231,7 @@ mdrive_config_inspect_echo(mdrive_axis_t * axis) {
 }
 
 int
-mdrive_config_inspect(mdrive_axis_t * axis) {
+mdrive_config_inspect(mdrive_axis_t * axis, bool set) {
     // The CK and EM settings are sort of interdependent in that until both
     // are figured out, it will be difficult to interpret the response of
     // the unit. We'll start by assuming the unit is in the quietest echo
@@ -254,8 +254,10 @@ mdrive_config_inspect(mdrive_axis_t * axis) {
     // Inspect ES setting (for E-stop)
 
     // Configure motor in best performance mode for this driver
-    mdrive_set_echo(axis, EM_PROMPT, false);
-    mdrive_set_checksum(axis, CK_ON, false);
+    if (set) {
+        mdrive_set_echo(axis, EM_PROMPT, false);
+        mdrive_set_checksum(axis, CK_ON, false);
+    }
 
     return 0;
 }

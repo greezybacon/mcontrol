@@ -8,7 +8,7 @@ extern bool
 mdrive_set_echo(mdrive_axis_t * axis, echo_mode_t mode, bool);
 
 extern int
-mdrive_config_inspect(mdrive_axis_t * axis);
+mdrive_config_inspect(mdrive_axis_t * axis, bool);
 
 extern int
 mdrive_config_set_baudrate(mdrive_axis_t * axis, int speed);

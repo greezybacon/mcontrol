@@ -47,7 +47,7 @@ struct motor_driver {
     int (*move)(Driver *, motion_instruction_t *);
     int (*stop)(Driver *, enum stop_type);
     int (*reset)(Driver *);
-    int (*home)(Driver *);
+    int (*home)(Driver *, enum home_type, enum home_direction);
 
     // Queries
     int (*read)(Driver *, struct motor_query *);

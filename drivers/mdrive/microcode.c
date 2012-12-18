@@ -65,11 +65,15 @@ mdrive_microcode_load(Driver * self, const char * filename) {
 
         // Don't send auto-save because it will save current communication
         // settings. Use mdrive_config_commit() instead
-        if (strcpy(buffer, "S") == 0)
+        if (strcmp(buffer, "S") == 0)
             continue;
 
         // Write microcode to the device
+        // XXX: Technically, the unit will send the address of the
+        //      next-received command. A nice, extra check would be to make
+        //      sure the response received can be processed as an integer
         if (mdrive_send(axis, buffer) != RESPONSE_OK)
+            // XXX: Abandon programming mode first!
             return EIO;
 
     } while (ch != EOF);

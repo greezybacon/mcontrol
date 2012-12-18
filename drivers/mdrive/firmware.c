@@ -32,7 +32,7 @@ mdrive_firmware_write(mdrive_axis_t * axis, const char * filename) {
     // Put device in upgrade mode
     mdrive_send(axis, "UG 2956102");
 
-    // The unit may indicate NACKs, but will not response to PR ER
+    // The unit may indicate NACKs, but will not respond to PR ER
     axis->ignore_errors = true;
 
     // Unset checksum mode and party mode -- the unit now has an address
@@ -122,7 +122,9 @@ mdrive_firmware_write(mdrive_axis_t * axis, const char * filename) {
         *pBuffer++ = '\r';
         *pBuffer = 0;
 
-        // Retry the send until we get a clear ACK from the unit
+        // Retry the send until we get a clear ACK from the unit. Even
+        // though the unit is not in checksum mode, it will respond with an
+        // ACK or NACK char to indicate receipt of the record.
         do {
             result.ack = false;
             mdrive_communicate(axis, buffer, &options);
@@ -152,7 +154,7 @@ mdrive_firmware_write(mdrive_axis_t * axis, const char * filename) {
     // Unit is now factory defaulted. Change to default speed and re-inspect
     // comm settings
     mdrive_set_baudrate(axis->device, DEFAULT_PORT_SPEED);
-    mdrive_config_inspect(axis);
+    mdrive_config_inspect(axis, true);
     axis->address = '!';
 
     // TODO: Invalidate driver cache so that a request on the original
@@ -162,5 +164,8 @@ mdrive_firmware_write(mdrive_axis_t * axis, const char * filename) {
 
 int
 mdrive_load_firmware(Driver * self, const char * filename) {
+    if (self == NULL)
+        return EINVAL;
+
     return mdrive_firmware_write(self->internal, filename);
 }

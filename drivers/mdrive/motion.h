@@ -4,6 +4,9 @@ mdrive_move(Driver * self, motion_instruction_t * command);
 extern int
 mdrive_stop(Driver * self, enum stop_type);
 
+extern int
+mdrive_home(Driver * self, enum home_type, enum home_direction);
+
 extern long long
 mdrive_steps_to_microrevs(mdrive_axis_t * device, int position);
 
