@@ -203,8 +203,6 @@ mdrive_config_inspect_checksum(mdrive_axis_t * axis) {
 
     for (i=0, setting = modes; i<2; setting++, i++) {
         axis->checksum = *setting;
-        // XXX: Use mdrive_clear_error()
-        mdrive_send(axis, "ER");
         if (mdrive_get_integer(axis, "CK", &value) == 0) {
             axis->checksum = value;
             mcTraceF(20, MDRIVE_CHANNEL, "Device CK mode is %d", value);
@@ -218,15 +216,17 @@ mdrive_config_inspect_checksum(mdrive_axis_t * axis) {
 int
 mdrive_config_inspect_echo(mdrive_axis_t * axis) {
     static int modes[] = { EM_ON, EM_PROMPT, EM_QUIET };
-    int value, i, *setting;
+    int value, i, *setting, old = axis->echo;
 
     for (i=0, setting = modes; i<3; setting++, i++) {
+        axis->echo = *setting;
         if (mdrive_get_integer(axis, "EM", &value) == 0) {
             axis->echo = value;
             mcTraceF(20, MDRIVE_CHANNEL, "Device EM mode is %d", value);
             return 0;
         }
     }
+    axis->echo = old;
     return EIO;
 }
 
@@ -234,21 +234,19 @@ int
 mdrive_config_inspect(mdrive_axis_t * axis, bool set) {
     // The CK and EM settings are sort of interdependent in that until both
     // are figured out, it will be difficult to interpret the response of
-    // the unit. We'll start by assuming the unit is in the quietest echo
-    // mode
-    axis->echo = EM_QUIET;
+    // the unit.
 
     if (axis->address == '*')
         // By default, the motors will not respond to global commands, and,
         // even if they did, it would likely get clobbered.
         return 0;
 
-    // Inspect CK setting
-    if (mdrive_config_inspect_checksum(axis))
-        return EIO;
-
     // Inspect EM setting
     if (mdrive_config_inspect_echo(axis))
+        return EIO;
+
+    // Inspect CK setting
+    if (mdrive_config_inspect_checksum(axis))
         return EIO;
 
     // Inspect ES setting (for E-stop)

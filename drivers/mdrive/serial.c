@@ -412,6 +412,10 @@ mdrive_process_response(char * buffer, mdrive_response_t * response,
                     response->prompt = true;
                     break;
                 }
+                // in EM=0, the prompt can carry over from the previous
+                // response
+                else if (response->length == 0)
+                    break;
                 goto normal_char;
             case '!':
                 // If received as the first char, this is an event. The
@@ -499,7 +503,8 @@ mdrive_async_read(void * arg) {
 
     // Wait time for a single char at the device speed
     // XXX: dev->speed is allowed to be changed on the fly
-    struct timespec now;
+    struct timespec now,
+        onechartime = { .tv_nsec = mdrive_xmit_time(dev, 4) };
 
     int length;
     char buffer[512];
@@ -513,6 +518,8 @@ mdrive_async_read(void * arg) {
 
     while (true) {
 
+        // Try to read more than one char at a time
+        nanosleep(&onechartime, NULL);
         length = read(dev->fd, load, sizeof buffer - (int)(load - buffer));
 
         // If the txid's changed while this thread was asleep, scratch the
@@ -886,6 +893,22 @@ wait_longer:
             mcTrace(30, MDRIVE_CHANNEL_RX, "Waiting longer ...");
             tsAdd(&timeout, &more_waittime, &timeout);
             goto wait_longer;
+        }
+        else if (options->expect_data && axis->echo == EM_ON
+                && response->length) {
+            // In echo mode, then unit will send the request back in the
+            // response. On [swift OSes], the response will be closed after
+            // the echo is received, but before the real data is received.
+            // Be careful not to consider the \r, \n, >, ? or checksum
+            // chars, as none of them will exist in the response buffer
+            if (strncmp(response->buffer, buffer, response->length) == 0) {
+                // Clear the buffer and set the echo flag
+                *response->buffer = 0;
+                response->length = 0;
+                response->echo = true;
+                tsAdd(&timeout, &more_waittime, &timeout);
+                goto wait_longer;
+            }
         }
             
         if (response->ack) axis->stats.acks++;

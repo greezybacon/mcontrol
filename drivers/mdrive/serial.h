@@ -31,12 +31,6 @@ mdrive_connect(mdrive_address_t *, mdrive_axis_t *);
 extern void
 mdrive_disconnect(mdrive_axis_t *);
 
-extern char **
-mdrive_enum_serial_ports(void);
-
-extern mdrive_address_t *
-mdrive_enum_motors_on_port(const char *);
-
 extern int
 mdrive_initialize_port(const char * port, int speed, bool async);
 
@@ -61,3 +55,6 @@ mdrive_calc_checksum(const char * buffer, int length);
 
 extern int
 mdrive_xmit_time(mdrive_axis_device_t * axis, int chars);
+
+extern void
+mdrive_clear_error(mdrive_axis_t *);
