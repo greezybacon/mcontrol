@@ -9,7 +9,13 @@ all_units = {
     k.METER:        "m",
     k.MILLI_G:      "milli-g",
     k.MILLI_DEGREE: "milli-deg",
-    k.MILLI_ROTATION: "milli-rev"
+    k.MILLI_ROTATION: "milli-rev",
+
+    "mil":          k.MILLI_INCH,
+    "mm":           k.MILLI_METER,
+    "milli-g":      k.MILLI_G,
+    "milli-deg":    k.MILLI_DEGREE,
+    "milli-rev":    k.MILLI_ROTATION
 }
 
 class NoDaemonException(Exception): pass

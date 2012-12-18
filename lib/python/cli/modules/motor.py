@@ -5,6 +5,8 @@ from mcontrol import NoDaemonException
 
 from lib import term
 
+import time
+
 class MotorContext(Shell):
 
     intro = None
@@ -166,8 +168,8 @@ class MotorContext(Shell):
         """
         parts = line.split()
         # TODO: Collect current unit/scale
-        self.motor.units = 'milli-rev'
-        self.motor.scale = 500
+        self.motor.units = all_units['milli-rev']
+        self.motor.scale = 1000
         rate = 500
         if 'left' in parts:
             rate = -rate
