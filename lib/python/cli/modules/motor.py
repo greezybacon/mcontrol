@@ -47,6 +47,15 @@ class MotorContext(Shell):
         except AttributeError:
             self.error("{0}: Unknown attribute".format(what))
 
+    def _do_set_position(self, what):
+        units = None
+        if ' ' in what:
+            position, units = what.split(' ',1)
+        else:
+            position = what
+        position = int(position)
+        self.motor.position = position, units
+
     def _do_get_units(self):
         self.status("Motor is configured with units of: "
             + all_units[self.motor.units])
@@ -216,28 +225,30 @@ class MotorContext(Shell):
             return self.error("Incorrect operation", "See 'help profile'")
 
         component = parts.pop(0)
-        if component not in ('run_current',):
-            return self.error("Incorrect setting", "See 'help profile'")
 
-        val = parts.pop(0)
-        try:
-            val = int(val)
-        except ValueError:
-            return self.error("Invalid value", "Integer required")
+        if getset == "set":
+            val = parts.pop(0)
+            try:
+                val = int(val)
+            except ValueError:
+                return self.error("Invalid value", "Integer required")
 
         units = None
         if len(parts):
-            for id, name in all_units.items():
-                if name == parts[-1]:
-                    units = id
-                    break
-            else:
-                self.error("{0}: Unsupported units".format(what))
-
-            parts.pop(0)
+            units = parts.pop(0)
+            if units not in all_units:
+                self.error("{0}: Unsupported units".format(units),
+                    "See 'help units'")
 
         if len(parts):
             return SyntaxError("See 'help profile'")
 
-        self.motor.profile.run_current_set(val)
-        self.motor.profile.commit()
+        try:
+            if getset == "set":
+                setattr(self.motor.profile, component, (val, units))
+                self.motor.profile.commit()
+            else:
+                val = getattr(self.motor.profile, component)
+                self.info("{0} {1}".format(val, self.motor.units))
+        except AttributeError:
+            self.error("Unsupported profile component")

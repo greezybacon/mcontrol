@@ -104,6 +104,15 @@ mdrive_read_variable(Driver * self, struct motor_query * query) {
     return 0;
 }
 
+/**
+ * mdrive_write_entry
+ * Driver-Entry: write
+ *
+ * Used to poke special values into the unit. The driver is chiefly designed
+ * for motion and motion events. For extraneous information about the motor,
+ * peeks and pokes are used to get and retrieve characteristics of the
+ * motor. This is the generic write implementation.
+ */
 int
 mdrive_write_variable(Driver * self, struct motor_query * query) {
     struct query_variable * q;
@@ -122,9 +131,13 @@ mdrive_write_simple(mdrive_axis_t * axis, struct motor_query * query,
         struct query_variable * q) {
 
     char cmd[16];
+    int value = query->number;
     switch (q->type) {
+        case 9:
+            // Convert first, then fall through to set integer
+            value = mdrive_microrevs_to_steps(axis, value);
         case 1:
-            snprintf(cmd, sizeof cmd, "%s=%lld", q->variable, query->number);
+            snprintf(cmd, sizeof cmd, "%s=%d", q->variable, value);
             break;
         case 2:
             snprintf(cmd, sizeof cmd, "%s=%s", q->variable, query->string);

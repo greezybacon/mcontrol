@@ -95,9 +95,27 @@ cdef class Motor:
             return position
 
         def __set__(self, position):
-            raise_status(
-                mcPokeInteger(self.id, k.MCPOSITION, position),
-                "Unable to set device position")
+            units = None
+            if type(position) is tuple:
+                if len(position) != 2:
+                    raise ValueError("Two item tuple required: "
+                        "(val, units)")
+                position, units = position
+
+                if type(units) is not int:
+                    if units not in all_units:
+                        raise ValueError("Unsupported units")
+                    units = all_units[units]
+
+            if units:
+                raise_status(
+                    mcPokeIntegerUnits(self.id, k.MCPOSITION, position,
+                        units),
+                    "Unable to set device position")
+            else:
+                raise_status(
+                    mcPokeInteger(self.id, k.MCPOSITION, position),
+                    "Unable to set device position")
 
     property moving:
         def __get__(self):
@@ -137,11 +155,8 @@ cdef class Motor:
             raise RuntimeError(status)
 
     def slew(self, rate, units=None):
-        if units is None:
-            units = self.units
-
         raise_status(
-            mcSlewUnits(self.id, rate, units),
+            mcSlewUnits(self.id, rate, units or self.units),
             "Unable to slew motor")
 
     def stop(self):

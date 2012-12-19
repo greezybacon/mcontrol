@@ -76,7 +76,6 @@ Version 0.1-beta
         except Exception as e:
             self.error("{0}: (Unhandled) {1}".format(
                 type(e).__name__, e))
-            raise
 
     def run(self):
         shell = self

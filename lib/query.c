@@ -115,9 +115,42 @@ PROXYIMPL (mcPokeInteger, motor_query_t query, int value) {
     struct motor_query q = {
         .query = args->query
     };
-    q.number = args->value;
 
     // TODO: Convert POKE codes with units such as MCPOSITION
+    switch (args->query) {
+        case MCPOSITION:
+            mcDistanceToMicroRevs(m, args->value, &q.number);
+            break;
+        default:
+            q.number = args->value;
+    }
+
+    RETURN( m->driver->class->write(m->driver, &q) );
+}
+
+PROXYIMPL (mcPokeIntegerUnits, motor_query_t query, int value,
+        unit_type_t units) {
+    UNPACK_ARGS(mcPokeIntegerUnits, args);
+
+    Motor * m = find_motor_by_id(motor, message->pid);
+    if (m == NULL)
+        RETURN( EINVAL );
+
+    if (m->driver->class->write == NULL)
+        RETURN( ENOTSUP );
+
+    struct motor_query q = {
+        .query = args->query
+    };
+
+    // TODO: Convert POKE codes with units such as MCPOSITION
+    switch (args->query) {
+        case MCPOSITION:
+            mcDistanceUnitsToMicroRevs(m, args->value, args->units, &q.number);
+            break;
+        default:
+            q.number = args->value;
+    }
 
     RETURN( m->driver->class->write(m->driver, &q) );
 }

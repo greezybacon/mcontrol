@@ -516,8 +516,14 @@ mdrive_steps_to_microrevs(mdrive_axis_t * device, int steps) {
 
 int
 mdrive_stop(Driver * self, enum stop_type type) {
+    if (self == NULL || self->internal == NULL)
+        return EINVAL;
+
     mdrive_axis_t * axis = self->internal;
     mdrive_axis_t global = *axis;
+
+    // Unit won't be moving any more
+    bzero(&axis->movement, sizeof axis->movement);
 
     switch (type) {
         case MCSTOP:
@@ -535,6 +541,9 @@ mdrive_stop(Driver * self, enum stop_type type) {
 
 int
 mdrive_home(Driver * self, enum home_type type, enum home_direction dir) {
+    if (self == NULL || self->internal == NULL)
+        return EINVAL;
+
     mdrive_axis_t * motor = self->internal;
 
     switch (type) {

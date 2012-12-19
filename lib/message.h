@@ -70,7 +70,7 @@ struct event_message {
 #define CONCATENATE2(arg1, arg2)  arg1##arg2
 
 #define PROXYDEF(func, rettype, ...) \
-    extern void func##Impl(request_message_t * message) // ...
+    extern void func##Impl(request_message_t * message)
 
 #define PROXYIMPL(func, ...) \
     void func##Impl(request_message_t * message)
