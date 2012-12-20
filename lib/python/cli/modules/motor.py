@@ -113,7 +113,10 @@ class MotorContext(Shell):
             try:
                 func(int(parts[0]), units)
                 if wait:
-                    self.motor.on(Event.EV_MOTION).wait()
+                    ev = self.motor.on(Event.EV_MOTION)
+                    ev.wait()
+                    self.out("Unit reports error of: {0}".format(
+                        ev.data.error))
                 return
             except:
                 raise

@@ -170,9 +170,11 @@ class Compiler(object):
 
     @visit.when('assignment')
     def visit(self, node):
+        self.PUSH_BLOCK()
         for w in node.what:
             self.visit(w)
-        name = node.what[0].what
+        items = self.POP_BLOCK()
+        name = items.pop(0)
         lhs = self.FIND_VAR(name)
         lhs.assignments += 1
 
@@ -184,7 +186,7 @@ class Compiler(object):
                 .format(name))
 
         operator = '= ' if name not in grammar.commands else ''
-        self.PUSH("{1} {2}{0}".format(self.POP(), self.POP(), operator))
+        self.PUSH("{0} {1}{2}".format(name, operator, ", ".join(items)))
 
     @visit.when('declaration')
     def visit(self, node):
@@ -220,7 +222,8 @@ class Compiler(object):
         try:
             self.FIND_VAR(B[0]).references += 1
         except KeyError:
-            # Undeclared variable -- warning will be issued later
+            # Undeclared variable -- warning will be issued later if not
+            # defined before the end of the microcode
             pass
 
         expr = ' '.join(B)

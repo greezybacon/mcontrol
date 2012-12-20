@@ -41,6 +41,23 @@ static pthread_mutex_t callback_list_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static const int TIMER_SIGNAL = SIGINT;
 
+static void
+_mcCallbackListPop(void) {
+    pthread_mutex_lock(&callback_list_lock);
+
+    if (callbacks->next) {
+        callbacks = callbacks->next;
+        free(callbacks->prev);
+        callbacks->prev = NULL;
+    }
+    else {
+        free(callbacks);
+        callbacks = NULL;
+    }
+
+    pthread_mutex_unlock(&callback_list_lock);
+}
+
 static void *
 _mcCallbackThread(void *arg) {
     sigset_t mask;
@@ -50,17 +67,23 @@ _mcCallbackThread(void *arg) {
     // Block the delivery of the timer signal to this thread
     pthread_sigmask(SIG_BLOCK, &mask, NULL);
 
-    int signal;
+    int signal, status;
     struct timespec now;
     while (true) {
         // Adjust timer time
         signal = 0;
         if (callbacks) {
             // Await delivery of the timer signal to this thread
-            if (EINTR == clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME,
-                    &callbacks->abstime, NULL))
+            status = clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME,
+                &callbacks->abstime, NULL);
+            if (status == EINTR)
                 // SIGINT means callbacks have changed
                 continue;
+            else if (status == EINVAL)
+                // callbacks->abstime is invalid. It should be removed
+                // from the list
+                _mcCallbackListPop();
+            // Continue onward with double-checking the clock
         }
         // Wait for the SIGINT signal
         else if (sigwait(&mask, &signal) != 0)
@@ -86,19 +109,7 @@ _mcCallbackThread(void *arg) {
         callbacks->callback(callbacks->arg);
 
         // Remove the HEAD entry from the callback list
-        pthread_mutex_lock(&callback_list_lock);
-
-        if (callbacks->next) {
-            callbacks = callbacks->next;
-            free(callbacks->prev);
-            callbacks->prev = NULL;
-        }
-        else {
-            free(callbacks);
-            callbacks = NULL;
-        }
-
-        pthread_mutex_unlock(&callback_list_lock);
+        _mcCallbackListPop();
     }
     // Signal that the callback thread should be restarted
     timer_thread_id = 0;
@@ -129,6 +140,10 @@ mcCallbackAbs(const struct timespec * when, callback_function callback,
         void * arg) {
 
     if (when == NULL || callback == NULL)
+        return -EINVAL;
+
+    else if (when->tv_nsec < 0 || when->tv_nsec > (int)1e9
+            || when->tv_sec < 0)
         return -EINVAL;
 
     // Setup the struct to hold the callback information

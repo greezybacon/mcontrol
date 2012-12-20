@@ -25,7 +25,7 @@ mdrive_config_rollback(mdrive_axis_t * device) {
         return false;
 
     // Inspect the reset configuration, but don't set anything new
-    if (mdrive_config_inspect(device, false))
+    if (mdrive_config_inspect(device, true))
         return false;
     
     return true;
@@ -240,22 +240,25 @@ mdrive_config_inspect(mdrive_axis_t * axis, bool set) {
         // By default, the motors will not respond to global commands, and,
         // even if they did, it would likely get clobbered.
         return 0;
-
-    // Inspect EM setting
-    if (mdrive_config_inspect_echo(axis))
-        return EIO;
+    
+    // Assume EM=0 which is the most difficult to work with
+    axis->echo = EM_ON;
 
     // Inspect CK setting
     if (mdrive_config_inspect_checksum(axis))
         return EIO;
 
-    // Inspect ES setting (for E-stop)
+    // Inspect EM setting
+    if (mdrive_config_inspect_echo(axis))
+        return EIO;
 
     // Configure motor in best performance mode for this driver
     if (set) {
         mdrive_set_echo(axis, EM_PROMPT, false);
         mdrive_set_checksum(axis, CK_ON, false);
     }
+
+    // Inspect ES setting (for E-stop)
 
     return 0;
 }

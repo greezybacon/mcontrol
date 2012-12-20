@@ -2,6 +2,10 @@ extern int
 mdrive_move(Driver * self, motion_instruction_t * command);
 
 extern int
+mdrive_move_assisted(mdrive_axis_t * device, motion_instruction_t * command,
+        int steps);
+
+extern int
 mdrive_stop(Driver * self, enum stop_type);
 
 extern int

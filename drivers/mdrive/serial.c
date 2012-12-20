@@ -339,6 +339,11 @@ mdrive_process_response(char * buffer, mdrive_response_t * response,
                         response->error = true;
                         bufc++;
                     }
+                    else if (*(bufc+1) == '\x06') {
+                        // If a procedure as EX'd and it printed something,
+                        // in checksum mode, the ACK will follow the CRLF
+                        bufc++;
+                    }
                     // Stock firmwares will not send the prompt in EM=1;
                     // however, CRLF (\r\n) indicates command accepted.
                     // TODO: Check firmware version
@@ -889,7 +894,11 @@ wait_longer:
             mdrive_classify_response(axis, response);
 
             // A response was expected but not received -- wait longer. Add
-            // the additional wait time to the timeout and wait longer
+            // the additional wait time to the timeout and wait longer.
+            // However, if the unit indicated an error already, then we're
+            // finished.
+            if (response->code)
+                break;
             mcTrace(30, MDRIVE_CHANNEL_RX, "Waiting longer ...");
             tsAdd(&timeout, &more_waittime, &timeout);
             goto wait_longer;
@@ -916,12 +925,12 @@ wait_longer:
 
         status = mdrive_classify_response(axis, response);
         
-        if (status == RESPONSE_OK || options->expect_err) {
+        if (status == RESPONSE_RETRY) {
+            axis->stats.overflows++;
+        } else if (status == RESPONSE_OK || options->expect_err) {
             // Error was handled in the response_classify routine (if there
             // was one)
             break;
-        } else if (status == RESPONSE_RETRY) {
-            axis->stats.overflows++;
         } else {
             if (status == RESPONSE_BAD_CHECKSUM)
                 axis->stats.bad_checksums++;
@@ -962,6 +971,7 @@ resend:
 
     pthread_mutex_unlock(&axis->device->txlock);
 
+    mcTraceF(50, MDRIVE_CHANNEL_RX, "Status is %d", status);
     return status;
 }
 

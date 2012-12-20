@@ -230,10 +230,19 @@ struct mdrive_axis_list {
 
     // Well-known labels (for homing, moving, etc)
     struct {
-        char            home[3];
-        char            move[3];
-        char            jitter[3];
-    } labels;
+        unsigned short  version;
+        struct {
+            bool        following_error;
+            bool        move;
+        } features;
+
+        struct {
+            char        home[3];
+            char        move[3];
+            char        following_error[3];
+            char        jitter[3];
+        } labels;
+    } microcode;
 
     Driver *            driver;         // Driver for the axis (useful for signaling events)
 };
@@ -291,14 +300,18 @@ enum mdrive_read_variable {
     MDRIVE_IO_INVERT,
     MDRIVE_IO_DRIVE,
 
-    // Odd setting checksum
+    // Odd settings (last mile)
     MDRIVE_ENCODER,
+    MDRIVE_VARIABLE,            // Peek/poke a variable
+    MDRIVE_EXECUTE              // Call a label (poke)
 };
 
 // Error codes
 enum mdrive_error {
-    MDRIVE_ENOTSUP = 20,
-    MDRIVE_EINVAL = 21,
+    MDRIVE_ENOVAR = 20,         // Set an unknown var
+    MDRIVE_EINVAL = 21,         // Assigned a bad value
+    MDRIVE_ENOLABEL = 30,       // Call an unknown label
+    MDRIVE_ENOTSUP = 37,        // Feature not in device
     MDRIVE_EOVERRUN = 63,
     MDRIVE_ETEMP = 71,
     MDRIVE_ESTALL = 86

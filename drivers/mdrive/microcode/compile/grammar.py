@@ -24,7 +24,7 @@ def declaration():  return keyword("VA"), _ws, name, \
                            0, (_ws, "=", _ws, expression)
 def name():         return re.compile(r'[A-Za-z]\w?')
 def assignment():   return name, _ws, 0, "=", \
-                           _ws, expression, -1, (_ws, ",", _ws, atom)
+                           _ws, expression, -1, (_ws, ",", _ws, expression)
 def literal():      return [number, string]
 def number():       return re.compile(r'-?\d+')    # No floating point math
 def string():       return re.compile(r'"[^"]*"')
@@ -39,7 +39,7 @@ def expression():   return 0, (unary, _ws), atom, _ws, 0, ([compare, math], \
                             _ws, expression)
 def compare():      return re.compile(r"<>|<=|>=|<|>|=")
 def unary():        return re.compile(r"[!-]")
-def math():         return re.compile(r"[+*/&\|^-]")
+def math():         return re.compile(r"[+*/&|^-]")
 
 def statement():    return [call, branch, return_, label,
                             declaration, assignment, command], 0, comment, _newline

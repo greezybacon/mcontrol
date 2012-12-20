@@ -211,7 +211,9 @@ cdef extern from "drivers/mdrive/mdrive.h":
         MDRIVE_IO_INVERT,
         MDRIVE_IO_DRIVE,
 
-        MDRIVE_ENCODER
+        MDRIVE_ENCODER,
+        MDRIVE_VARIABLE,
+        MDRIVE_EXECUTE
 
 cdef class MdriveMotor(Motor):
 
@@ -288,20 +290,35 @@ cdef class MdriveMotor(Motor):
         cdef String sn = bufferFromString(serial_number)
         cdef int status
         print("Calling mcPokeStringItem")
-        status = mcPokeStringItem(self.id, 10008, &addr, &sn)
+        status = mcPokeStringItem(self.id, MDRIVE_NAME, &addr, &sn)
         raise_status(status, "Unable to name motor")
 
     def search(cls):
         return Motor.search('mdrive')
     search = classmethod(search)
 
+    def call(self, label):
+        cdef String _label = bufferFromString(label)
+        mcPokeString(self.id, MDRIVE_EXECUTE, &_label)
+
+    def read(self, variable):
+        cdef int value
+        cdef String var = bufferFromString(variable)
+        mcQueryIntegerItem(self.id, MDRIVE_VARIABLE, &value, &var)
+        return value
+
+    def write(self, variable, value):
+        cdef String var = bufferFromString(variable)
+        mcPokeIntegerItem(self.id, MDRIVE_VARIABLE, value, &var)
+
+from libc.stdio cimport fflush, stdout
 cdef void pyEventCallback(event_info_t * info) with gil:
-    assert info.user != NULL
-    assert type(<object>info.user) is Event
+    assert info is not NULL
+    assert info.user is not NULL
     cdef object data = None
-    if info.event == EV_MOTION and info.data:
+    if info.event == defs.EV_MOTION:
         data = mdFromEventData(info.data)
-    (<object>info.user).callback(data)
+    Event.callback(<object>info.user, data)
 
 cdef class MotionDetails(object):
 
@@ -319,11 +336,12 @@ cdef MotionDetails mdFromEventData(event_data_t * data):
         return None
 
     cdef MotionDetails self = MotionDetails()
-    self.completed = data.motion.completed
-    self.stalled = data.motion.stalled
-    self.cancelled = data.motion.cancelled
-    self.stopped = data.motion.stopped
-    self.in_progress = data.motion.in_progress
+    self.completed = not not data.motion.completed
+    self.stalled = not not data.motion.stalled
+    self.cancelled = not not data.motion.cancelled
+    self.stopped = not not data.motion.stopped
+    self.in_progress = not not data.motion.in_progress
+    self.error = not not data.motion.error
     if data.motion.pos_known:
         self.position = data.motion.position
     else:

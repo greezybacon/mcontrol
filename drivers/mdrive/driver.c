@@ -1,5 +1,6 @@
 #include "driver.h"
 #include "mdrive.h"
+
 #include "serial.h"
 #include "config.h"
 #include "query.h"
@@ -80,6 +81,9 @@ int mdrive_init(Driver * self, const char * cxn) {
     // XXX: Move to mdrive_connect
     if (mdrive_config_inspect(device, true))
         return ER_COMM_FAIL;
+
+    // Inspect microcode information
+    mdrive_microcode_inspect(device);
 
     return 0;
 }

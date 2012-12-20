@@ -21,12 +21,16 @@ static PEEK(mdrive_vr_peek);
 static PEEK(mdrive_pn_peek);
 static PEEK(mdrive_profile_peek);
 static POKE(mdrive_ee_poke);
+static PEEK(mdrive_var_peek);
+static POKE(mdrive_var_poke);
+static POKE(mdrive_ex_poke);
 
 static struct query_variable query_xref[] = {
     { 9, MCPOSITION,        "P",    NULL,   mdrive_write_simple },
     { 9, MCVELOCITY,        "V",    NULL,   NULL },
     { 1, MCACCELERATING,    "VC",   NULL,   NULL },
     { 1, MCMOVING,          "MV",   NULL,   NULL },
+    { 1, MCSTALLED,         "ST",   NULL,   mdrive_write_simple },
     { 3, MCINPUT,           "I%d",  NULL,   NULL },
     { 6, MCOUTPUT,          "O%d",  NULL,   NULL },
 
@@ -40,6 +44,9 @@ static struct query_variable query_xref[] = {
     { 5, MCHOLDCURRENT,     NULL,   mdrive_profile_peek, NULL },
     { 5, MCSLIPMAX,         NULL,   mdrive_profile_peek, NULL },
     { 1, MDRIVE_ENCODER,    "EE",   NULL,   mdrive_ee_poke },
+
+    { 1, MDRIVE_VARIABLE,   NULL,   mdrive_var_peek, mdrive_var_poke },
+    { 6, MDRIVE_EXECUTE,    NULL,   NULL, mdrive_ex_poke },
 
     { 4, MDRIVE_IO_TYPE,    "S%d",  NULL,   NULL },
     { 4, MDRIVE_IO_INVERT,  "S%d",  NULL,   NULL },
@@ -115,6 +122,9 @@ mdrive_read_variable(Driver * self, struct motor_query * query) {
  */
 int
 mdrive_write_variable(Driver * self, struct motor_query * query) {
+    if (self == NULL || query == NULL)
+        return EINVAL;
+
     struct query_variable * q;
     for (q = query_xref; q->type; q++)
         if (q->query == query->query)
@@ -361,5 +371,42 @@ mdrive_profile_peek(mdrive_axis_t * axis, struct motor_query * query,
         default:
             return EINVAL;
     }
+    return 0;
+
+}
+
+static int
+mdrive_ex_poke(mdrive_axis_t * axis, struct motor_query * query,
+        struct query_variable * q) {
+
+    char buffer[64];
+    snprintf(buffer, sizeof buffer, "EX %2.2s", query->string);
+
+    return mdrive_send(axis, buffer);
+}
+
+static int
+mdrive_var_peek(mdrive_axis_t * axis, struct motor_query * query,
+        struct query_variable * q) {
+
+    int value;
+    if (mdrive_get_integer(axis, query->arg.string, &value))
+        return EIO;
+
+    query->number = value;
+    return 0;
+}
+
+static int
+mdrive_var_poke(mdrive_axis_t * axis, struct motor_query * query,
+        struct query_variable * q) {
+
+    char buffer[64];
+    snprintf(buffer, sizeof buffer, "%2.2s=%lld", query->string,
+        query->arg.number);
+
+    if (mdrive_send(axis, buffer))
+        return EIO;
+
     return 0;
 }

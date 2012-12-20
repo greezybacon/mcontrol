@@ -16,8 +16,11 @@ cdef extern from "lib/client.h" nogil:
     int mcPokeStringItem(int motor, int what, String * value, String * item)
     int mcQueryString(int motor, int what, String * value)
     int mcQueryInteger(int motor, int what, int * value)
+    int mcQueryIntegerItem(int motor, int what, int * value, String * item)
     int mcPokeInteger(int motor, int what, int value)
     int mcPokeIntegerUnits(int motor, int what, int value, int units)
+    int mcPokeIntegerItem(int motor, int what, int value, String * item)
+
     int mcUnitScaleSet(int motor, int units, long long urevs)
     int mcUnitScaleGet(int motor, int * units, long long * urevs)
 

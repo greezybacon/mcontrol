@@ -9,7 +9,7 @@
 #include <stdio.h>
 #include <time.h>
 
-#include "lib/callback.h"
+// #include "lib/callback.h"
 
 int
 mdrive_move(Driver * self, motion_instruction_t * command) {
@@ -30,7 +30,6 @@ mdrive_move(Driver * self, motion_instruction_t * command) {
     switch (command->type) {
         case MCABSOLUTE:
             snprintf(buffer, sizeof buffer, "MA %d", steps);
-            mdrive_set_profile(device, &command->profile);
             // XXX: Ensure device position is known
             move_info.urevs = mdrive_steps_to_microrevs(device,
                 steps - device->position);
@@ -38,7 +37,6 @@ mdrive_move(Driver * self, motion_instruction_t * command) {
 
         case MCRELATIVE:
             snprintf(buffer, sizeof buffer, "MR %d", steps);
-            mdrive_set_profile(device, &command->profile);
             break;
 
         case MCSLEW:
@@ -47,7 +45,6 @@ mdrive_move(Driver * self, motion_instruction_t * command) {
                 // Requested slew rate is already in progress
                 return 0;
             snprintf(buffer, sizeof buffer, "SL %d", steps);
-            mdrive_set_profile(device, &command->profile);
             // XXX: Device position will no longer be known
             break;
 
@@ -57,9 +54,15 @@ mdrive_move(Driver * self, motion_instruction_t * command) {
         default:
             return ENOTSUP;
     }
-    if (RESPONSE_OK != mdrive_send(device, buffer))
-        return EIO;
-    
+
+    if (device->microcode.features.move)
+        mdrive_move_assisted(device, command, steps);
+    else {
+        mdrive_set_profile(device, &command->profile);
+        if (RESPONSE_OK != mdrive_send(device, buffer))
+            return EIO;
+    }
+
     device->movement = move_info;
     clock_gettime(CLOCK_REALTIME, &device->movement.start);
 
@@ -67,6 +70,55 @@ mdrive_move(Driver * self, motion_instruction_t * command) {
     if (command->type != MCSLEW)
         // XXX: Ensure device position is known
         mdrive_on_async_complete(device, true);
+
+    return 0;
+}
+
+
+int
+mdrive_move_assisted(mdrive_axis_t * device, motion_instruction_t * command,
+        int steps) {
+    struct micrcode_packed_move_op {
+        unsigned    mode        :3;
+        unsigned    profile     :3;
+        unsigned    reset_pos   :1;
+        unsigned    notify      :8;
+    } R1 = {
+        .mode = 0
+    };
+
+    switch (command->type) {
+        case MCABSOLUTE:
+            R1.mode = 1;
+            break;
+        case MCRELATIVE:
+            R1.mode = 2;
+            break;
+        case MCSLEW:
+            R1.mode = 3;
+            R1.reset_pos = 1;
+            break;
+        default:
+            return ENOTSUP;
+    }
+
+    // TODO: Configure hardware profile if current motor profile has the
+    //       hardware flag set
+    mdrive_set_profile(device, &command->profile);
+
+    char buffer[64];
+    snprintf(buffer, sizeof buffer, "R1=%d", R1.mode + (R1.profile << 3)
+        + (R1.reset_pos << 6) + (R1.notify << 7));
+    if (mdrive_send(device, buffer))
+        return EIO;
+
+    snprintf(buffer, sizeof buffer, "R2=%d", steps);
+    if (mdrive_send(device, buffer))
+        return EIO;
+
+    snprintf(buffer, sizeof buffer, "EX %s", device->microcode.labels.move);
+    if (mdrive_send(device, buffer))
+        return EIO;
 
     return 0;
 }
@@ -341,11 +393,15 @@ mdrive_async_completion_correct(void * arg) {
     int travel_time = (now.tv_sec - device->movement.start.tv_sec) * (int)1e6;
     travel_time += (now.tv_nsec - device->movement.start.tv_nsec) / 1000;
 
-    const char * vars[] = {"ST", "P", "V"};
-    int stalled, pos, vel;
-    int * vals[] = { &stalled, &pos, &vel };
+    const char * vars[] = {"ST", "P", "V",
+        device->microcode.labels.following_error };
+    int stalled, pos, vel, error, count = 4,
+        * vals[] = { &stalled, &pos, &vel, &error };
 
-    if (mdrive_get_integers(device, vars, vals, 3))
+    if (!device->microcode.features.following_error)
+        count--;
+
+    if (mdrive_get_integers(device, vars, vals, count))
         return NULL;
 
     // Add (half-of) comm latency time (ns -> us)
@@ -356,7 +412,9 @@ mdrive_async_completion_correct(void * arg) {
     // Add in starting position
     expected += device->movement.pstart;
 
-    int error = pos - expected;
+    if (!device->microcode.features.following_error)
+        error = pos - expected;
+
     bool completed = true;
 
     if (vel != 0) {
@@ -384,9 +442,6 @@ mdrive_async_completion_correct(void * arg) {
         struct timespec callback = {
             .tv_nsec = (int)1e9 * dt - (device->stats.latency >> 1) + 1e6
         };
-        mcTraceF(10, MDRIVE_CHANNEL, "Early. Callback in %dms",
-		callback.tv_nsec / (int)1e6);
-
         if (callback.tv_nsec < 1e6)
             // For all intents and purposes, the unit is stopped, because we
             // won't be able to communicate with it again until well after
@@ -397,6 +452,9 @@ mdrive_async_completion_correct(void * arg) {
             // or 1/2 * dt * v
             device->position = pos + dt * (vel >> 1);
         else {
+            mcTraceF(50, MDRIVE_CHANNEL, "Early. Callback in %dns",
+		        callback.tv_nsec);
+
             // Call this routine again at the estimated time of completion
             // (minus about half of the unit's latency)
             device->cb_complete = mcCallback(&callback,
@@ -414,12 +472,15 @@ mdrive_async_completion_correct(void * arg) {
         device->trip.completion = false;
         // Notify interested subscribers of motion event
         union event_data data = {
-            .motion.completed = !stalled,
-            .motion.stalled = stalled,
-            .motion.pos_known = true,
-            .motion.position = mdrive_steps_to_microrevs(device, pos),
-            .motion.error = error
+            .motion = {
+                .completed = !stalled,
+                .stalled = stalled,
+                .pos_known = true,
+                .position = mdrive_steps_to_microrevs(device, pos),
+                .error = error
+            }
         };
+        mcTrace(10, MDRIVE_CHANNEL, "Signalling EV_MOTION event");
         mdrive_signal_event(device, EV_MOTION, &data);
     }
     return NULL;        // Just for compiler warnings
@@ -533,6 +594,7 @@ mdrive_stop(Driver * self, enum stop_type type) {
         case MCESTOP:
             global.address = '*';
             // XXX: Send with checksum toggled too, for safety
+            // XXX: DE the motors too
             return mdrive_send(&global, "\x1b");
         default:
             return ENOTSUP;

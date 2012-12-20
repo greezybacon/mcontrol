@@ -71,7 +71,7 @@ class NamingContext(Shell):
             try:
                 self.out("Setting %s to %s" % (sn, name.lower()))
                 self.motor.name_set(name.lower(), sn)
-                self.info("Motor successfully named")
+                self.out("Motor successfully named")
                 if self.confirm(
                         "Would you line to set the baudrate to 115.2k? "):
                     self.motor.baudrate = 115200

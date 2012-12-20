@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 from . import overloaded
 from .compiler import Compiler
 from .grammar import language
@@ -26,10 +28,11 @@ class Parser(object):
         self.r.extend(self.compiler.compile(self.ast))
         return self.r
 
-    def compose(self, where):
+    def compose(self, where, declarations=False):
         self.compiler.check()
         for line in self.r:
-            where.write(line + '\n')
+            if line.startswith('VA') == declarations:
+                where.write(line + '\n')
 
 class pragma_dispatcher(overloaded):
 
@@ -49,7 +52,6 @@ class PreparserError(Exception): pass
 class Preparser(object):
     library = {
         '__builtin__': None,
-        'defined': lambda x: x in locals()
     }
 
     def __init__(self, environ=None):
@@ -136,12 +138,14 @@ class Preparser(object):
 
     @handle.when('define')
     def handle(self, keyword, args, node):
+        if self.skipping:
+            return
         what = args.split(' ', 1)
         val = None
         if len(what) == 2:
             val = what.pop()
             try:
-                val = literal_eval(val)
+                val = self.eval(val)
             except ValueError as e:
                 raise ValueError("#define {0}: {1}: {2}".format(
                     what, val, e.message))

@@ -131,7 +131,7 @@ mcSignalEvent(Driver * driver, struct event_info * info) {
     struct event_message evt = {
         .event = info->event
     };
-    // TODO: Add in event data (number|string)
+
     if (info->data)
         evt.data = *info->data;
 
@@ -247,8 +247,7 @@ mcDispatchSignaledEvent(response_message_t * event) {
     while (reg->motor) {
         if ((evt->motor == -1 || evt->motor == reg->motor)
                 && evt->event == reg->event
-                && reg->active
-                && !reg->waiting) {
+                && reg->active) {
             if (reg->callback) {
                 struct event_info notify = {
                     .motor = reg->motor,
@@ -306,6 +305,12 @@ mcEventWait(motor_t motor, event_t event) {
         // Await delivery of the event signal to this thread
         sigwaitinfo(&mask, &info);
 
+        printf("Signal received\n");
+        fflush(stdout);
+
+        if (info.si_signo == SIGINT)
+            // Interrupted
+            break;
         if (info.si_code != SI_MESGQ)
             continue;
         if (1 > mcResponseReceive2(&msg, false, NULL))
