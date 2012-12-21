@@ -150,7 +150,7 @@ mdrive_move_assisted(mdrive_axis_t * device, motion_instruction_t * command,
  * units's deceleration (D), or ((V@t=t - VI) / D).
  *
  * Lastly, the device's intial velocity must also be integrated, since the
- * above triangle graph will technicall sit upon a "box" with the height of
+ * above triangle graph will technically sit upon a "box" with the height of
  * the unit's VI.
  *
  * Returns:
@@ -167,21 +167,33 @@ __urevs_from_midpoint(mdrive_axis_t * device, double t) {
 /**
  * __decel_lambda
  *
- * By inspection from the above graph, the slope of the unit's position
- * (velocity) at time t=t is the unit's deceleration (D) rate. However, the
- * deceleration value in the profile is considered a positive value, so we
- * will cast it as a negative value here, since geometricly it is a negative
- * slope.
+ * Derivative of __urevs_from_midpoint. The above function will expand to:
+ *
+ * (A * t / 2 + VI) * (t + A * t / D)
+ *
+ * The derivative of which will come to:
+ *
+ * (A * t + VI) * (1 + A / D)
+ *
+ * In this use case, though, the above function will be used as 
+ * answer - func(t). Therefore, the derivative should be considered a
+ * negative value.
+ *
+ * Returns:
+ * (double) slope of __urevs_from_midpoint for same value of t.
  */
 static double
 __decel_lambda(mdrive_axis_t * device, double t) {
-    return -(double)device->profile.decel.raw;
+    double A = device->profile.accel.raw;
+    return -1. * (A * t + device->profile.vstart.raw) * 
+        (1 + (A / device->profile.decel.raw));
 }
 
 struct newton_raphson_state {
     mdrive_axis_t * device;             /* Device with motion profile */
     double          xn;                 /* Current value in sequence */
     double          answer;             /* (this) - func() == 0 */
+    int             rounds;
     /* Function whose x value at f(x) = answer is sought */
     double (*func)(mdrive_axis_t *, double); 
     double (*prime)(mdrive_axis_t *, double); /* d/dx (func(x)) */
@@ -209,6 +221,7 @@ static double
 _newton_raphson_iter(struct newton_raphson_state * state) {
     state->xn -= (state->answer - state->func(state->device, state->xn))
                 / state->prime(state->device, state->xn);
+    state->rounds++;
     return state->xn;
 }
 
@@ -253,13 +266,10 @@ _newton_raphson_xcel(mdrive_axis_t * device, double answer, double x0,
     s1 = _newton_raphson_iter(&state);
     s2 = _newton_raphson_iter(&state);
     do {
-        rounds = 4;
-        while (rounds--) {
-            next = s2 - (((s2 - s1) * (s2 - s1)) / (s0 - (2 * s1) + s2));
-            s0 = s1;
-            s1 = s2;
-            s2 = _newton_raphson_iter(&state);
-        }
+        next = s2 - (((s2 - s1) * (s2 - s1)) / (s2 - (2 * s1) + s0));
+        s0 = s1;
+        s1 = s2;
+        s2 = _newton_raphson_iter(&state);
     } while (abs(answer - func(device, next)) > tolerance);
     return next;
 }
@@ -285,9 +295,9 @@ mdrive_project_completion(mdrive_axis_t * device,
     long long t2, total;
 
     if (rem < 0) {
-        // Unit will never reach vmax and will start decelerating at 50% of
-        // the total distance. Estimate the travel time by numerical
-        // analysis
+        // Unit will never reach vmax and will start decelerating at the
+        // intersection of the acceleration and deceleration curves.
+        // Estimate the travel time by numerical analysis
         int t = 1e6 * _newton_raphson_xcel(device,
             /* (this) - func() == 0 */ abs(details->urevs),
             /* x0 -- half of A ramp */ t1 / 2e9,
@@ -295,17 +305,13 @@ mdrive_project_completion(mdrive_axis_t * device,
             __urevs_from_midpoint, __decel_lambda);
         //
         // Then, t is where the curves meet, and t_finish can be found from
-        // t_decel = (accel * t + vstart) / decel 
+        // t_decel = (accel * t) / decel 
         // t_total = t + t_decel
         //
-        // But we just need t -- where the unit will start decelerating
         details->vmax_us = details->decel_us = t;
-        // Recalc t1 and t3 times:
-        // t1 = Accel time: t * 1000
+        // Recalc t3 time:
         // t3 = Decel time: velocity-at-t / decel
-        t3 = (device->profile.vstart.raw
-            + (device->profile.accel.raw * t))
-            / device->profile.decel.raw;
+        t3 = (device->profile.accel.raw * t) / device->profile.decel.raw;
         total = (t + t3) * 1000;
     }
     else {
