@@ -15,15 +15,16 @@ class MotorContext(Shell):
         Shell.__init__(self, context=parent.context)
         self.motor = motor
         self.name = name
-        self.prompt = Shell.prompt[:-2] + ":{0}> ".format(name)
+        self.prompt_text = Shell.prompt_text[:-2] + ":{0}> ".format(name)
         self.parent = parent
+        self.context['profiles'] = {}
 
     def do_get(self, what):
         try:
             if hasattr(self, '_do_get_' + what):
                 return getattr(self, '_do_get_' + what)()
             else:
-                self.out(repr(getattr(self.motor, what)))
+                self.out(getattr(self.motor, what))
         except NoDaemonException:
             self.error("Daemon not responding", "is one running?")
         except AttributeError:
@@ -221,10 +222,16 @@ class MotorContext(Shell):
 
         profile get accel inch
         profile set accel 490 revs
+
+        Profiles can also be stashed and later restored using the 'save' and
+        'use' subcommands.
+
+        profile stash <name>
+        profile use <name>
         """
         parts = info.split()
         getset = parts.pop(0)
-        if getset not in ('get','set'):
+        if getset not in ('get','set','use','stash'):
             return self.error("Incorrect operation", "See 'help profile'")
 
         component = parts.pop(0)
@@ -235,6 +242,17 @@ class MotorContext(Shell):
                 val = int(val)
             except ValueError:
                 return self.error("Invalid value", "Integer required")
+
+        elif getset == "stash":
+            self.context['profiles'][component] = self.motor.profile.copy()
+            return
+
+        elif getset == "use":
+            if component not in self.context['profiles']:
+                return self.error("{0}: Profile not yet created",
+                    "Use 'profile save'")
+            self.motor.profile = self.context['profiles'][component]
+            return
 
         units = None
         if len(parts):
@@ -248,10 +266,21 @@ class MotorContext(Shell):
 
         try:
             if getset == "set":
-                setattr(self.motor.profile, component, (val, units))
+                if 'current' in component:
+                    setattr(self.motor.profile, component, val)
+                else:
+                    setattr(self.motor.profile, component, (val, units))
                 self.motor.profile.commit()
             else:
                 val = getattr(self.motor.profile, component)
                 self.info("{0} {1}".format(val, self.motor.units))
         except AttributeError:
             self.error("Unsupported profile component")
+
+    def help_units(self):
+        return trim("""
+        Currently supported units are
+        {0}
+        """.format(
+                ', '.join([x for x in all_units if type(x) is str])
+        ))

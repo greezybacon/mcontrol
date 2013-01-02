@@ -121,8 +121,18 @@ struct motion_profile {
                                      // commanded position. This determines
                                      // when a stall is flagged.
     struct motion_profile_attrs {
-        unsigned        hardware    :1;     // Profile saved in microcode
-        unsigned        number      :3;     // Profile number (8 max)
+        unsigned        hardware    :1;     // Profile saved in microcode / hardware
+        unsigned        number      :3;     // Profile number (7 max, 1-based)
+
+        // If set, the profile should be refreshed to/from the motor
+        // (depends if the profile operation was get/set)
+        unsigned        refresh     :1;     
+
+        // Unset initially. The first time a get or set is requested of a
+        // motor, the motor should be peeked/poked to retrieve the actual
+        // values reflected in the device. Thereafter, the loaded flag
+        // should be set to indicate that further changes are authoritative.
+        unsigned        loaded      :1;
     } attrs;
 };
 

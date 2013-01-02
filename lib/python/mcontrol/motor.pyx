@@ -142,6 +142,16 @@ cdef class Motor:
                 self._has_profile = True
             return self._profile
 
+        def __set__(self, profile):
+            if not isinstance(profile, MotorProfile):
+                raise ValueError("MotorProfile instance expected")
+            if not profile.motor is self:
+                profile = profile.copy()
+                profile.motor = self
+            self._profile = profile
+            # Send the profile to the motor
+            self._profile.commit()
+
     def move(self, how_much, units=None):
         if units is None:
             units = self.units
