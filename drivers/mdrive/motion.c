@@ -82,7 +82,7 @@ mdrive_move_assisted(mdrive_axis_t * device, motion_instruction_t * command,
         unsigned    mode        :3;
         unsigned    profile     :3;
         unsigned    reset_pos   :1;
-        unsigned    notify      :8;
+        unsigned    steps       :24;
     } R1 = {
         .mode = 0
     };
@@ -102,13 +102,16 @@ mdrive_move_assisted(mdrive_axis_t * device, motion_instruction_t * command,
             return ENOTSUP;
     }
 
-    // TODO: Configure hardware profile if current motor profile has the
-    //       hardware flag set
-    mdrive_set_profile(device, &command->profile);
+    // Configure hardware profile if current motor profile has the hardware
+    // flag set
+    if (command->profile.attrs.hardware)
+        R1.profile = command->profile.attrs.number;
+    else
+        mdrive_set_profile(device, &command->profile);
 
     char buffer[64];
     snprintf(buffer, sizeof buffer, "R1=%d", R1.mode + (R1.profile << 3)
-        + (R1.reset_pos << 6) + (R1.notify << 7));
+        + (R1.reset_pos << 6));
     if (mdrive_send(device, buffer))
         return EIO;
 
@@ -264,13 +267,19 @@ _newton_raphson_xcel(mdrive_axis_t * device, double answer, double x0,
     double s0, s1, s2, next;
     s0 = _newton_raphson_iter(&state);
     s1 = _newton_raphson_iter(&state);
-    s2 = _newton_raphson_iter(&state);
     do {
+        s2 = _newton_raphson_iter(&state);
         next = s2 - (((s2 - s1) * (s2 - s1)) / (s2 - (2 * s1) + s0));
         s0 = s1;
         s1 = s2;
-        s2 = _newton_raphson_iter(&state);
     } while (abs(answer - func(device, next)) > tolerance);
+
+    mcTraceF(10, 1, "Arrived at the answer of %.3f in %d rounds", next, state.rounds);
+
+    // XXX: In our case here, the graph formed by the function in
+    //      __urevs_from_midpoint is symmetrical. Since negative time
+    //      doesn't make sense here, if we arrived at a negative answer,
+    //      just return the positive value.
     return next;
 }
 
@@ -278,27 +287,28 @@ int
 mdrive_project_completion(mdrive_axis_t * device,
         struct motion_details * details) {
     // Acceleration ramp
-    long long dividend =
-        (long long)1e9 * (device->profile.vmax.raw - device->profile.vstart.raw);
-    long long t1 = dividend / device->profile.accel.raw;
-    int avg = (device->profile.vmax.raw + device->profile.vstart.raw) / 2;
-    int distance = avg * t1 / (int)1e9;
-
+    double ramp = device->profile.vmax.raw - device->profile.vstart.raw,
+    // Acceleration ramp
+           t1 = ramp / device->profile.accel.raw,
+           avg = (device->profile.vmax.raw + device->profile.vstart.raw) >> 1,
+           distance = avg * t1,
+    // Time at VM
+           t2,
     // Deceleration ramp
-    long long t3 = dividend / device->profile.decel.raw;
-    distance += avg * t3 / (int)1e9;
+           t3 = ramp / device->profile.decel.raw;
+    distance += avg * t3;
 
     // And the remaining distance, performed at vmax
-    signed long long rem = abs(details->urevs) - distance;
+    double rem = fabs(details->urevs) - distance;
 
     // Now total time (in nano-seconds) is t1 + t2 + t3
-    long long t2, total;
+    long long total;
 
     if (rem < 0) {
         // Unit will never reach vmax and will start decelerating at the
         // intersection of the acceleration and deceleration curves.
         // Estimate the travel time by numerical analysis
-        int t = 1e6 * _newton_raphson_xcel(device,
+        double t = _newton_raphson_xcel(device,
             /* (this) - func() == 0 */ abs(details->urevs),
             /* x0 -- half of A ramp */ t1 / 2e9,
             /* Accept tolerance of 100urevs */ 100,
@@ -308,19 +318,25 @@ mdrive_project_completion(mdrive_axis_t * device,
         // t_decel = (accel * t) / decel 
         // t_total = t + t_decel
         //
-        details->vmax_us = details->decel_us = t;
+        details->vmax_us = details->decel_us = t * 1e6;
         // Recalc t3 time:
         // t3 = Decel time: velocity-at-t / decel
         t3 = (device->profile.accel.raw * t) / device->profile.decel.raw;
-        total = (t + t3) * 1000;
+        total = (t + t3) * 1e9;
     }
     else {
-        t2 = ((long long)1e9 * rem) / device->profile.vmax.raw;
+        t2 = rem / device->profile.vmax.raw;
 
-        details->vmax_us = t1 / 1000;
-        details->decel_us = (t1 + t2) / 1000;
-        total = t1 + t2 + t3;
+        details->vmax_us = t1 * 1e6;
+        details->decel_us = (t1 + t2) * 1e6;
+        total = (t1 + t2 + t3) * 1e9;
     }
+
+    // So far, it is assumed that the unit will decelerate to the VI of the
+    // unit, but instead, the unit will decelerate to a complete stop. Add
+    // in the rest of the decel time to decelerate from VI to a stop
+    total += (long long)1e9 * device->profile.vstart.raw
+        / device->profile.decel.raw;
 
     struct timespec duration = {
         .tv_sec =   total / (int)1e9,
@@ -446,9 +462,10 @@ mdrive_async_completion_correct(void * arg) {
         double dt = 1. * mdrive_steps_to_microrevs(device, abs(vel))
             / device->profile.decel.raw;
         struct timespec callback = {
-            .tv_nsec = (int)1e9 * dt - (device->stats.latency >> 1) + 1e6
+            .tv_sec = (int)dt,
+            .tv_nsec = (int)1e9 * (dt - (int)dt)
         };
-        if (callback.tv_nsec < 1e6)
+        if (callback.tv_sec == 0 && callback.tv_nsec < device->stats.latency)
             // For all intents and purposes, the unit is stopped, because we
             // won't be able to communicate with it again until well after
             // it stops. Estimate the resting position of the unit and move
@@ -460,7 +477,12 @@ mdrive_async_completion_correct(void * arg) {
         else {
             mcTraceF(50, MDRIVE_CHANNEL, "Early. Callback in %dns",
 		        callback.tv_nsec);
-
+            // Subtract time for device latency
+            callback.tv_nsec -= (device->stats.latency >> 1) + 1e6;
+            while (callback.tv_nsec < 0) {
+                callback.tv_sec--;
+                callback.tv_nsec += (int)1e9;
+            }
             // Call this routine again at the estimated time of completion
             // (minus about half of the unit's latency)
             device->cb_complete = mcCallback(&callback,

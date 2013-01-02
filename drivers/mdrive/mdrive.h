@@ -329,4 +329,9 @@ extern int MDRIVE_CHANNEL, MDRIVE_CHANNEL_TX, MDRIVE_CHANNEL_RX;
       __typeof__ (b) _b = (b); \
       _a < _b ? _a : _b; })
 
+#define max(a,b) \
+   ({ __typeof__ (a) _a = (a); \
+      __typeof__ (b) _b = (b); \
+      _a > _b ? _a : _b; })
+
 #endif

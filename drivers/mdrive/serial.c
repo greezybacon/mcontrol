@@ -903,6 +903,7 @@ wait_longer:
             tsAdd(&timeout, &more_waittime, &timeout);
             goto wait_longer;
         }
+        // Detect remote echo
         else if (options->expect_data && axis->echo == EM_ON
                 && response->length) {
             // In echo mode, then unit will send the request back in the
