@@ -5,6 +5,8 @@ from lib import term
 
 import cmd
 import inspect
+import os
+import re
 import sys
 
 class Shell(object, cmd.Cmd):
@@ -46,6 +48,35 @@ Version 0.1-beta
             return self.prompt_text
         else:
             return ''
+
+    def do_source(self, filename):
+        """
+        Executes all the commands in the given filename in the current shell
+        context.
+
+        Usage:
+
+        source <filename>
+        """
+        if not filename:
+            return self.error("Specify filename of script to source")
+        elif not os.path.exists(filename):
+            return self.error("{0}: Script does not exist")
+
+        self.status("Reading script from {0}".format(filename))
+
+        # Force quiet mode and swich standard-in to the script file
+        quiet, self.context['quiet'] = self.context['quiet'], True
+        stdin, sys.stdin = sys.stdin, open(filename, 'rt')
+        intro, self.intro = self.intro, ''
+
+        # Execute all the commands in the script file
+        self.run()
+
+        # Restore previous quiet mode and standard-in
+        self.context['quiet'] = quiet
+        sys.stdin = stdin
+        self.intro = intro
 
     def do_EOF(self, line):
         return self.do_exit(line)
@@ -92,12 +123,17 @@ Version 0.1-beta
             what, ': ' + hint if hint else ''),
             self.context['stderr'])
 
+    def precmd(self, line):
+        # Drop comments
+        return re.sub(r'#.*$', '', line)
+
     def onecmd(self, str):
         try:
             return cmd.Cmd.onecmd(self, str)
         except Exception as e:
             self.error("{0}: (Unhandled) {1}".format(
                 type(e).__name__, e))
+            return True
 
     def run(self):
         shell = self
