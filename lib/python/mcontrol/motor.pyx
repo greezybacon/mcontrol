@@ -102,7 +102,7 @@ cdef class Motor:
                         "(val, units)")
                 position, units = position
 
-                if type(units) is not int:
+                if type(units) not in (int, type(None)):
                     if units not in all_units:
                         raise ValueError("Unsupported units")
                     units = all_units[units]
@@ -126,6 +126,14 @@ cdef class Motor:
                 raise RuntimeError(status)
 
             return not not moving
+
+    property stalled:
+        def __get__(self):
+            cdef int stalled
+            raise_status(
+                mcQueryInteger(self.id, k.MCSTALLED, &stalled),
+                "Unable to retrieve device state")
+            return not not stalled
 
     property profile:
         def __get__(self):

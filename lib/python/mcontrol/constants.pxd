@@ -2,6 +2,7 @@ cdef extern from "motor.h":
     ctypedef enum motor_query:
         MCPOSITION
         MCMOVING
+        MCSTALLED
 
         MCPROFILE
         MCACCEL
