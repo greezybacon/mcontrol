@@ -136,6 +136,14 @@ class MotorContext(Shell):
         except ImportError:
             pass
 
+    def do_wait(self, line):
+        """
+        Wait indefinitely until current motion is completed
+        """
+        if not self.motor.moving:
+            return
+        self.motor.on(Event.EV_MOTION).wait()
+
     def do_slew(self, line):
         """
         Slew the motor at the given rate. Units if not specified are assumed

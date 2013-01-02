@@ -7,9 +7,9 @@ import cmd
 import inspect
 import sys
 
-class Shell(cmd.Cmd):
+class Shell(object, cmd.Cmd):
 
-    prompt = "mcontrol> "
+    prompt_text = "mcontrol> "
     intro = """
                ,       .        .
 ._ _  _. _ ._ -+-._. _ | ___  _.|*
@@ -24,13 +24,28 @@ Version 0.1-beta
         'motor': None,
         'motors': {},
         'stdout': sys.stdout,
-        'stderr': sys.stderr
+        'stderr': sys.stderr,
+        'quiet': not sys.stdin.isatty(),
+        'tests': {}
     }
 
     def __init__(self, context=None):
         cmd.Cmd.__init__(self)
         if context and type(context) is dict:
             self.context.update(context)
+
+    def __getitem__(self, what):
+        return self.context[what]
+
+    def __setitem__(self, what, item):
+        self.context[what] = item
+
+    @property
+    def prompt(self):
+        if not self.context['quiet']:
+            return self.prompt_text
+        else:
+            return ''
 
     def do_EOF(self, line):
         return self.do_exit(line)
@@ -55,7 +70,14 @@ Version 0.1-beta
                 method.__doc__ = trim(method.__doc__)
 
     def out(self, what):
-        self.context['stdout'].write(what + '\n')
+        where = self.context['stdout']
+        if type(where) is file:
+            if type(what) not in (str, unicode):
+                what = repr(what)
+            where.write(what + '\n')
+        else:
+            # Internal pipes like what's used in the testing module
+            where.write(what)
 
     def status(self, what):
         term.output(what, self.context['stderr'])
