@@ -273,7 +273,8 @@ mcDispatchSignaledEvent(response_message_t * event) {
  *
  * Returns:
  * (int) EINVAL if no registration was found for the indicated event.
- *       Otherwise, 0 after the event is received
+ *       EINTR if the wait was interrupted.  Otherwise, 0 after the event is
+ *       received
  */
 int
 mcEventWait(motor_t motor, event_t event) {
@@ -291,9 +292,12 @@ mcEventWait(motor_t motor, event_t event) {
         // No registration found
         return EINVAL;
 
+    int status = 0;
+
     sigset_t mask;
     sigemptyset(&mask);
     sigaddset(&mask, SIGUSR2);
+    sigaddset(&mask, SIGINT);
 
     // Block the delivery of the async signal to this process
     sigprocmask(SIG_BLOCK, &mask, NULL);
@@ -305,15 +309,13 @@ mcEventWait(motor_t motor, event_t event) {
         // Await delivery of the event signal to this thread
         sigwaitinfo(&mask, &info);
 
-        printf("Signal received\n");
-        fflush(stdout);
-
-        if (info.si_signo == SIGINT)
-            // Interrupted
+        if (info.si_signo == SIGINT) {
+            status = EINTR;
             break;
-        if (info.si_code != SI_MESGQ)
+        }
+        else if (info.si_code != SI_MESGQ)
             continue;
-        if (1 > mcResponseReceive2(&msg, false, NULL))
+        else if (1 > mcResponseReceive2(&msg, false, NULL))
             continue;
         
         evt = (void *) msg.payload;
@@ -324,11 +326,15 @@ mcEventWait(motor_t motor, event_t event) {
     // Allow delivery of the async signal again
     sigprocmask(SIG_UNBLOCK, &mask, NULL);
 
+    // Allow the process to be interrupted elsewhere
+    if (status == EINTR)
+        kill(getpid(), SIGINT);
+
     // Mark event registration active (if not unsubscribed, which might make
     // reg be a registration for something else, now)
     if (reg->motor == motor && reg->event == event)
         reg->waiting = false;
 
     // Awaited event received
-    return 0;
+    return status;
 }
