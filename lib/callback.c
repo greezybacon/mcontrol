@@ -44,7 +44,6 @@ static const int TIMER_SIGNAL = SIGINT;
 static void
 _mcCallbackListPop(void) {
     pthread_mutex_lock(&callback_list_lock);
-
     if (callbacks->next) {
         callbacks = callbacks->next;
         free(callbacks->prev);
@@ -54,7 +53,6 @@ _mcCallbackListPop(void) {
         free(callbacks);
         callbacks = NULL;
     }
-
     pthread_mutex_unlock(&callback_list_lock);
 }
 
@@ -105,11 +103,12 @@ _mcCallbackThread(void *arg) {
             // Timer expiration is still in the future
             continue;
 
+        int id = callbacks->id;
         // Perform the callback
         callbacks->callback(callbacks->arg);
 
         // Remove the HEAD entry from the callback list
-        _mcCallbackListPop();
+        mcCallbackCancel(id);
     }
     // Signal that the callback thread should be restarted
     timer_thread_id = 0;
@@ -181,7 +180,7 @@ mcCallbackAbs(const struct timespec * when, callback_function callback,
             info->prev = tail;
         }
         // Empty list?
-        else
+        else if (!callbacks)
             callbacks = info;
     }
 
@@ -225,15 +224,16 @@ mcCallbackCancel(int callback_id) {
                 current->next->prev = current->prev;
             }
             // end of the list
-            else if (current->prev)
+            else if (current->prev) {
                 current->prev->next = NULL;
+            }
             // beginning of a list with two or more items
             else if (current == callbacks && current->next) {
                 callbacks = current->next;
                 callbacks->prev = NULL;
             }
             // beginning and only item in the list
-            else
+            else if (current == callbacks)
                 callbacks = NULL;
 
             free(current);
