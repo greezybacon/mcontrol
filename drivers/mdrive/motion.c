@@ -423,8 +423,7 @@ mdrive_async_completion_correct(void * arg) {
     if (!device->microcode.features.following_error)
         count--;
 
-    if (mdrive_get_integers(device, vars, vals, count))
-        return NULL;
+    while (mdrive_get_integers(device, vars, vals, count));
 
     // Add (half-of) comm latency time (ns -> us)
     travel_time += device->stats.latency / 2000;
