@@ -52,7 +52,19 @@ class TestingCommands(Mixin):
         elif test.status == test.Status.FAILED:
             self.error("Test reports failure")
         elif test.status == test.Status.SUCCEEDED:
-            self.info("Test completed successfully")
+            self.status(">>> Test completed successfully")
+        else:
+            self.warn("Test aborted unexpectedly")
+
+    def complete_run(self, text, line, begidx, endix):
+        return [x for x in self['tests'].keys() if x.startswith(text)]
+
+    def do_tests(self, ignored):
+        """
+        Displays a list of all loaded test scripts
+        """
+        for test in self.context['tests']:
+            self.out(test)
 
 import os
 class Counter(object):
@@ -446,12 +458,16 @@ class TestingRunContext(Shell):
     def run(self):
         self.next = 0
         instructions = list(self.test)
+        self.status = self.Status.RUNNING
         while self.next < len(instructions):
             # Evaluate each command. Goto commands will change self.next, so
             # don't do a simple iteration of the instructions
             if self.execute(instructions[self.next]):
                 break
             self.next += 1
+        # Assume success if not otherwise set
+        if self.status == self.Status.RUNNING:
+            self.status = self.Status.SUCCEEDED
 
 # Add help for the commands in the Run context into the setup context
 for func in dir(TestingRunContext):
