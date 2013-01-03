@@ -266,7 +266,7 @@ mdrive_classify_response(mdrive_axis_t * axis, mdrive_response_t * response) {
             mdrive_clear_error(axis);
 
         if (response->code) {
-            mdrive_signal_error_event(axis, response->error);
+            mdrive_signal_error_event(axis, response->code);
             if (response->code == MDRIVE_EOVERRUN)
                 return RESPONSE_RETRY;
             else
