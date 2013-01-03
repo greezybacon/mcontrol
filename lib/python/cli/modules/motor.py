@@ -7,6 +7,14 @@ from lib import term
 
 import time
 
+abbreviations = {
+    'in':   all_units['inch']
+}
+
+conversions = {
+    all_units['inch']:      (1000, all_units['mil'])
+}
+
 class MotorContext(Shell):
 
     intro = None
@@ -89,6 +97,31 @@ class MotorContext(Shell):
         self._do_set_units(units)
         self.motor.scale = float(scale)
 
+    def get_value_and_units(self, value, units=None):
+        """
+        Allows the user to input units with a command, and the system will
+        convert them to the unit numbers used by mcontrol. Also, if a
+        floating point number is given, the value will be converted to a
+        smaller unit automagically
+        """
+        units = units or self.motor.units
+        if type(units) is not int:
+            if units not in all_units:
+                raise ValueError("Unknown units given")
+            units = all_units[units]
+        if "." in value:
+            if units in conversions:
+                conv = conversions[units]
+                value = float(value) * conv[0]
+                units = conv[1]
+            else:
+                raise ValueError("Integer value required for these units")
+        else:
+            value = int(value)
+
+        return value, units
+
+
     def do_move(self, where):
         func = self.motor.move
         units = None
@@ -102,26 +135,19 @@ class MotorContext(Shell):
         if parts[0] == 'to':
             func = self.motor.moveTo
             parts.pop(0)
-        if parts[-1] in all_units.values():
-            for id, name in all_units.items():
-                if name == parts[-1]:
-                    units = id
-                    break
-            else:
-                self.error("{0}: Unsupported units".format(what))
-            parts.pop()
-        if len(parts) == 1:
-            try:
-                func(int(parts[0]), units)
-                if wait:
-                    ev = self.motor.on(Event.EV_MOTION)
-                    ev.wait()
-                    self.out("Unit reports error of: {0}".format(
-                        ev.data.error))
-                return
-            except:
-                raise
-        self.error("Incorrect usage", "see 'help move'")
+
+        if len(parts) > 2:
+            return self.error("Incorrect usage", "see 'help move'")
+
+        try:
+            value, units = self.get_value_and_units(*parts)
+        except ValueError as ex:
+            return self.error(repr(ex))
+
+        func(value, units)
+        if wait:
+            ev = self.motor.on(Event.EV_MOTION)
+            ev.wait()
 
     def _move_done(self, event):
         if event.data.completed:
@@ -153,18 +179,14 @@ class MotorContext(Shell):
         Slew motor at 200 mils per second
         """
         parts = line.split()
-        val = parts.pop(0)
-        units = None
-        if len(parts):
-            for id, name in all_units.items():
-                if name == parts[-1]:
-                    units = id
-                    break
-            else:
-                self.error("{0}: Unsupported units".format(what))
-            parts.pop()
-        if len(parts):
-            return self.error("Incorrect usage", "see 'help slew")
+
+        if len(parts) > 2:
+            return self.error("Incorrect usage", "see 'help slew'")
+
+        try:
+            value, units = self.get_value_and_units(*parts)
+        except ValueError as ex:
+            return self.error(repr(ex))
 
         self.motor.slew(float(val), units)
 
@@ -189,12 +211,17 @@ class MotorContext(Shell):
         """
         parts = line.split()
         # TODO: Collect current unit/scale
-        self.motor.units = all_units['milli-rev']
-        self.motor.scale = 1000
+        slip, self.motor.profile.slip = self.motor.profile.slip, (5, 'milli-rev')
+        rc, self.motor.profile.run_current = self.motor.profile.run_current, 25
+        self.motor.profile.commit()
+        units, self.motor.units = self.motor.units, all_units['milli-rev']
+        scale, self.motor.scale = self.motor.scale, 1000
+
         try:
             self.motor.encoder = 1
         except:
             raise
+
         rate = 500
         if 'left' in parts:
             rate = -rate
@@ -209,6 +236,12 @@ class MotorContext(Shell):
                     # Not a stall event, wait for a stall event
                     info.reset()
                 time.sleep(0.1)
+
+        self.motor.units = units
+        self.motor.scale = scale
+        self.motor.profile.slip = slip
+        self.motor.profile.run_current = rc
+        self.motor.profile.commit()
 
     def do_info(self, line):
         """
@@ -245,9 +278,8 @@ class MotorContext(Shell):
         component = parts.pop(0)
 
         if getset == "set":
-            val = parts.pop(0)
             try:
-                val = int(val)
+                val, units = self.get_value_and_units(*parts)
             except ValueError:
                 return self.error("Invalid value", "Integer required")
 
@@ -262,13 +294,6 @@ class MotorContext(Shell):
             self.motor.profile = self.context['profiles'][component]
             return
 
-        units = None
-        if len(parts):
-            units = parts.pop(0)
-            if units not in all_units:
-                self.error("{0}: Unsupported units".format(units),
-                    "See 'help units'")
-
         if len(parts):
             return SyntaxError("See 'help profile'")
 
@@ -279,11 +304,15 @@ class MotorContext(Shell):
                 else:
                     setattr(self.motor.profile, component, (val, units))
                 self.motor.profile.commit()
-            else:
+            elif getset == "get":
                 val = getattr(self.motor.profile, component)
                 self.info("{0} {1}".format(val, self.motor.units))
+            else:
+                return self.error("{0}: Unsupported profile command"
+                    .format(getset))
         except AttributeError:
-            self.error("Unsupported profile component")
+            self.error("{0}: Unsupported profile component"
+                .format(component))
 
     def help_units(self):
         return trim("""

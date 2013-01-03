@@ -153,24 +153,14 @@ cdef class Motor:
             self._profile.commit()
 
     def move(self, how_much, units=None):
-        if units is None:
-            units = self.units
-
-        cdef int status
-        status = mcMoveRelativeUnits(self.id, how_much, units)
-
-        if status != 0:
-            raise RuntimeError(status)
+        raise_status(
+            mcMoveRelativeUnits(self.id, how_much, units or self.units),
+            "Unable to command relative move")
 
     def moveTo(self, where, units=None):
-        if units is None:
-            units = self.units
-
-        cdef int status
-        status = mcMoveAbsoluteUnits(self.id, where, units)
-
-        if status != 0:
-            raise RuntimeError(status)
+        raise_status(
+            mcMoveAbsoluteUnits(self.id, where, units or self.units),
+            "Unable to command absolute move")
 
     def slew(self, rate, units=None):
         raise_status(
