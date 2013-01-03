@@ -748,7 +748,7 @@ mdrive_communicate(mdrive_axis_t * axis, const char * command,
     // additional wait time (requires checksum mode and responds == true)
     int onechartime = mdrive_xmit_time(axis->device, 1);
     struct timespec now, timeout, first_waittime = { .tv_sec = 0 },
-        more_waittime = { .tv_nsec = (int)25e6 + onechartime * 62 };
+        more_waittime = { .tv_nsec = (int)15e6 + onechartime * 62 };
 
     if (axis->party_mode)
         // NOTE: Dec the buffer size to save room for the checksum byte
@@ -842,7 +842,7 @@ wait_longer:
                 // XXX: response if existing is not classified and status is
                 //      left at default value of 0 (RESPONSE_OK)
                 status = RESPONSE_TIMEOUT;
-                goto resend;
+                goto process;
             }
         }
 
@@ -866,6 +866,7 @@ wait_longer:
 
         pthread_mutex_unlock(&axis->device->rxlock);
 
+process:
         if (!response)
             goto resend;
 
@@ -890,14 +891,11 @@ wait_longer:
 
         if (options->expect_data && !response->length && 
                 (response->ack | response->nack | response->crlf)) {
-            // Handle embedded error condition if one exists
-            mdrive_classify_response(axis, response);
-
             // A response was expected but not received -- wait longer. Add
             // the additional wait time to the timeout and wait longer.
             // However, if the unit indicated an error already, then we're
             // finished.
-            if (response->code)
+            if (response->code || status == RESPONSE_TIMEOUT)
                 break;
             mcTrace(30, MDRIVE_CHANNEL_RX, "Waiting longer ...");
             tsAdd(&timeout, &more_waittime, &timeout);
@@ -926,21 +924,21 @@ wait_longer:
 
         status = mdrive_classify_response(axis, response);
         
-        if (status == RESPONSE_RETRY) {
-            axis->stats.overflows++;
-        } else if (status == RESPONSE_OK || options->expect_err) {
-            // Error was handled in the response_classify routine (if there
-            // was one)
+        if (status == RESPONSE_OK || options->expect_err) {
+            // Error was handled in the classify_response routine (if there
+            // was a response)
             break;
         } else {
-            if (status == RESPONSE_BAD_CHECKSUM)
+            // Transmission will be retried due to unacceptable response
+            // from the unit. Keep interesting statistics, though.
+            if (status == RESPONSE_RETRY)
+                axis->stats.overflows++;
+            else if (status == RESPONSE_BAD_CHECKSUM)
                 axis->stats.bad_checksums++;
             else if (status == RESPONSE_UNKNOWN)
                 mcTrace(20, MDRIVE_CHANNEL_RX, "UNKNOWN response received");
             // Wait and retry the transmission
         }
-        // Sleep to timeout
-        // clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &timeout, NULL);
 resend:
         // Clear previous response if retrying
         if (response) {
