@@ -15,4 +15,7 @@ mcCallbackAbs(const struct timespec * when, callback_function callback,
 extern int
 mcCallbackCancel(int id);
 
+static int
+mcCallbackDequeue(int id);
+
 #endif

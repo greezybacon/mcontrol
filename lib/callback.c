@@ -108,7 +108,7 @@ _mcCallbackThread(void *arg) {
         callbacks->callback(callbacks->arg);
 
         // Remove the HEAD entry from the callback list
-        mcCallbackCancel(id);
+        mcCallbackDequeue(id);
     }
     // Signal that the callback thread should be restarted
     timer_thread_id = 0;
@@ -158,16 +158,16 @@ mcCallbackAbs(const struct timespec * when, callback_function callback,
 
     struct callback_list * current = callbacks, * tail = NULL;
     while (current) {
-        if ((current->abstime.tv_sec > when->tv_sec)
+        if ((current->abstime.tv_sec >= when->tv_sec)
                 && (current->abstime.tv_nsec > when->tv_nsec)) {
             // New callback occurs before this one. Insert the callback
             // here
             info->next = current;
-            info->prev = current->prev;
-            if (current->next)
-                current->next->prev = info;
-            if (current->prev)
+            if (current->prev) {
+                info->prev = current->prev;
                 current->prev->next = info;
+            }
+            current->prev = info;
             break;
         }
         tail = current;
@@ -211,8 +211,8 @@ mcCallback(const struct timespec * when, callback_function cb,
     return mcCallbackAbs(&then, cb, arg);
 }
 
-int
-mcCallbackCancel(int callback_id) {
+static int
+mcCallbackDequeue(int callback_id) {
     pthread_mutex_lock(&callback_list_lock);
 
     struct callback_list * current = callbacks;
@@ -243,6 +243,17 @@ mcCallbackCancel(int callback_id) {
     }
 
     pthread_mutex_unlock(&callback_list_lock);
-
     return (current != NULL) ? 0 : EINVAL;
+}
+
+int
+mcCallbackCancel(int callback_id) {
+    int status = mcCallbackDequeue(callback_id);
+    if (status)
+        return status;
+
+    // Signal the timer thread of the changes
+    pthread_kill(timer_thread_id, TIMER_SIGNAL);
+
+    return 0;
 }
