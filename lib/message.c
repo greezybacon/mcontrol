@@ -142,6 +142,8 @@ mcEventSend(int pid, struct event_message * evt) {
     status = mq_send(client_inbox, (void *)&m,
         m.size, PRIORITY_EVENT);
 
+    mq_close(client_inbox);
+
     if (status == -1)
         return -errno;
     
@@ -212,6 +214,8 @@ mcMessageReply(request_message_t * message, void * payload, int payload_size) {
     snprintf(boxname, sizeof boxname, CLIENT_QUEUE_FMT, message->pid, "wait");
 
     mqd_t client_inbox = mq_open(boxname, O_WRONLY);
+    if (client_inbox == -1)
+        return;
     
     status = mq_send(client_inbox, (void *)&response,
         response.size, PRIORITY_CMD);
