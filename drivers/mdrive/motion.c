@@ -126,161 +126,57 @@ mdrive_move_assisted(mdrive_axis_t * device, motion_instruction_t * command,
     return 0;
 }
 
-/**
- * __urevs_from_midpoint
- *
- * Estimation of total device rotation if it accelerates its rotation from
- * time t=0 until t=t, and then decelerates back to a stop. This function
- * assumes that the unit's VM (max-velocity, profile.vmax) is never reached.
- *
- * The unit's velocity curve will look like
- *
- * v ^       /\
- *   |     /    \
- *   |   /        \
- *   | /            \
- *   +--------+---------> t
- *   t=0      t=t
- *
- * The area under the curve represents the total distance traveled --
- * urevs (micro-rotations) in this case. The unit will accelerate from and
- * decelerate to the unit's VI (initial-velocity, profile.vstart).
- * Therefore, the acceleration half (left-side) will be (1/2 * b * h), or
- * (1/2) * (t - 0) * (V@t=t), where V@t=t is velocity at time t=t,
- * (VI + A * t^2), where A is the unit's acceleration in urevs/sec^2, and
- * the deceleration half (right-side) will be (1/2) * (V@t=t * decel_time),
- * where decel_time is the velocity at t=t minus VI, quantity over the
- * units's deceleration (D), or ((V@t=t - VI) / D).
- *
- * Lastly, the device's intial velocity must also be integrated, since the
- * above triangle graph will technically sit upon a "box" with the height of
- * the unit's VI.
- *
- * Returns:
- * (double) Estimated unit travel (in urevs) if the unit accelerates from
- * time t=0 until t=t and decelerates back to a stop.
- */
-static double
-__urevs_from_midpoint(mdrive_axis_t * device, double t) {
-    int vel_at_t = device->profile.accel.raw * t;
-    double decel_time = (1.0 * vel_at_t) / device->profile.decel.raw;
-    return ((vel_at_t >> 1) + device->profile.vstart.raw) * (t + decel_time);
-}
-
-/**
- * __decel_lambda
- *
- * Derivative of __urevs_from_midpoint. The above function will expand to:
- *
- * (A * t / 2 + VI) * (t + A * t / D)
- *
- * The derivative of which will come to:
- *
- * (A * t + VI) * (1 + A / D)
- *
- * In this use case, though, the above function will be used as 
- * answer - func(t). Therefore, the derivative should be considered a
- * negative value.
- *
- * Returns:
- * (double) slope of __urevs_from_midpoint for same value of t.
- */
-static double
-__decel_lambda(mdrive_axis_t * device, double t) {
-    double A = device->profile.accel.raw;
-    return -1. * (A * t + device->profile.vstart.raw) * 
-        (1 + (A / device->profile.decel.raw));
-}
-
-struct newton_raphson_state {
-    mdrive_axis_t * device;             /* Device with motion profile */
-    double          xn;                 /* Current value in sequence */
-    double          answer;             /* (this) - func() == 0 */
-    int             rounds;
-    /* Function whose x value at f(x) = answer is sought */
-    double (*func)(mdrive_axis_t *, double); 
-    double (*prime)(mdrive_axis_t *, double); /* d/dx (func(x)) */
+struct travel_time_info {
+    double  accel_time;
+    double  decel_time;
 };
 
 /**
- * _newton_raphson_iter
+ * travel_to_time
  *
- * Newton's method implemented as an infinite sequence. The function uses a
- * (struct newton_raphson_state) to setup and continue the sequence. The
- * same state should be passed to the function for the initial and
- * subsequent calls.
+ * Estimates the unit's travel time for the specified travel distance.
  *
- * Parameters:
- * state (struct newton_raphson_state *) Ongoing state of the sequence
+ * If the unit does not reach the maximum velocity, the unit's velocity
+ * curve will look like
+ *
+ *   v ^
+ *     |       /\
+ *     |     /    \
+ *     |   /        \
+ * VI _| /            \
+ *     | |              \
+ *     +-+------+--------+-> t
+ *       t=0   t@VM     t@rest
+ *
+ * Where the unit will start from VI, accelerate to some maximum velocity
+ * and then decelerate to a complete stop. The area under this curve
+ * represents the distance traveled, and the total time (t@rest) is what is
+ * sought.
+ *
+ * Patameters:
+ * info - (struct travel_time_info *) which will receive the information
+ *      about the travel time including the amount of time spent
+ *      accelerating and the amount of time spent decelerating.
  *
  * Returns:
- * state->xn (double) Next value of the sequence
- *
- * Side Effects:
- * state is modified and should be passed back into the function for the
- * next item in the sequence to be generated
+ * EINVAL if the unit will reach the current profile's vmax. 0 upon success.
  */
-static double
-_newton_raphson_iter(struct newton_raphson_state * state) {
-    state->xn -= (state->answer - state->func(state->device, state->xn))
-                / state->prime(state->device, state->xn);
-    state->rounds++;
-    return state->xn;
-}
+static int
+travel_to_time(mdrive_axis_t * device, long long urevs,
+        struct travel_time_info * info) {
+    double A = device->profile.accel.raw;
+    double D = device->profile.decel.raw;
+    double VI = device->profile.vstart.raw;
+    double VM = sqrt(((urevs * 2 * A * D) - (D * VI * VI)) / (A + D));
 
-/**
- * _newton_raphson_xcel
- * 
- * Newton-Raphson method implemeted with Euler's sequence accelerator so
- * that it converges in fewer iterations. The sequence accelerator is
- * implemented from a Python example at
- * http://linuxgazette.net/100/pramode.html, in the section "Representing
- * infinite sequences".
- *
- * Parameters:
- * device (mdrive_axis_t *) Mdrive device (passed to func())
- * x0 (double) Initial value of the sequence
- * answer (double) Sought value from func(). Typically this is zero for
- *      Newton's method in a classic sense, but this can be used where
- *      func(t) = answer -or- answer - func(t) = 0
- *      is being sought.
- * tolerance (double) Acceptable difference between func(t) and answer
- * func (*function(device *, t)) Function with an interesting zero
- * prime (*function(device *, t)) Derivative of func()
- *
- * Returns:
- * Value passed to func -- t (time) in this case, where func(t) = answer.
- */
-static double
-_newton_raphson_xcel(mdrive_axis_t * device, double answer, double x0,
-        double tolerance,
-        double (*func)(mdrive_axis_t *, double),
-        double (*prime)(mdrive_axis_t *, double)) {
-    struct newton_raphson_state state = {
-        .xn = x0,
-        .answer = answer,
-        .func = func,
-        .prime = prime,
-        .device = device
+    if (VM > device->profile.vmax.raw)
+        return EINVAL;
+
+    *info = (struct travel_time_info) {
+        .accel_time = ((VM - VI) / A),
+        .decel_time = (VM / D)
     };
-    int rounds;
-    double s0, s1, s2, next;
-    s0 = _newton_raphson_iter(&state);
-    s1 = _newton_raphson_iter(&state);
-    do {
-        s2 = _newton_raphson_iter(&state);
-        next = s2 - (((s2 - s1) * (s2 - s1)) / (s2 - (2 * s1) + s0));
-        s0 = s1;
-        s1 = s2;
-    } while (abs(answer - func(device, next)) > tolerance);
-
-    mcTraceF(10, 1, "Arrived at the answer of %.3f in %d rounds", next, state.rounds);
-
-    // XXX: In our case here, the graph formed by the function in
-    //      __urevs_from_midpoint is symmetrical. Since negative time
-    //      doesn't make sense here, if we arrived at a negative answer,
-    //      just return the positive value.
-    return next;
+    return 0;
 }
 
 int
@@ -288,15 +184,14 @@ mdrive_project_completion(mdrive_axis_t * device,
         struct motion_details * details) {
     // Acceleration ramp
     double ramp = device->profile.vmax.raw - device->profile.vstart.raw,
-    // Acceleration ramp
+    // Acceleration ramp and distance traveled during accel
            t1 = ramp / device->profile.accel.raw,
-           avg = (device->profile.vmax.raw + device->profile.vstart.raw) >> 1,
-           distance = avg * t1,
+           distance = ((ramp / 2) + device->profile.vstart.raw) * t1,
     // Time at VM
            t2,
-    // Deceleration ramp
-           t3 = ramp / device->profile.decel.raw;
-    distance += avg * t3;
+    // Deceleration ramp and distance traveled during decel
+           t3 = 1. * device->profile.vmax.raw / device->profile.decel.raw;
+    distance += (device->profile.vmax.raw >> 1) * t3;
 
     // And the remaining distance, performed at vmax
     double rem = fabs(details->urevs) - distance;
@@ -307,22 +202,12 @@ mdrive_project_completion(mdrive_axis_t * device,
     if (rem < 0) {
         // Unit will never reach vmax and will start decelerating at the
         // intersection of the acceleration and deceleration curves.
-        // Estimate the travel time by numerical analysis
-        double t = _newton_raphson_xcel(device,
-            /* (this) - func() == 0 */ abs(details->urevs),
-            /* x0 -- half of A ramp */ t1 / 2e9,
-            /* Accept tolerance of 100urevs */ 100,
-            __urevs_from_midpoint, __decel_lambda);
-        //
-        // Then, t is where the curves meet, and t_finish can be found from
-        // t_decel = (accel * t) / decel 
-        // t_total = t + t_decel
-        //
-        details->vmax_us = details->decel_us = t * 1e6;
-        // Recalc t3 time:
-        // t3 = Decel time: velocity-at-t / decel
-        t3 = (device->profile.accel.raw * t) / device->profile.decel.raw;
-        total = (t + t3) * 1e9;
+        struct travel_time_info info;
+        if (travel_to_time(device, abs(details->urevs), &info))
+            return EINVAL;
+
+        details->vmax_us = details->decel_us = info.accel_time * 1e6;
+        total = (info.accel_time + info.decel_time) * 1e9;
     }
     else {
         t2 = rem / device->profile.vmax.raw;
@@ -331,12 +216,6 @@ mdrive_project_completion(mdrive_axis_t * device,
         details->decel_us = (t1 + t2) * 1e6;
         total = (t1 + t2 + t3) * 1e9;
     }
-
-    // So far, it is assumed that the unit will decelerate to the VI of the
-    // unit, but instead, the unit will decelerate to a complete stop. Add
-    // in the rest of the decel time to decelerate from VI to a stop
-    total += (long long)1e9 * device->profile.vstart.raw
-        / device->profile.decel.raw;
 
     struct timespec duration = {
         .tv_sec =   total / (int)1e9,
@@ -425,16 +304,17 @@ mdrive_async_completion_correct(void * arg) {
 
     while (mdrive_get_integers(device, vars, vals, count));
 
-    // Add (half-of) comm latency time (ns -> us)
-    travel_time += device->stats.latency / 2000;
+    if (!device->microcode.features.following_error) {
+        // Add (half-of) comm latency time (ns -> us)
+        travel_time += device->stats.latency / 2000;
 
-    int expected = mdrive_estimate_position_at(device, &device->movement,
-        travel_time);
-    // Add in starting position
-    expected += device->movement.pstart;
+        int expected = mdrive_estimate_position_at(device, &device->movement,
+            travel_time);
 
-    if (!device->microcode.features.following_error)
+        // Add in starting position
+        expected += device->movement.pstart;
         error = pos - expected;
+    }
 
     bool completed = true;
 
