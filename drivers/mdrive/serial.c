@@ -895,11 +895,13 @@ process:
             // the additional wait time to the timeout and wait longer.
             // However, if the unit indicated an error already, then we're
             // finished.
-            if (response->code || status == RESPONSE_TIMEOUT)
+            if (response->code)
                 break;
-            mcTrace(30, MDRIVE_CHANNEL_RX, "Waiting longer ...");
-            tsAdd(&timeout, &more_waittime, &timeout);
-            goto wait_longer;
+            else if (status != RESPONSE_TIMEOUT) {
+                mcTrace(30, MDRIVE_CHANNEL_RX, "Waiting longer ...");
+                tsAdd(&timeout, &more_waittime, &timeout);
+                goto wait_longer;
+            }
         }
         // Detect remote echo
         else if (options->expect_data && axis->echo == EM_ON
