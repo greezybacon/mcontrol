@@ -295,9 +295,6 @@ class MotorContext(Shell):
             self.motor.profile = self.context['profiles'][component]
             return
 
-        if len(parts):
-            return SyntaxError("See 'help profile'")
-
         try:
             if getset == "set":
                 if 'current' in component:
