@@ -24,6 +24,7 @@ class TestingCommands(Mixin):
             raise SyntaxError("Test name must be specified")
 
         test = TestingSetupContext(context=self.context.copy())
+        test.cmdqueue = self.cmdqueue
         test.run()
         self.context['tests'][line] = test
 

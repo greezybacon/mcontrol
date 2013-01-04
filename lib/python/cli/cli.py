@@ -33,10 +33,12 @@ Version 0.1-beta
         'tests': {}
     }
 
-    def __init__(self, context=None):
+    def __init__(self, context=None, script=None):
         cmd.Cmd.__init__(self)
         if context and type(context) is dict:
             self.context.update(context)
+        if script:
+            self.cmdqueue = open(script, 'rt').readlines()
 
     def __getitem__(self, what):
         return self.context[what]
@@ -164,6 +166,7 @@ Version 0.1-beta
 
     def run(self):
         shell = self
+        self['quiet'] = not sys.stdin.isatty()
         while True:
             shell.cmdloop()
             if shell.afterlife:
@@ -192,4 +195,7 @@ for name in modules.__all__:
             Shell.mixin(cls)
 
 if __name__ == '__main__':
-    Shell().run()
+    if len(sys.argv) > 1:
+        Shell(script=sys.arv[1]).run()
+    else:
+        Shell().run()
