@@ -269,6 +269,9 @@ mdrive_classify_response(mdrive_axis_t * axis, mdrive_response_t * response) {
             mdrive_signal_error_event(axis, response->code);
             if (response->code == MDRIVE_EOVERRUN)
                 return RESPONSE_RETRY;
+            // Stall errors don't indicate bad data; retry is not necessary
+            else if (response->code == MDRIVE_ESTALL)
+                return RESPONSE_OK;
             else
                 return RESPONSE_ERROR;
         }
