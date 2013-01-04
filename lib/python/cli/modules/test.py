@@ -258,7 +258,7 @@ class TestingRunContext(Shell):
         """
         Replaces brace expressions with the results of the commands
         """
-        return re.sub(r'\{(?P<command>[^{}]+)\}',
+        return re.sub(r'\[(?P<command>[^][]+)\]',
             lambda match: self.execute(match.group(1), capture=True),
             text)
 
