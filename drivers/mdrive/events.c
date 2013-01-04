@@ -108,9 +108,8 @@ mdrive_signal_error_event(mdrive_axis_t * axis, int error) {
         // Error code does have a corresponding event
         return EINVAL;
 
-    union event_data data;
-    int temp,
-        status = mdrive_signal_event(axis, xref->event_code, &data);
+    union event_data data = {};
+    int temp;
 
     // Update stats for interesting events
     switch (error) {
@@ -128,6 +127,7 @@ mdrive_signal_error_event(mdrive_axis_t * axis, int error) {
                 axis->address, temp);
             break;
     }
+    int status = mdrive_signal_event(axis, xref->event_code, &data);
     return status;
 }
 
