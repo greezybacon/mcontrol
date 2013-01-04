@@ -22,6 +22,7 @@ class MotorContext(Shell):
     def __init__(self, parent, motor, name=""):
         Shell.__init__(self, context=parent.context)
         self.motor = motor
+        self.last_move_event = None
         self.name = name
         self.prompt_text = Shell.prompt_text[:-2] + ":{0}> ".format(name)
         self.parent = parent
@@ -97,6 +98,12 @@ class MotorContext(Shell):
         self._do_set_units(units)
         self.motor.scale = float(scale)
 
+    def _do_get_stalled(self):
+        if self.last_move_event and self.last_move_event.data.stalled:
+            self.out(True)
+        else:
+            self.out(self.motor.stalled)
+
     def get_value_and_units(self, value, units=None):
         """
         Allows the user to input units with a command, and the system will
@@ -123,6 +130,7 @@ class MotorContext(Shell):
 
 
     def do_move(self, where):
+        self.last_move_event = None
         func = self.motor.move
         units = None
         wait = False
@@ -146,8 +154,8 @@ class MotorContext(Shell):
 
         func(value, units)
         if wait:
-            ev = self.motor.on(Event.EV_MOTION)
-            ev.wait()
+            self.last_move_event = self.motor.on(Event.EV_MOTION)
+            self.last_move_event.wait()
 
     def _move_done(self, event):
         if event.data.completed:
