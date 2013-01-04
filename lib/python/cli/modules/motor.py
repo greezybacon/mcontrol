@@ -70,14 +70,6 @@ class MotorContext(Shell):
         self.status("Motor is configured with units of: "
             + all_units[self.motor.units])
 
-    def _do_set_units(self, what):
-        for id, name in all_units.items():
-            if name == what:
-                self.motor.units = id
-                break
-        else:
-            self.error("{0}: Unsupported units".format(what))
-
     def _do_set_scale(self, string):
         """
         Set the units and scale of the motor. For example
@@ -92,11 +84,15 @@ class MotorContext(Shell):
         parts = string.split(' ')
         scale = 1e6 / float(parts.pop(0))
         units = parts.pop(0)
+        if type(units) is not int:
+            if units not in all_units:
+                return self.error("Unsupported units", "See 'help units'")
+            units = all_units[units]
+
         if len(parts):
             return usage()
 
-        self._do_set_units(units)
-        self.motor.scale = float(scale)
+        self.motor.scale = int(scale), units
 
     def _do_get_stalled(self):
         if self.last_move_event and self.last_move_event.data.stalled:
@@ -220,10 +216,10 @@ class MotorContext(Shell):
         parts = line.split()
         # TODO: Collect current unit/scale
         slip = self.motor.profile.slip
-        units, self.motor.units = self.motor.units, all_units['milli-rev']
-        scale, self.motor.scale = self.motor.scale, 1000
-        rc, self.motor.profile.run_current = self.motor.profile.run_current, 50
-        self.motor.profile.slip = (5, 'milli-rev')
+        units, scale = self.motor.units, self.motor.scale
+        self.motor.scale = 1000, 'milli-rev'
+        rc, self.motor.profile.run_current = self.motor.profile.run_current, 35
+        self.motor.profile.slip = (3, 'milli-rev')
         self.motor.profile.commit()
 
         try:

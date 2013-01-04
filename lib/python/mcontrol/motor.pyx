@@ -45,44 +45,27 @@ cdef class Motor:
 
         raise_status(status, "Unable to connect to motor")
 
-    def _fetch_units_and_scale(self):
-        cdef int status
-        status = mcUnitScaleGet(self.id, &self._units, &self._scale)
-
-        if status != 0:
-            raise RuntimeError(status)
-
     property units:
         def __get__(self):
-            if self._units == 0:
-                self._fetch_units_and_scale()
             return self._units
-
-        def __set__(self, units):
-            if self._scale == 0:
-                self._fetch_units_and_scale()
-            cdef int status
-            status = mcUnitScaleSet(self.id, units, self.scale)
-
-            if status != 0:
-                raise RuntimeError(status)
-            else:
-                self._units = units
 
     property scale:
         def __get__(self):
-            self._fetch_units_and_scale()
             return self._scale
 
         def __set__(self, urevs):
-            self._fetch_units_and_scale()
-            cdef int status
-            status = mcUnitScaleSet(self.id, self._units, urevs)
-
-            if status != 0:
-                raise RuntimeError(status)
-            else:
-                self._scale = urevs
+            if type(urevs) not in (list, tuple) or len(urevs) != 2:
+                raise ValueError("Two-item tuple expected")
+            scale, units = urevs
+            if type(units) is not int:
+                if units not in all_units:
+                    raise ValueError("Unsupported units")
+                units = all_units[units]
+            raise_status(
+                mcUnitScaleSet(self.id, units, scale),
+                "Unable to configure scale and untis")
+            self._scale = scale
+            self._units = units
 
     property position:
         def __get__(self):
