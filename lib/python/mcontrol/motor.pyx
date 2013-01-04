@@ -353,6 +353,7 @@ cdef class Event(object):
         self.motor = motor
         self.event = event
         self._callback = None
+        self.id = 0
         self.reset()
 
     def __dealloc__(self):
@@ -361,6 +362,8 @@ cdef class Event(object):
     def reset(self):
         self.isset = False
         self.data = None
+        if self.id:
+            mcUnsubscribe(self.motor.id, self.id)
         raise_status(
             mcSubscribeWithData(
                 self.motor.id, self.event, &self.id,
