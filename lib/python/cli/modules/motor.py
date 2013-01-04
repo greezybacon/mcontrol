@@ -224,6 +224,8 @@ class MotorContext(Shell):
 
         try:
             self.motor.encoder = 1
+            # Clear stall
+            self.motor.slew(0)
         except:
             raise
 
@@ -232,18 +234,21 @@ class MotorContext(Shell):
             rate = -rate
         if 'stop' in parts:
             # Software implementation of home to hard stop
-            self.motor.slew(rate)
-            event = self.motor.on(Event.EV_MOTION)
-            while self.motor.moving:
-                if event.isset:
-                    if event.data.stalled:
-                        break
-                    # Not a stall event, wait for a stall event
-                    info.reset()
-                time.sleep(0.1)
+            event = None
+            while True:
+                if not self.motor.moving:
+                    if event and event.isset:
+                        if event.data.stalled:
+                            break
+                        # Not a stall event, wait for a stall event
+                        else:
+                            event.reset()
+                    else:
+                        self.motor.slew(rate)
+                        event = self.motor.on(Event.EV_MOTION)
+                time.sleep(0.2)
 
-        self.motor.units = units
-        self.motor.scale = scale
+        self.motor.scale = scale, units
         self.motor.profile.slip = slip
         self.motor.profile.run_current = rc
         self.motor.profile.commit()
