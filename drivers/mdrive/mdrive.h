@@ -107,6 +107,9 @@ struct motion_details {
     struct timespec     completed;      // Actual time of completion
     int                 error;          // Following error (urevs)
     unsigned char       stalls;         // Number of stalls
+
+    // Realtime/status information
+    bool                moving;         // Stall event occured since start
 };
 
 #include "queue.h"

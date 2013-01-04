@@ -118,6 +118,8 @@ mdrive_signal_error_event(mdrive_axis_t * axis, int error) {
             data.motion.stalled = true;
             // Clear the stall flag on the device
             mdrive_send(axis, "ST");
+            // Device is no longer moving
+            axis->movement.moving = false;
             break;
 
         case MDRIVE_ETEMP:

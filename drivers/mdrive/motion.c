@@ -24,7 +24,8 @@ mdrive_move(Driver * self, motion_instruction_t * command) {
     struct motion_details move_info = {
         .urevs = urevs,
         .pstart = device->position,
-        .type = command->type
+        .type = command->type,
+        .moving = true
     };
 
     switch (command->type) {
@@ -40,7 +41,7 @@ mdrive_move(Driver * self, motion_instruction_t * command) {
             break;
 
         case MCSLEW:
-            if (device->movement.type == MCSLEW
+            if (device->movement.moving && device->movement.type == MCSLEW
                     && device->movement.urevs == urevs)
                 // Requested slew rate is already in progress
                 return 0;
