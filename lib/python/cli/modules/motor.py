@@ -222,7 +222,7 @@ class MotorContext(Shell):
         slip = self.motor.profile.slip
         units, self.motor.units = self.motor.units, all_units['milli-rev']
         scale, self.motor.scale = self.motor.scale, 1000
-        rc, self.motor.profile.run_current = self.motor.profile.run_current, 25
+        rc, self.motor.profile.run_current = self.motor.profile.run_current, 50
         self.motor.profile.slip = (5, 'milli-rev')
         self.motor.profile.commit()
 
