@@ -7,4 +7,7 @@ for lib in glob.glob('../build/lib.linux-*-{0}.{1}'.format(
     sys.path.insert(0, lib)
 
 import cli
-cli.Shell().run()
+if len(sys.argv) > 1:
+    cli.Shell(script=sys.argv[1]).run()
+else:
+    cli.Shell().run()
