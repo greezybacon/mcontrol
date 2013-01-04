@@ -164,12 +164,12 @@ struct travel_time_info {
 static int
 travel_to_time(mdrive_axis_t * device, long long urevs,
         struct travel_time_info * info) {
-    double A = device->profile.accel.raw;
-    double D = device->profile.decel.raw;
-    double VI = device->profile.vstart.raw;
+    double A = device->profile.accel.value;
+    double D = device->profile.decel.value;
+    double VI = device->profile.vstart.value;
     double VM = sqrt(((urevs * 2 * A * D) - (D * VI * VI)) / (A + D));
 
-    if (VM > device->profile.vmax.raw)
+    if (VM > device->profile.vmax.value)
         return EINVAL;
 
     *info = (struct travel_time_info) {
@@ -183,15 +183,15 @@ int
 mdrive_project_completion(mdrive_axis_t * device,
         struct motion_details * details) {
     // Acceleration ramp
-    double ramp = device->profile.vmax.raw - device->profile.vstart.raw,
+    double ramp = device->profile.vmax.value - device->profile.vstart.value,
     // Acceleration ramp and distance traveled during accel
-           t1 = ramp / device->profile.accel.raw,
-           distance = ((ramp / 2) + device->profile.vstart.raw) * t1,
+           t1 = ramp / device->profile.accel.value,
+           distance = ((ramp / 2) + device->profile.vstart.value) * t1,
     // Time at VM
            t2,
     // Deceleration ramp and distance traveled during decel
-           t3 = 1. * device->profile.vmax.raw / device->profile.decel.raw;
-    distance += (device->profile.vmax.raw >> 1) * t3;
+           t3 = 1. * device->profile.vmax.value / device->profile.decel.value;
+    distance += (device->profile.vmax.value >> 1) * t3;
 
     // And the remaining distance, performed at vmax
     double rem = fabs(details->urevs) - distance;
@@ -210,7 +210,7 @@ mdrive_project_completion(mdrive_axis_t * device,
         total = (info.accel_time + info.decel_time) * 1e9;
     }
     else {
-        t2 = rem / device->profile.vmax.raw;
+        t2 = rem / device->profile.vmax.value;
 
         details->vmax_us = t1 * 1e6;
         details->decel_us = (t1 + t2) * 1e6;
@@ -254,18 +254,18 @@ mdrive_estimate_position_at(mdrive_axis_t * device,
             // Velocity is vmax - (decel * dt)
             dt_us = when - details->decel_us;
             pos_urev += dt_us
-                * (device->profile.decel.raw * dt_us)
+                * (device->profile.decel.value * dt_us)
                 / (int)2e6;
         case 2:
             // Add travel time at vmax
-            pos_urev += device->profile.vmax.raw
+            pos_urev += device->profile.vmax.value
                 * (min(when, details->decel_us) - details->vmax_us);
         case 1:
             // Add accel ramp time
             dt_us = min(when, details->vmax_us);
             pos_urev += dt_us
-                * (device->profile.vstart.raw
-                    + (device->profile.accel.raw * dt_us))
+                * (device->profile.vstart.value
+                    + (device->profile.accel.value * dt_us))
                 / (int)2e6;
     }
     return mdrive_microrevs_to_steps(device, pos_urev / (int)1e6);
@@ -339,7 +339,7 @@ mdrive_async_completion_correct(void * arg) {
         // rise over the run or v / dt. Therefore, dt = v / D, if D is
         // considered a positive value.
         double dt = 1. * mdrive_steps_to_microrevs(device, abs(vel))
-            / device->profile.decel.raw;
+            / device->profile.decel.value;
         struct timespec callback = {
             .tv_sec = (int)dt,
             .tv_nsec = (int)1e9 * (dt - (int)dt)

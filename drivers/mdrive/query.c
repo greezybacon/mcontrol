@@ -348,16 +348,16 @@ mdrive_profile_peek(mdrive_axis_t * axis, struct motor_query * query,
 
     switch (query->query) {
         case MCACCEL:
-            query->number = axis->profile.accel.raw;
+            query->number = axis->profile.accel.value;
             break;
         case MCDECEL:
-            query->number = axis->profile.decel.raw;
+            query->number = axis->profile.decel.value;
             break;
         case MCVINITIAL:
-            query->number = axis->profile.vstart.raw;
+            query->number = axis->profile.vstart.value;
             break;
         case MCVMAX:
-            query->number = axis->profile.vmax.raw;
+            query->number = axis->profile.vmax.value;
             break;
         case MCRUNCURRENT:
             query->number = axis->profile.current_run;
@@ -366,7 +366,7 @@ mdrive_profile_peek(mdrive_axis_t * axis, struct motor_query * query,
             query->number = axis->profile.current_hold;
             break;
         case MCSLIPMAX:
-            query->number = axis->profile.slip_max.raw;
+            query->number = axis->profile.slip_max.value;
             break;
         default:
             return EINVAL;

@@ -100,23 +100,19 @@ struct measurement {
     unsigned long long  value:56;
     unit_type_t         units:8;
 };
-union raw_measure {
-    struct measurement measure;
-    unsigned long long raw;
-};
 
 typedef struct motion_profile Profile;
 struct motion_profile {
-    union raw_measure   accel;      // mrev/s2
-    union raw_measure   decel;      // mrev/s2
-    union raw_measure   vmax;       // Max velocity (mrev/s)
-    union raw_measure   vstart;     // Initial velocity
-    union raw_measure   deadband;   // Microrevs of accuracy for target of a move command
+    struct measurement  accel;      // mrev/s2
+    struct measurement  decel;      // mrev/s2
+    struct measurement  vmax;       // Max velocity (mrev/s)
+    struct measurement  vstart;     // Initial velocity
+    struct measurement  deadband;   // Microrevs of accuracy for target of a move command
 
     // Properties honored by stepper motor units
     unsigned char       current_run; // Motor run current (%) XXX: Should this be in mA?
     unsigned char       current_hold; // Motor holding current (%)
-    union raw_measure   slip_max;    // Max difference between the encoder
+    struct measurement  slip_max;    // Max difference between the encoder
                                      // indication of the unit and the
                                      // commanded position. This determines
                                      // when a stall is flagged.

@@ -31,30 +31,35 @@ PROXYIMPL(mcProfileSet, Profile profile) {
     // Convert any embedded units in the profile to standard units of micro
     // revolutions
     long long T;
-    if (m->profile.accel.measure.units) {
-        mcDistanceUnitsToMicroRevs(m, m->profile.accel.measure.value,
-            m->profile.accel.measure.units, &T);
-        m->profile.accel.raw = T;
+    if (m->profile.accel.units != MICRO_REVS) {
+        mcDistanceUnitsToMicroRevs(m, m->profile.accel.value,
+            m->profile.accel.units, &T);
+        m->profile.accel.value = T;
+        m->profile.accel.units = MICRO_REVS;
     }
-    if (m->profile.decel.measure.units) {
-        mcDistanceUnitsToMicroRevs(m, m->profile.decel.measure.value,
-            m->profile.decel.measure.units, &T);
-        m->profile.decel.raw = T;
+    if (m->profile.decel.units != MICRO_REVS) {
+        mcDistanceUnitsToMicroRevs(m, m->profile.decel.value,
+            m->profile.decel.units, &T);
+        m->profile.decel.value = T;
+        m->profile.decel.units = MICRO_REVS;
     }
-    if (m->profile.vmax.measure.units) {
-        mcDistanceUnitsToMicroRevs(m, m->profile.vmax.measure.value,
-            m->profile.vmax.measure.units, &T);
-        m->profile.vmax.raw = T;
+    if (m->profile.vmax.units != MICRO_REVS) {
+        mcDistanceUnitsToMicroRevs(m, m->profile.vmax.value,
+            m->profile.vmax.units, &T);
+        m->profile.vmax.value = T;
+        m->profile.vmax.units = MICRO_REVS;
     }
-    if (m->profile.vstart.measure.units) {
-        mcDistanceUnitsToMicroRevs(m, m->profile.vstart.measure.value,
-            m->profile.vstart.measure.units, &T);
-        m->profile.vstart.raw = T;
+    if (m->profile.vstart.units != MICRO_REVS) {
+        mcDistanceUnitsToMicroRevs(m, m->profile.vstart.value,
+            m->profile.vstart.units, &T);
+        m->profile.vstart.value = T;
+        m->profile.vstart.units = MICRO_REVS;
     }
-    if (m->profile.slip_max.measure.units) {
-        mcDistanceUnitsToMicroRevs(m, m->profile.slip_max.measure.value,
-            m->profile.slip_max.measure.units, &T);
-        m->profile.slip_max.raw = T;
+    if (m->profile.slip_max.units != MICRO_REVS) {
+        mcDistanceUnitsToMicroRevs(m, m->profile.slip_max.value,
+            m->profile.slip_max.units, &T);
+        m->profile.slip_max.value = T;
+        m->profile.slip_max.units = MICRO_REVS;
     }
 
     RETURN(0);
@@ -71,7 +76,7 @@ PROXYIMPL(mcProfileGetAccel, Profile profile, unit_type_t units,
     if (m == NULL)
         RETURN( EINVAL );
 
-    mcMicroRevsToDistanceUnits(m, m->profile.accel.raw, &args->value,
+    mcMicroRevsToDistanceUnits(m, m->profile.accel.value, &args->value,
         args->units);
 
     RETURN(0);
@@ -85,7 +90,7 @@ PROXYIMPL(mcProfileGetDecel, Profile profile, unit_type_t units,
     if (m == NULL)
         RETURN( EINVAL );
 
-    mcMicroRevsToDistanceUnits(m, m->profile.decel.raw, &args->value,
+    mcMicroRevsToDistanceUnits(m, m->profile.decel.value, &args->value,
         args->units);
 
     RETURN(0);
@@ -99,7 +104,7 @@ PROXYIMPL(mcProfileGetInitialV, Profile profile, unit_type_t units,
     if (m == NULL)
         RETURN( EINVAL );
 
-    mcMicroRevsToDistanceUnits(m, m->profile.vstart.raw, &args->value,
+    mcMicroRevsToDistanceUnits(m, m->profile.vstart.value, &args->value,
         args->units);
 
     RETURN(0);
@@ -113,7 +118,7 @@ PROXYIMPL(mcProfileGetMaxV, Profile profile, unit_type_t units,
     if (m == NULL)
         RETURN( EINVAL );
 
-    mcMicroRevsToDistanceUnits(m, m->profile.vmax.raw, &args->value,
+    mcMicroRevsToDistanceUnits(m, m->profile.vmax.value, &args->value,
         args->units);
 
     RETURN(0);
@@ -127,7 +132,7 @@ PROXYIMPL(mcProfileGetDeadband, Profile profile, unit_type_t units,
     if (m == NULL)
         RETURN( EINVAL );
 
-    mcMicroRevsToDistanceUnits(m, m->profile.deadband.raw, &args->value,
+    mcMicroRevsToDistanceUnits(m, m->profile.deadband.value, &args->value,
         args->units);
 
     RETURN(0);
@@ -141,7 +146,7 @@ PROXYIMPL(mcProfileGetMaxSlip, Profile profile, unit_type_t units,
     if (m == NULL)
         RETURN( EINVAL );
 
-    mcMicroRevsToDistanceUnits(m, m->profile.slip_max.raw, &args->value,
+    mcMicroRevsToDistanceUnits(m, m->profile.slip_max.value, &args->value,
         args->units);
 
     RETURN(0);

@@ -2,23 +2,20 @@ cdef extern from "motor.h":
     ctypedef struct measurement:
         unsigned long long value
         int units
-    ctypedef union raw_measure:
-        measurement measure
-        unsigned long long raw
     ctypedef struct profile_attrs:
         unsigned hardware
         unsigned number
         unsigned refresh
         unsigned loaded
     ctypedef struct Profile:
-        raw_measure accel
-        raw_measure decel
-        raw_measure vmax
-        raw_measure vstart
-        raw_measure deadband
+        measurement accel
+        measurement decel
+        measurement vmax
+        measurement vstart
+        measurement deadband
         unsigned char current_run
         unsigned char current_hold
-        raw_measure slip_max
+        measurement slip_max
         profile_attrs attrs
 
 cimport mcontrol.constants as k
@@ -97,8 +94,8 @@ cdef class MotorProfile(object):
 
         def __set__(self, value):
             value, units = self._get_value_units(value)
-            self._profile.accel.measure.value = value
-            self._profile.accel.measure.units = units or self.motor.units
+            self._profile.accel.value = value
+            self._profile.accel.units = units or self.motor.units
 
     property decel:
         def __get__(self):
@@ -111,8 +108,8 @@ cdef class MotorProfile(object):
 
         def __set__(self, value):
             value, units = self._get_value_units(value)
-            self._profile.decel.measure.value = value
-            self._profile.decel.measure.units = units or self.motor.units
+            self._profile.decel.value = value
+            self._profile.decel.units = units or self.motor.units
 
     property vmax:
         def __get__(self):
@@ -125,8 +122,8 @@ cdef class MotorProfile(object):
 
         def __set__(self, value):
             value, units = self._get_value_units(value)
-            self._profile.vmax.measure.value = value
-            self._profile.vmax.measure.units = units or self.motor.units
+            self._profile.vmax.value = value
+            self._profile.vmax.units = units or self.motor.units
 
     property vstart:
         def __get__(self):
@@ -139,8 +136,8 @@ cdef class MotorProfile(object):
 
         def __set__(self, value):
             value, units = self._get_value_units(value)
-            self._profile.vstart.measure.value = value
-            self._profile.vstart.measure.units = units or self.motor.units
+            self._profile.vstart.value = value
+            self._profile.vstart.units = units or self.motor.units
 
     property slip:
         def __get__(self):
@@ -153,8 +150,8 @@ cdef class MotorProfile(object):
 
         def __set__(self, value):
             value, units = self._get_value_units(value)
-            self._profile.slip_max.measure.value = value
-            self._profile.slip_max.measure.units = units or self.motor.units
+            self._profile.slip_max.value = value
+            self._profile.slip_max.units = units or self.motor.units
 
     property hold_current:
         def __get__(self):
