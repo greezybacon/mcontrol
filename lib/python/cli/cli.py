@@ -159,6 +159,8 @@ Version 0.1-beta
     def onecmd(self, str):
         try:
             return cmd.Cmd.onecmd(self, str)
+        except KeyboardInterrupt:
+            return False
         except Exception as e:
             self.error("{0}: (Unhandled) {1}".format(
                 type(e).__name__, e))
