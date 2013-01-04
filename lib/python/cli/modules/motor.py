@@ -172,7 +172,8 @@ class MotorContext(Shell):
         """
         if not self.motor.moving:
             return
-        self.motor.on(Event.EV_MOTION).wait()
+        self.last_move_event = self.motor.on(Event.EV_MOTION)
+        self.last_move_event.wait()
 
     def do_slew(self, line):
         """
