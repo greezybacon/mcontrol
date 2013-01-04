@@ -196,7 +196,7 @@ class MotorContext(Shell):
         except ValueError as ex:
             return self.error(repr(ex))
 
-        self.motor.slew(float(val), units)
+        self.motor.slew(value, units)
 
     def do_stop(self, line):
         """
