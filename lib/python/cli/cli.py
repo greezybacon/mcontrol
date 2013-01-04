@@ -7,6 +7,7 @@ import cmd
 import inspect
 import os
 import re
+import shlex
 import sys
 
 class Shell(object, cmd.Cmd):
@@ -23,6 +24,7 @@ Version 0.1-beta
 
     afterlife = None
     context = {
+        'env': {},
         'motor': None,
         'motors': {},
         'stdout': sys.stdout,
@@ -78,6 +80,28 @@ Version 0.1-beta
         sys.stdin = stdin
         self.intro = intro
 
+    def do_read(self, line):
+        """
+        Reads a variable from the user after presenting a prompt
+
+        Usage:
+
+        read "Prompt" into var
+        """
+        parts = shlex.split(line)
+        if 'into' not in parts:
+            return self.error("Incorrect usage", "See 'help read'")
+
+        parts.remove('into')
+
+        if len(parts) != 2:
+            return self.error("Incorrect usage", "See 'help read'")
+
+        prompt, variable = parts
+
+        # Show the prompt and read the var
+        self['env'][variable] = input(prompt)
+
     def do_EOF(self, line):
         return self.do_exit(line)
 
@@ -125,7 +149,10 @@ Version 0.1-beta
 
     def precmd(self, line):
         # Drop comments
-        return re.sub(r'#.*$', '', line)
+        line = re.sub(r'#.*$', '', line)
+
+        # Substitute {var} expressions
+        return line.format(**self['env'])
 
     def onecmd(self, str):
         try:
