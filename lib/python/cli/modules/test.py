@@ -363,6 +363,8 @@ class TestingRunContext(Shell):
         Abort the test immediately. No other statements will be executed and
         the test status will be marked as ABORTED
         """
+        if len(line):
+            self.warn(self.eval(line))
         self.status = self.Status.ABORTED
         return True
 
@@ -371,6 +373,8 @@ class TestingRunContext(Shell):
         Succeed the test immediately. No other statements will be executed
         and the test status will be marked as SUCCEEDED
         """
+        if len(line):
+            self.status(self.eval(line))
         self.status = self.Status.SUCCEEDED
         return True
 
@@ -379,6 +383,8 @@ class TestingRunContext(Shell):
         Fail the test immediately. No other statements will be executed and
         the test status will be marked as FAILED
         """
+        if len(line):
+            self.error(self.eval(line))
         self.status = self.Status.FAILED
         return True
 
