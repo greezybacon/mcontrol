@@ -97,8 +97,8 @@ enum motion_increment {
 typedef enum motion_increment unit_type_t;
 
 struct measurement {
-    unsigned long long  value:56;
-    unit_type_t         units:8;
+    unsigned long long  value;
+    unit_type_t         units;
 };
 
 typedef struct motion_profile Profile;
