@@ -1,6 +1,6 @@
 CC=gcc
 CFLAGS=--std=gnu99 -Wall -D_GNU_SOURCE -pedantic -pg
-LDFLAGS=-ldl -lrt -rdynamic -lrt -lpthread -lm
+LDFLAGS=-ldl -lrt -rdynamic -lrt -lpthread -lm -nopie
 
 SOURCES=main.c controller.c
 OBJECTS=$(SOURCES:.c=.o) ../lib/*.o ../drivers/mdrive/*.o
@@ -10,3 +10,8 @@ all: $(SOURCES) $(EXECUTABLE)
 
 $(EXECUTABLE): $(OBJECTS)
 	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJECTS) -o $@
+
+.PHONY: clean
+clean:
+	$(RM) $(OBJECTS)
+	$(RM) $(EXECUTABLE)

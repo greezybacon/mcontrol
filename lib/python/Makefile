@@ -1,12 +1,13 @@
-clean:
-	python setup.py clean
+.PHONY: all libs clean install
 
 all: libs
 
 libs:
 	python setup.py build
 
+clean:
+	python setup.py clean
+	$(RM) mcontrol/mcontrol.c
+
 install:
 	python setup.py install
-
-.PHONY: all

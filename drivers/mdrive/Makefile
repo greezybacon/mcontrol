@@ -7,7 +7,14 @@ SOURCES=driver.c serial.c queue.c config.c query.c motion.c search.c \
 OBJECTS=$(SOURCES:.c=.o)
 LIBRARY=mdrive.so
 
+.PHONY: all
 all: $(SOURCES) $(LIBRARY)
+
+$(SOURCES): mdrive.h
 
 $(LIBRARY): $(OBJECTS)
 	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJECTS) -shared -o $@
+
+.PHONY: clean
+clean:
+	$(RM) $(OBJECTS)
