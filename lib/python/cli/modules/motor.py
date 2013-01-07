@@ -58,12 +58,11 @@ class MotorContext(Shell):
             self.error("{0}: Unknown attribute".format(what))
 
     def _do_set_position(self, what):
-        units = None
-        if ' ' in what:
-            position, units = what.split(' ',1)
-        else:
-            position = what
-        position = int(position)
+        parts = what.split()
+        try:
+            position, units = self.get_value_and_units(*parts)
+        except ValueError as ex:
+            return self.error(repr(ex))
         self.motor.position = position, units
 
     def _do_get_units(self):
