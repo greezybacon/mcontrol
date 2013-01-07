@@ -290,8 +290,8 @@ class MotorContext(Shell):
         if getset == "set":
             try:
                 val, units = self.get_value_and_units(*parts)
-            except ValueError:
-                return self.error("Invalid value", "Integer required")
+            except ValueError as ex:
+                return self.error("Invalid value", repr(ex))
 
         elif getset == "stash":
             self.context['profiles'][component] = self.motor.profile.copy()
