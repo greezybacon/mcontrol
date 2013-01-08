@@ -185,6 +185,7 @@ class OutputCapture(object):
         else:
             return self.writes
 
+import cmd
 import re
 class TestingRunContext(Shell):
 
@@ -205,6 +206,16 @@ class TestingRunContext(Shell):
         self.vars = {}
         self.debug = False
         self.status = self.Status.READY
+
+    def onecmd(self, str):
+        try:
+            return cmd.Cmd.onecmd(self, str)
+        except KeyboardInterrupt:
+            return True
+        except Exception as e:
+            self.error("{0}: (Unhandled) {1}".format(
+                type(e).__name__, e))
+            return True
 
     def parse(self, command):
         """
