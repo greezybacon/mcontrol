@@ -85,6 +85,59 @@ PROXYIMPL (mcQueryIntegerItem, motor_query_t query, OUT int value, String item) 
     RETURN(0);
 }
 
+PROXYIMPL (mcQueryFloat, motor_query_t query, OUT double value) {
+    UNPACK_ARGS(mcQueryFloat, args);
+
+    Motor * m = find_motor_by_id(motor, message->pid);
+    if (m == NULL)
+        RETURN( EINVAL );
+
+    if (m->driver->class->read == NULL)
+        RETURN( ENOTSUP );
+
+    struct motor_query q = { .query = args->query };
+
+    m->driver->class->read(m->driver, &q);
+
+    // Convert distance-based queries from microrevs
+    switch (args->query) {
+        case MCPOSITION:
+            mcMicroRevsToDistanceF(m, q.number, &args->value);
+            break;
+        default:
+            args->value = q.number;
+    }
+
+    RETURN(0);
+}
+
+PROXYIMPL(mcQueryFloatUnits, int, motor_query_t query, OUT int value,
+        unit_type_t units) {
+    UNPACK_ARGS(mcQueryFloatUnits, args);
+
+    Motor * m = find_motor_by_id(motor, message->pid);
+    if (m == NULL)
+        RETURN(EINVAL);
+
+    if (m->driver->class->read == NULL)
+        RETURN( ENOTSUP );
+
+    struct motor_query q = { .query = args->query };
+
+    m->driver->class->read(m->driver, &q);
+
+    // Convert distance-based queries from microrevs
+    switch (args->query) {
+        case MCPOSITION:
+            mcMicroRevsToDistanceUnitsF(m, q.number, &args->value, args->units);
+            break;
+        default:
+            args->value = q.number;
+    }
+
+    RETURN(0);
+}
+
 PROXYIMPL (mcQueryString, motor_query_t query, OUT String value) {
     UNPACK_ARGS(mcQueryString, args);
 
