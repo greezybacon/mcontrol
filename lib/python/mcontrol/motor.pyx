@@ -69,11 +69,10 @@ cdef class Motor:
 
     property position:
         def __get__(self):
-            cdef int status, position
-            status = mcQueryInteger(self.id, k.MCPOSITION, &position)
-
-            if status != 0:
-                raise RuntimeError(status)
+            cdef double position
+            raise_status(
+                mcQueryFloat(self.id, k.MCPOSITION, &position),
+                "Unable to retrieve current position")
 
             return position
 
