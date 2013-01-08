@@ -159,8 +159,10 @@ enum mdrive_io_type {
 
 struct mdrive_io_config {
     enum mdrive_io_type type;
+    bool                output;         // If set, the port is setup out
     bool                active_high;
     bool                source;
+    bool                wide_range;     // For the analog input
 };
 
 typedef struct mdrive_axis_list mdrive_axis_t;
@@ -209,10 +211,7 @@ struct mdrive_axis_list {
     } loaded;
 
     // I/O configuration
-    struct mdrive_io_config io1;
-    struct mdrive_io_config io2;
-    struct mdrive_io_config io3;
-    struct mdrive_io_config io4;
+    struct mdrive_io_config io[5];
 
     // Trip notification configuration on the unit
     union {
@@ -300,8 +299,8 @@ enum mdrive_read_variable {
 
     // I/O Configuration
     MDRIVE_IO_TYPE,
-    MDRIVE_IO_INVERT,
-    MDRIVE_IO_DRIVE,
+    MDRIVE_IO_PARM1,
+    MDRIVE_IO_PARM2,
 
     // Odd settings (last mile)
     MDRIVE_ENCODER,
