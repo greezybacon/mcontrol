@@ -1001,7 +1001,7 @@ mdrive_connect(mdrive_address_t * address, mdrive_axis_t * axis) {
     axis->speed = address->speed;
 
     // Search for axis sharing an in-use port
-    mdrive_axis_device_t * current_port = all_port_infos;
+    mdrive_axis_device_t * current_port = all_port_infos, * tail = NULL;
 
     while (current_port) {
         if (strncmp(current_port->name, address->port,
@@ -1011,13 +1011,18 @@ mdrive_connect(mdrive_address_t * address, mdrive_axis_t * axis) {
             current_port->active_axes++;
             return 0;
         }
+        tail = current_port;
         current_port = current_port->next;
     }
 
     // New axis and new port. Set things up
     mdrive_axis_device_t * new_port = calloc(1, sizeof *all_port_infos);
-    if (current_port)
-        current_port->next = new_port;
+    if (tail)
+        tail->next = new_port;
+    // XXX: Else this is the new HEAD
+    else
+        all_port_infos = new_port;
+
     new_port->active_axes++;
     snprintf(new_port->name, sizeof new_port->name, "%s", address->port);
 
