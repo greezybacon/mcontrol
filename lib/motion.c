@@ -246,6 +246,16 @@ PROXYIMPL(mcUnitScaleGet, OUT unit_type_t * units, OUT int * urevs) {
 }
 
 int
+mcMicroRevsToDistanceF(Motor * motor, long long mrevs, double * distance) {
+    // Lookup scale and distance
+    if (motor->op_profile.units == 0)
+        return ER_NO_UNITS;
+
+    return mcMicroRevsToDistanceUnitsF(motor, mrevs, distance,
+        motor->op_profile.units);
+}
+
+int
 mcMicroRevsToDistance(Motor * motor, long long mrevs, int * distance) {
     // Lookup scale and distance
     if (motor->op_profile.units == 0)
@@ -258,6 +268,18 @@ mcMicroRevsToDistance(Motor * motor, long long mrevs, int * distance) {
 int
 mcMicroRevsToDistanceUnits(Motor * motor, long long urevs, int * distance,
         unit_type_t units) {
+    double _distance;
+    int status = mcMicroRevsToDistanceF(motor, urevs, &_distance);
+    if (status)
+        return status;
+
+    *distance = (int) _distance;
+    return 0;
+}
+
+int
+mcMicroRevsToDistanceUnitsF(Motor * motor, long long urevs,
+        double * distance, unit_type_t units) {
 
     if (units == MICRO_REVS) {
         *distance = urevs;
@@ -269,7 +291,7 @@ mcMicroRevsToDistanceUnits(Motor * motor, long long urevs, int * distance,
     // Keep *distance value at a 1e6x scale until after the final
     // conversion to maintain accuracy
     // scale = rev / unit .: distance = urevs / scale
-    long long value = urevs * (long long)1e6 / motor->op_profile.scale;
+    *distance = (double) urevs / motor->op_profile.scale;
     
     if (units != motor->op_profile.units) {
         struct conversion * c;
@@ -282,9 +304,8 @@ mcMicroRevsToDistanceUnits(Motor * motor, long long urevs, int * distance,
         // The dest and source values are swapped from
         // mcDistanceUnitsToMicroRevs, because this is converting from
         // device units to requested units instead of visa versa
-        value *= c->scale;
+        *distance *= c->scale;
     }
-    *distance = value / (long long)1e6;
 
     return 0;
 }
