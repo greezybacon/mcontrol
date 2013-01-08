@@ -204,50 +204,101 @@ class MotorContext(Shell):
         Home the motor using the described method and direction. For
         instance,
 
-        home stop left
+        home stop left [1 inch]
 
         Will home the motor to a hard stop in the left hand (negative)
         direction. If homing to hard stop, the position counter will not be
         reset after the device is homed. In that case, follow the command
         with a 'set position 0' or whatever position is reflected by the
         unit at the location of the hard stop.
+
+        If initial creep velocity is not specified, a default value of 0.5
+        inches per second will be assumed.
         """
         parts = line.split()
-        # TODO: Collect current unit/scale
-        slip = self.motor.profile.slip
-        units, scale = self.motor.units, self.motor.scale
-        self.motor.scale = 1000, 'milli-rev'
-        rc, self.motor.profile.run_current = self.motor.profile.run_current, 35
-        self.motor.profile.slip = (3, 'milli-rev')
-        self.motor.profile.commit()
 
+        operation = parts.pop(0)
+
+        reverse = 'left' in parts
+        if 'left' in parts:
+            parts.remove('left')
+        elif 'right' in parts:
+            parts.remove('right')
+
+        if len(parts) < 1:
+            value, units = 500, 'mil'
+        else:
+            value, units = self.get_value_and_units(*parts)
+
+        if operation == 'stop':
+            # Software implementation of home to hard stop
+            return self._do_home_hard_stop(reverse=reverse,
+                rate=(value, units))
+
+    def _do_home_hard_stop(self, rate, reverse=False):
         try:
             self.motor.encoder = 1
-            # Clear stall
-            self.motor.slew(0)
         except:
             raise
 
-        rate = 500
-        if 'left' in parts:
-            rate = -rate
-        if 'stop' in parts:
-            # Software implementation of home to hard stop
+        # Configure motor profile for first pass homing
+        slip = self.motor.profile.slip
+        rc = self.motor.profile.run_current
+
+        def find_hard_stop(rate, units):
             event = None
             while True:
                 if not self.motor.moving:
                     if event and event.isset:
                         if event.data.stalled:
-                            break
+                            return self.motor.position
                         # Not a stall event, wait for a stall event
                         else:
                             event.reset()
                     else:
-                        self.motor.slew(rate)
+                        self.motor.slew(rate, units)
                         event = self.motor.on(Event.EV_MOTION)
                 time.sleep(0.2)
 
-        self.motor.scale = scale, units
+        # Find hard stop at fast speed
+        rate, units = rate
+        if reverse:
+            rate *= -1
+        backup = rate
+        while True:
+            self.motor.profile.run_current = 45
+            self.motor.profile.slip = (5, 'mil')
+            self.motor.profile.commit()
+            self.motor.slew(0)
+            pos = find_hard_stop(rate*2, units)
+
+            # Back up for 0.5 seconds
+            self.motor.profile.run_current = rc
+            self.motor.profile.slip = (50, 'mil')
+            self.motor.profile.commit()
+
+            tries = 3
+            while tries:
+                self.motor.move(-backup, units)
+                ev = self.motor.on(Event.EV_MOTION)
+                ev.wait()
+                if not ev.data.stalled:
+                    break
+                tries -= 1
+
+            self.motor.profile.run_current = 45
+            self.motor.profile.slip = (5, 'mil')
+            self.motor.profile.commit()
+            self.motor.slew(0)
+            pos2 = find_hard_stop(rate, units)
+
+            print(pos, pos2)
+            if abs(pos2 - pos) < 0.01:
+                break
+            else:
+                rate *= 0.8
+
+        # Reset motor profile
         self.motor.profile.slip = slip
         self.motor.profile.run_current = rc
         self.motor.profile.commit()
