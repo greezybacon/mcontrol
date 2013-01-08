@@ -429,6 +429,12 @@ class TestingRunContext(Shell):
         """
         self.out(self.eval(what))
 
+    def do_pause(self, what):
+        """
+        Outputs a message and waits for the user to press the [Enter] key
+        """
+        raw_input(self.eval(what))
+
     def do_label(self, line):
         # Handled at compile time in the Setup context.
         pass
