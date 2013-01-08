@@ -39,7 +39,7 @@ static struct callback_list * callbacks = NULL;
 static pthread_t timer_thread_id = (pthread_t) 0;
 static pthread_mutex_t callback_list_lock = PTHREAD_MUTEX_INITIALIZER;
 
-static const int TIMER_SIGNAL = SIGINT;
+static const int TIMER_SIGNAL = SIGUSR1;
 
 static void
 _mcCallbackListPop(void) {
@@ -56,13 +56,20 @@ _mcCallbackListPop(void) {
     pthread_mutex_unlock(&callback_list_lock);
 }
 
+static void
+_NoopSignalHandler(int signo) {}
+
 static void *
 _mcCallbackThread(void *arg) {
     sigset_t mask;
     sigemptyset(&mask);
     sigaddset(&mask, TIMER_SIGNAL);
 
-    // Block the delivery of the timer signal to this thread
+    struct sigaction sa = { .sa_handler = _NoopSignalHandler };
+    sigaction(TIMER_SIGNAL, &sa, NULL);
+
+    // Block the delivery of the timer signal to this thread. It should only
+    // be received at times when expected
     pthread_sigmask(SIG_BLOCK, &mask, NULL);
 
     int signal, status;
@@ -72,8 +79,10 @@ _mcCallbackThread(void *arg) {
         signal = 0;
         if (callbacks) {
             // Await delivery of the timer signal to this thread
+            pthread_sigmask(SIG_UNBLOCK, &mask, NULL);
             status = clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME,
                 &callbacks->abstime, NULL);
+            pthread_sigmask(SIG_BLOCK, &mask, NULL);
             if (status == EINTR)
                 // SIGINT means callbacks have changed
                 continue;
@@ -98,8 +107,9 @@ _mcCallbackThread(void *arg) {
 
         // Double check the time
         clock_gettime(CLOCK_REALTIME, &now);
-        if (!(now.tv_sec >= callbacks->abstime.tv_sec
-                && now.tv_nsec >= callbacks->abstime.tv_nsec))
+        if (now.tv_sec < callbacks->abstime.tv_sec
+                || (now.tv_sec == callbacks->abstime.tv_sec
+                    && now.tv_nsec < callbacks->abstime.tv_nsec))
             // Timer expiration is still in the future
             continue;
 
@@ -158,8 +168,9 @@ mcCallbackAbs(const struct timespec * when, callback_function callback,
 
     struct callback_list * current = callbacks, * tail = NULL;
     while (current) {
-        if ((current->abstime.tv_sec >= when->tv_sec)
-                && (current->abstime.tv_nsec > when->tv_nsec)) {
+        if (current->abstime.tv_sec > when->tv_sec
+                || (current->abstime.tv_sec == when->tv_sec
+                    && current->abstime.tv_nsec > when->tv_nsec)) {
             // New callback occurs before this one. Insert the callback
             // here
             info->next = current;
@@ -168,6 +179,8 @@ mcCallbackAbs(const struct timespec * when, callback_function callback,
                 current->prev->next = info;
             }
             current->prev = info;
+            if (current == callbacks)
+                callbacks = info;
             break;
         }
         tail = current;
