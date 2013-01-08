@@ -110,14 +110,13 @@ class MotorContext(Shell):
         if type(units) is not int:
             if units not in all_units:
                 raise ValueError("Unknown units given")
-            units = all_units[units]
-        if "." in value:
-            if units in conversions:
-                conv = conversions[units]
-                value = float(value) * conv[0]
-                units = conv[1]
-            else:
-                raise ValueError("Integer value required for these units")
+        units = all_units[units]
+        if units in abbreviations:
+            units = abbreviations[units]
+        if units in conversions:
+            conv = conversions[units]
+            value = float(value) * conv[0]
+            units = conv[1]
         else:
             value = int(value)
 
