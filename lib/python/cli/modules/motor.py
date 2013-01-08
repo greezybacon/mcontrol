@@ -107,12 +107,12 @@ class MotorContext(Shell):
         smaller unit automagically
         """
         units = units or self.motor.units
-        if type(units) is not int:
-            if units not in all_units:
-                raise ValueError("Unknown units given")
-        units = all_units[units]
         if units in abbreviations:
             units = abbreviations[units]
+        elif type(units) is not int:
+            if units not in all_units:
+                raise ValueError("Unknown units given")
+            units = all_units[units]
         if units in conversions:
             conv = conversions[units]
             value = float(value) * conv[0]
@@ -288,7 +288,10 @@ class MotorContext(Shell):
 
         if getset == "set":
             try:
-                val, units = self.get_value_and_units(*parts)
+                if 'current' in component:
+                    val = int(parts[0])
+                else:
+                    val, units = self.get_value_and_units(*parts)
             except ValueError as ex:
                 return self.error("Invalid value", repr(ex))
 
