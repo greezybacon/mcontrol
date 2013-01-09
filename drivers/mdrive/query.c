@@ -33,7 +33,7 @@ static struct query_variable query_xref[] = {
     { 1, MCMOVING,          "MV",   NULL,   NULL },
     { 1, MCSTALLED,         "ST",   NULL,   mdrive_write_simple },
     { 3, MCINPUT,           "I%d",  NULL,   NULL },
-    { 6, MCOUTPUT,          "O%d",  NULL,   NULL },
+    { 19, MCOUTPUT,         "O%d",  NULL,   mdrive_write_simple },
 
     // Profile peeks
     { 5, MCACCEL,           NULL,   mdrive_profile_peek, NULL },
@@ -47,7 +47,7 @@ static struct query_variable query_xref[] = {
     { 1, MDRIVE_ENCODER,    "EE",   NULL,   mdrive_ee_poke },
 
     { 1, MDRIVE_VARIABLE,   NULL,   mdrive_var_peek, mdrive_var_poke },
-    { 6, MDRIVE_EXECUTE,    NULL,   NULL, mdrive_ex_poke },
+    { 20, MDRIVE_EXECUTE,   NULL,   NULL, mdrive_ex_poke },
 
     { 4, MDRIVE_IO_TYPE,    "S%d",  NULL,   mdrive_io_poke },
     { 4, MDRIVE_IO_PARM1,   "S%d",  NULL,   mdrive_io_poke },
@@ -141,9 +141,9 @@ int
 mdrive_write_simple(mdrive_axis_t * axis, struct motor_query * query,
         struct query_variable * q) {
 
-    char cmd[16];
+    char cmd[16], variable[16];
     int value = query->number;
-    switch (q->type) {
+    switch (q->type & 0x0f) {
         case 9:
             // Convert first, then fall through to set integer
             value = mdrive_microrevs_to_steps(axis, value);
@@ -155,6 +155,11 @@ mdrive_write_simple(mdrive_axis_t * axis, struct motor_query * query,
             break;
         case 2:
             snprintf(cmd, sizeof cmd, "%s=%s", q->variable, query->string);
+            break;
+        case 3:
+            // XXX: for MCOUTPUT, ensure the unit supports the output given
+            snprintf(variable, sizeof variable, q->variable, query->arg.number);
+            snprintf(cmd, sizeof cmd, "%s=%d", variable, query->number);
             break;
         default:
             return ENOTSUP;
@@ -467,27 +472,28 @@ mdrive_io_poke(mdrive_axis_t * axis, struct motor_query * query,
 
     // XXX: Some units sport more than 5 IOs. Check the model number of the
     //      unit here
-    if (query->number < 1)
+    int port = query->arg.number;
+    if (port < 1)
         return EINVAL;
-    else if (query->number > 5)
+    else if (port > 5)
         return ENOTSUP;
 
     mdrive_lazyload_io(axis);
-    struct mdrive_io_config io = axis->io[query->number-1];
+    struct mdrive_io_config io = axis->io[port-1];
 
     switch (query->query) {
         case MDRIVE_IO_TYPE:
-            if (query->number == 5) {
-                switch (query->arg.number) {
+            if (port == 5) {
+                switch (query->number) {
                     case IO_ANALOG_VOLTAGE:
                     case IO_ANALOG_CURRENT:
-                        io.type = query->arg.number;
+                        io.type = query->number;
                         break;
                     default:
                         return EINVAL;
                 }
             } else {
-                switch (query->arg.number) {
+                switch (query->number) {
                     case IO_OUTPUT:
                     case IO_MOVING:
                     case IO_FAULT:
@@ -506,7 +512,7 @@ mdrive_io_poke(mdrive_axis_t * axis, struct motor_query * query,
                     case IO_JOG_POS:
                     case IO_JOG_NEG:
                     case IO_RESET:
-                        io.type = query->arg.number;
+                        io.type = query->number;
                         break;
                     default:
                         return EINVAL;
@@ -516,29 +522,32 @@ mdrive_io_poke(mdrive_axis_t * axis, struct motor_query * query,
 
         case MDRIVE_IO_PARM1:
             if (query->number == 5)
-                io.wide_range = (bool) query->arg.number;
+                io.wide_range = (bool) query->number;
             else
-                io.active_high = (bool) query->arg.number;
+                io.active_high = (bool) query->number;
             break;
 
         case MDRIVE_IO_PARM2:
             if (query->number == 5)
                 return EINVAL;
             else
-                io.source = (bool) query->arg.number;
+                io.source = (bool) query->number;
             break;
+
+        default:
+            return EINVAL;
     }
     // Send configuration to the device
     char buffer[64];
-    if (query->number == 5) {
+    if (port == 5) {
         // IO type must be set in order to configure the analog input
         if (!io.type)
             return 0;
         snprintf(buffer, sizeof buffer, "S%d=%d,%d",
-            (int) query->number, io.type, io.wide_range ? 1 : 0);
+            port, io.type, io.wide_range ? 1 : 0);
     } else
         snprintf(buffer, sizeof buffer, "S%d=%d,%d,%d",
-            (int) query->number, io.type, io.active_high ? 1 : 0,
+            port, io.type, io.active_high ? 1 : 0,
             io.source ? 1 : 0);
 
     if (mdrive_send(axis, buffer))

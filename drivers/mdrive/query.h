@@ -1,7 +1,8 @@
 struct query_variable {
     // 1: int, 2: string, 3: int with item, 4: string with item,
     // 5: use (*read), 6: item is write-only
-    // 9: int + convert from microrevs
+    // 9: int + convert from microrevs (|8)
+    // |16: item is write-only
     char type;
     motor_query_t query;
     char * variable;

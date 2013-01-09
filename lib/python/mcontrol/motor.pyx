@@ -41,7 +41,7 @@ cdef class Motor:
     def __init__(self, connection, recovery=False):
         cdef int status
         cdef String buf = bufferFromString(connection)
-        status = mcConnect(&buf, &self.id)
+        status = mcConnect(&buf, &self.id, recovery)
 
         raise_status(status, "Unable to connect to motor")
 
@@ -198,12 +198,19 @@ cdef extern from "drivers/mdrive/mdrive.h":
         MDRIVE_STATS_TX,
 
         MDRIVE_IO_TYPE,
-        MDRIVE_IO_INVERT,
-        MDRIVE_IO_DRIVE,
+        MDRIVE_IO_PARM1,
+        MDRIVE_IO_PARM2,
 
         MDRIVE_ENCODER,
         MDRIVE_VARIABLE,
         MDRIVE_EXECUTE
+
+    ctypedef enum mdrive_io_type:
+        IO_INPUT,
+        IO_HOME,
+        IO_PAUSE,
+
+        IO_OUTPUT
 
 cdef class MdriveMotor(Motor):
 
@@ -275,12 +282,50 @@ cdef class MdriveMotor(Motor):
                 mcPokeInteger(self.id, MDRIVE_ENCODER, val),
                 "Unable to set device encoder setting")
 
+    def read_port(self, port):
+        cdef int val
+        raise_status(
+            mcQueryIntegerWithIntegerItem(self.id, k.MCINPUT, &val, port),
+            "Unable to read device port state")
+        return val
+
+    def write_port(self, port, value):
+        raise_status(
+            mcPokeIntegerWithIntegerItem(self.id, k.MCOUTPUT, value, port),
+            "Unable to write device port state")
+
+    def configure_port(self, port, **settings):
+        if 'source' in settings:
+            raise_status(
+                mcPokeIntegerWithIntegerItem(self.id, MDRIVE_IO_PARM2,
+                    settings['source'], port),
+                "Unable to configure port source/sink setting")
+        if 'active_high' in settings:
+            raise_status(
+                mcPokeIntegerWithIntegerItem(self.id, MDRIVE_IO_PARM1,
+                    settings['active_high'], port),
+                "Unable to configure port active-high/low setting")
+        if 'type' in settings:
+            types = {
+                'input':        IO_INPUT,
+                'output':       IO_OUTPUT,
+                'home':         IO_HOME,
+                'pause':        IO_PAUSE,
+            }
+            if settings['type'].lower() not in types:
+                raise ValueError("{0}: Unsupported port type"
+                    .format(settings['type']))
+            type = types[settings['type'].lower()]
+            raise_status(
+                mcPokeIntegerWithIntegerItem(self.id, MDRIVE_IO_TYPE,
+                    type, port),
+                "Unable to configure port type")
+
     def name_set(self, address, serial_number):
         cdef String addr = bufferFromString(address[0])
         cdef String sn = bufferFromString(serial_number)
         cdef int status
-        print("Calling mcPokeStringItem")
-        status = mcPokeStringItem(self.id, MDRIVE_NAME, &addr, &sn)
+        status = mcPokeStringWithStringItem(self.id, MDRIVE_NAME, &addr, &sn)
         raise_status(status, "Unable to name motor")
 
     def search(cls):
@@ -294,12 +339,12 @@ cdef class MdriveMotor(Motor):
     def read(self, variable):
         cdef int value
         cdef String var = bufferFromString(variable)
-        mcQueryIntegerItem(self.id, MDRIVE_VARIABLE, &value, &var)
+        mcQueryIntegerWithStringItem(self.id, MDRIVE_VARIABLE, &value, &var)
         return value
 
     def write(self, variable, value):
         cdef String var = bufferFromString(variable)
-        mcPokeIntegerItem(self.id, MDRIVE_VARIABLE, value, &var)
+        mcPokeIntegerWithStringItem(self.id, MDRIVE_VARIABLE, value, &var)
 
 from libc.stdio cimport fflush, stdout
 cdef void pyEventCallback(event_info_t * info) with gil:

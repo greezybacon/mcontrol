@@ -64,8 +64,9 @@ PROXYIMPL(mcQueryIntegerUnits, int, motor_query_t query, OUT int value,
     RETURN(0);
 }
 
-PROXYIMPL (mcQueryIntegerItem, motor_query_t query, OUT int value, String item) {
-    UNPACK_ARGS(mcQueryIntegerItem, args);
+PROXYIMPL (mcQueryIntegerWithStringItem, motor_query_t query, OUT int value,
+        String item) {
+    UNPACK_ARGS(mcQueryIntegerWithStringItem, args);
 
     Motor * m = find_motor_by_id(motor, message->pid);
     if (m == NULL)
@@ -76,6 +77,30 @@ PROXYIMPL (mcQueryIntegerItem, motor_query_t query, OUT int value, String item) 
 
     struct motor_query q = { .query = args->query };
     snprintf(q.arg.string, sizeof q.arg.string, "%s", args->item.buffer);
+
+    int status = m->driver->class->read(m->driver, &q);
+    if (status)
+        RETURN(status);
+
+    args->value = q.number;
+    RETURN(0);
+}
+
+PROXYIMPL (mcQueryIntegerWithIntegerItem, motor_query_t query, OUT int value,
+        int item) {
+    UNPACK_ARGS(mcQueryIntegerWithIntegerItem, args);
+
+    Motor * m = find_motor_by_id(motor, message->pid);
+    if (m == NULL)
+        RETURN( EINVAL );
+
+    if (m->driver->class->read == NULL)
+        RETURN( ENOTSUP );
+
+    struct motor_query q = {
+        .query = args->query,
+        .arg.number = args->item
+    };
 
     int status = m->driver->class->read(m->driver, &q);
     if (status)
@@ -229,8 +254,9 @@ PROXYIMPL (mcPokeIntegerUnits, motor_query_t query, int value,
     RETURN( m->driver->class->write(m->driver, &q) );
 }
 
-PROXYIMPL (mcPokeIntegerItem, motor_query_t query, int value, String item) {
-    UNPACK_ARGS(mcPokeIntegerItem, args);
+PROXYIMPL (mcPokeIntegerWithStringItem, motor_query_t query, int value,
+        String item) {
+    UNPACK_ARGS(mcPokeIntegerWithStringItem, args);
 
     Motor * m = find_motor_by_id(motor, message->pid);
     if (m == NULL)
@@ -249,8 +275,29 @@ PROXYIMPL (mcPokeIntegerItem, motor_query_t query, int value, String item) {
     RETURN( m->driver->class->write(m->driver, &q) );
 }
 
-PROXYIMPL (mcPokeStringItem, motor_query_t query, String value, String item) {
-    UNPACK_ARGS(mcPokeStringItem, args);
+PROXYIMPL (mcPokeIntegerWithIntegerItem, motor_query_t query, int value,
+        int item) {
+    UNPACK_ARGS(mcPokeIntegerWithIntegerItem, args);
+
+    Motor * m = find_motor_by_id(motor, message->pid);
+    if (m == NULL)
+        RETURN( EINVAL );
+
+    if (m->driver->class->write == NULL)
+        RETURN( ENOTSUP );
+
+    struct motor_query q = {
+        .query = args->query,
+        .number = args->value,
+        .arg.number = args->item,
+    };
+
+    RETURN( m->driver->class->write(m->driver, &q) );
+}
+
+PROXYIMPL (mcPokeStringWithStringItem, motor_query_t query, String value,
+        String item) {
+    UNPACK_ARGS(mcPokeStringWithStringItem, args);
 
     Motor * m = find_motor_by_id(motor, message->pid);
     if (m == NULL)

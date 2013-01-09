@@ -6,20 +6,28 @@ cdef extern from "lib/message.h":
 from constants cimport motion_increment
 
 cdef extern from "lib/client.h" nogil:
-    int mcConnect(String * connection, int * m)
+    int mcConnect(String * connection, int * m, int)
     int mcMoveRelativeUnits(int motor, int measure, int units)
     int mcMoveAbsoluteUnits(int motor, int measure, int units)
     int mcSlewUnits(int motor, int rate, int units)
     int mcStop(int motor)
 
     int mcPokeString(int motor, int what, String * value)
-    int mcPokeStringItem(int motor, int what, String * value, String * item)
+    int mcPokeStringWithStringItem(int motor, int what, String * value,
+        String * item)
     int mcQueryString(int motor, int what, String * value)
     int mcQueryInteger(int motor, int what, int * value)
-    int mcQueryIntegerItem(int motor, int what, int * value, String * item)
+    int mcQueryIntegerWithStringItem(int motor, int what, int * value,
+        String * item)
+    int mcQueryIntegerWithIntegerItem(int motor, int what, int * value,
+        int item)
+    int mcQueryFloat(int motor, int what, double * value)
     int mcPokeInteger(int motor, int what, int value)
     int mcPokeIntegerUnits(int motor, int what, int value, int units)
-    int mcPokeIntegerItem(int motor, int what, int value, String * item)
+    int mcPokeIntegerWithStringItem(int motor, int what, int value,
+        String * item)
+    int mcPokeIntegerWithIntegerItem(int motor, int what, int value,
+        int item)
 
     int mcUnitScaleSet(int motor, int units, long long urevs)
     int mcUnitScaleGet(int motor, int * units, long long * urevs)
