@@ -10,6 +10,8 @@ party mode).
 
 from __future__ import print_function
 
+from mcontrol import MdriveMotor
+
 from . import Mixin, trim
 
 from cli import Shell
@@ -69,13 +71,16 @@ class NamingContext(Shell):
             name = match.groupdict()['name']
             sn = match.groupdict()['sn']
             try:
-                self.out("Setting %s to %s" % (sn, name.lower()))
+                self.status("Setting %s to %s" % (sn, name.lower()))
                 self.motor.name_set(name.lower(), sn)
-                self.out("Motor successfully named")
+                self.status("Motor successfully named")
                 if self.confirm(
-                        "Would you line to set the baudrate to 115.2k? "):
-                    self.motor.baudrate = 115200
-                    pass
+                    "Would you line to set the baudrate to 115.2k?",
+                    default=True):
+                    self.status("Switching to 115200 baud")
+                    named_motor = MdriveMotor("mdrive://{0}:{1}"
+                        .format(self['port'], name.lower()))
+                    named_motor.baudrate = 115200
             except AttributeError:
                 self.error("Motor does not support naming")
             except Exception as e:

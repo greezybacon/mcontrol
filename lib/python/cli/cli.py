@@ -104,6 +104,15 @@ Version 0.1-beta
         # Show the prompt and read the var
         self['env'][variable] = input(prompt)
 
+    def confirm(self, prompt, default=False):
+        choices = "Y|n" if default else "y|N"
+        while True:
+            answer = raw_input(prompt + " [{0}] ".format(choices))
+            if answer == '':
+                return default
+            elif answer.lower() in ('y','n','yes','no'):
+                return answer.lower()[0] == 'y'
+
     def do_EOF(self, line):
         return self.do_exit(line)
 
