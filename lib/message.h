@@ -92,6 +92,7 @@ struct event_message {
 #define MOTOR
 #define OUT
 #define IMPORTANT
+#define SLOW
 
 extern int
 mcMessageBoxOpen(void);

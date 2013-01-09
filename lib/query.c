@@ -288,9 +288,9 @@ PROXYIMPL (mcPokeIntegerWithIntegerItem, motor_query_t query, int value,
 
     struct motor_query q = {
         .query = args->query,
-        .number = args->value,
         .arg.number = args->item,
     };
+    q.number = args->value;
 
     RETURN( m->driver->class->write(m->driver, &q) );
 }
