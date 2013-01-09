@@ -44,7 +44,8 @@ mdrive_firmware_write(mdrive_axis_t * axis, const char * filename) {
     mdrive_reboot(axis);
 
     // Change to 19200 baud
-    mdrive_set_baudrate(axis->device, 19200);
+    if (mdrive_set_baudrate(axis->device, 19200) == 0)
+       axis->speed = 19200;
 
     // Reset the motor -- (which will allow reading the '$' prompt sent back
     // from the unit when rebooted in upgrade mode)
@@ -77,8 +78,15 @@ mdrive_firmware_write(mdrive_axis_t * axis, const char * filename) {
     // :e -- Enter into programming mode
     char * magic_codes[] =
         { ":IMSInc\r", "::v\r", "::c\r", "::p\r", "::s\r", "::e\r", NULL };
-    for (char ** magic = magic_codes; *magic; magic++)
-        mdrive_communicate(axis, *magic, &options);
+    struct timespec waittime = { .tv_nsec=25e6 },
+        longer = { .tv_nsec=75e6 };
+    for (char ** magic = magic_codes; *magic; magic++) {
+        do {
+            nanosleep(&waittime, NULL);
+            result.ack = false;
+            mdrive_communicate(axis, *magic, &options);
+        } while (!result.ack);
+    }
 
     // The unit will respond after the ':e' before it is really ready
     sleep(2);
@@ -97,7 +105,7 @@ mdrive_firmware_write(mdrive_axis_t * axis, const char * filename) {
                 break;
             // Only accept ':' and hex chars
             else if (!(ch == ':' || isxdigit(ch)))
-                mcTraceF(10, MDRIVE_CHANNEL, "Skipping garbage char: %c", ch);
+                continue;
 
             *pBuffer++ = ch;
         }
@@ -126,8 +134,11 @@ mdrive_firmware_write(mdrive_axis_t * axis, const char * filename) {
         // though the unit is not in checksum mode, it will respond with an
         // ACK or NACK char to indicate receipt of the record.
         do {
+            nanosleep(&waittime, NULL);
             result.ack = false;
             mdrive_communicate(axis, buffer, &options);
+            if (!result.ack)
+                nanosleep(&longer, NULL);
         } while (!result.ack);
     } while (ch != EOF);
     fclose(file);
@@ -153,7 +164,9 @@ mdrive_firmware_write(mdrive_axis_t * axis, const char * filename) {
 
     // Unit is now factory defaulted. Change to default speed and re-inspect
     // comm settings
-    mdrive_set_baudrate(axis->device, DEFAULT_PORT_SPEED);
+    if (mdrive_set_baudrate(axis->device, DEFAULT_PORT_SPEED) == 0)
+        axis->speed = DEFAULT_PORT_SPEED;
+
     mdrive_config_inspect(axis, true);
     axis->address = '!';
 
