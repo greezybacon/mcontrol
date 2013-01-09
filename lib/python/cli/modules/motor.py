@@ -147,8 +147,8 @@ class MotorContext(Shell):
             return self.error(repr(ex))
 
         func(value, units)
+        self.last_move_event = self.motor.on(Event.EV_MOTION)
         if wait:
-            self.last_move_event = self.motor.on(Event.EV_MOTION)
             self.last_move_event.wait()
 
     def _move_done(self, event):
@@ -168,10 +168,10 @@ class MotorContext(Shell):
         """
         Wait indefinitely until current motion is completed
         """
-        if not self.motor.moving:
+        if self.last_move_event and self.last_move_event.isset:
             return
-        self.last_move_event = self.motor.on(Event.EV_MOTION)
-        self.last_move_event.wait()
+        else:
+            self.last_move_event.wait()
 
     def do_slew(self, line):
         """
