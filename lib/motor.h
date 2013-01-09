@@ -27,6 +27,7 @@ extern Motor * find_motor_by_id(motor_t id, int pid);
 extern int mcMotorsForDriver(Driver *, Motor *, int);
 
 // Suppress auto motor argument
-PROXYDEF(mcConnect, int, String * connection, OUT MOTOR motor_t * motor);
+SLOW PROXYDEF(mcConnect, int, String * connection, OUT MOTOR motor_t * motor,
+    bool recovery);
 PROXYDEF(mcSearch, int, String * driver, OUT String * results);
 #endif

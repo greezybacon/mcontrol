@@ -8,7 +8,7 @@ class MotorConnect(Mixin):
     Facilitates connections to the mcontrol motors
     """
 
-    def do_connect(self, string):
+    def do_connect(self, line):
         """
         Connect to a motor identified by the connection string. Connection
         strings should be in the format of
@@ -25,14 +25,29 @@ class MotorConnect(Mixin):
 
         Will connect to the /dev/ttyM0 port at 115200 baud and attempt to
         talk to a motor named 'x'
+
+        For sticky situations, the motor can be connected to in recovery
+        mode where it isn't responding properly to be connected to otherwise
+        -- if it's stuck in firmware upgrade mode, for instance. Use the
+        "recover" option
+
+        Usage: connect mdrive:///dev/port0[@speed][:name] [recover]
+
         """
+        parts = line.split()
+        recovery = False
+        if 'recover' in parts:
+            recovery = True
+            parts.remove('recover')
+
+        string = parts[0]
         self.status("%(BOLD)%(GREEN)Connecting to {0}%(NORMAL)".format(
             string))
         try:
             if string.startswith('mdrive'):
-                motor = mcontrol.MdriveMotor(string)
+                motor = mcontrol.MdriveMotor(string, recovery)
             else:
-                motor = mcontrol.Motor(string)
+                motor = mcontrol.Motor(string, recovery)
         except mcontrol.NoDaemonException:
             self.error("Daemon is not accessible", "is one running?")
         except ValueError:

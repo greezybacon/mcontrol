@@ -52,7 +52,8 @@ mcGarbageCollect(void) {
  *  Finds the requested motor and connects to its queue. It also creates a
  *  return traffic queue for responses.
  */
-PROXYIMPL(mcConnect, String connection, OUT MOTOR motor_t motor) {
+PROXYIMPL(mcConnect, String connection, OUT MOTOR motor_t motor,
+        bool recovery) {
     UNPACK_ARGS(mcConnect, args);
 
     if (motor_list == NULL)
@@ -76,7 +77,7 @@ PROXYIMPL(mcConnect, String connection, OUT MOTOR motor_t motor) {
         .id = motor_uid++
     };
     int status = mcDriverConnect(args->connection.buffer, &m->driver);
-    if (status != 0)
+    if (status != 0 && !args->recovery)
         RETURN(status);
 
     if (m->driver == NULL)

@@ -4,7 +4,7 @@
 #include "message.h"
 #include "motor.h"
 
-PROXYDEF(mcFirmwareLoad, int, String * filename);
-PROXYDEF(mcMicrocodeLoad, int, String * filename);
+SLOW PROXYDEF(mcFirmwareLoad, int, String * filename);
+SLOW PROXYDEF(mcMicrocodeLoad, int, String * filename);
 
 #endif

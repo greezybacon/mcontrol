@@ -1,7 +1,7 @@
 from __future__ import print_function
 
 import re
-proxy = re.compile(r'(?P<priority>IMPORTANT)? *PROXYDEF\((?P<name>[^,)]+),'
+proxy = re.compile(r'(?P<flags>IMPORTANT|SLOW)? *PROXYDEF\((?P<name>[^,)]+),'
                    r'\s*(?P<ret>[^,)]+)'
                    r'(?P<args>(?:,[^,)]+)*)\);', re.M)
 
@@ -90,10 +90,15 @@ for doth in sys.argv:
                 unpack_return(x) for x in remote_args)
 
         # Deal with high-priority messages
-        if items['priority'] == 'IMPORTANT':
+        if items['flags'] and 'IMPORTANT' in items['flags']:
             items['priority'] = 'PRIORITY_HIGH'
         else:
             items['priority'] = 'PRIORITY_CMD'
+
+        if items['flags'] and 'SLOW' in items['flags']:
+            items['timeout'] = 'NULL'
+        else:
+            items['timeout'] = '&timeout'
 
         proxies[items['name']] = items
 
@@ -109,8 +114,9 @@ for name in sorted(proxies):
         %(unpacked_args)s
     };
     response_message_t response;
+    struct timespec * waittime = %(timeout)s;
     int size = mcMessageSendWait(motor, TYPE_%(name)s, &payload,
-        sizeof payload, %(priority)s, &response, &timeout);
+        sizeof payload, %(priority)s, &response, waittime);
 
     switch (size) {
         case -ENOENT:
