@@ -280,7 +280,11 @@ class TestingRunContext(Shell):
         """
         # First off, search for brace expressions
         expression = self.expand(expression)
-        return eval(expression, {}, self.vars)
+        try:
+            return eval(expression, {}, self.vars)
+        except SyntaxError:
+            self.error("Syntax Error", expression)
+            raise
 
     def do_counter(self, line):
         """
@@ -478,6 +482,20 @@ class TestingRunContext(Shell):
             return self.error("{0}: Invalid debug state",
                 "See 'help debug'")
         self.debug = state.lower() == 'on'
+
+    def do_wait(self, line):
+        """
+        Wait for some amount of time, in seconds
+
+        Usage:
+        wait 0.5
+
+        will wait for half a second
+        """
+        try:
+            time.sleep(float(line))
+        except ValueError:
+            return self.error("Incorrect wait time", "See 'help wait'")
 
     def run(self):
         self.next = 0
