@@ -21,7 +21,12 @@
 bool
 mdrive_config_rollback(mdrive_axis_t * device) {
     // Reset all settings
-    if (mdrive_send(device, "IP") != RESPONSE_OK)
+    struct timespec timeout = { .tv_nsec = 750e6 };
+    struct mdrive_send_opts options = {
+        .expect_data = false,
+        .waittime = &timeout
+    };
+    if (mdrive_communicate(device, "IP", &options) != RESPONSE_OK)
         return false;
 
     // Inspect the reset configuration, but don't set anything new
