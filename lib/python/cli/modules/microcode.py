@@ -25,3 +25,17 @@ class MicrocodeMixin(Mixin):
         else:
             return glob.glob(text + "*")
 
+    def do_flash(self, what):
+        """
+        Usage: flash <firmware.IMS>
+
+        Loads the firmware image onto the motor. This will also imply a
+        factory reset on the motor and will clear any microcode and settings
+        previously saved in the motor.
+        """
+
+        if not os.path.exists(what):
+            self.error('{0}: File does not exist'.format(what))
+        else:
+            what = os.path.abspath(what)
+        self.motor.load_firmware(what)
