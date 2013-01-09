@@ -374,6 +374,58 @@ class MotorContext(Shell):
             self.error("{0}: Unsupported profile component"
                 .format(component))
 
+    def do_port(self, line):
+        """
+        Read, write, or configure an IO port on the device.
+
+        port 1 read
+        port 1 set high
+
+        port 1 configure active-high source home
+        """
+        parts = line.split()
+
+        if len(parts) < 2:
+            return self.error("Invalid usage", "See 'help port'")
+
+        try:
+            port = int(parts.pop(0))
+        except ValueError:
+            return self.error("Invalid port number", "Use ports 1-5")
+
+        command = parts.pop(0)
+
+        if command == 'read':
+            self.out(self.motor.read_port(port))
+        elif command == 'set':
+            if len(parts) < 1:
+                return self.error("New state required", "See 'help port'")
+            value = 1 if parts[0] in ('high',) else 0
+            self.motor.write_port(port, value)
+        elif command == 'configure':
+            args = {}
+            # Type
+            if 'home' in parts:
+                args['type'] = "home"
+            elif 'input' in parts:
+                args['type'] = "input"
+            elif 'output' in parts:
+                args['type'] = "output"
+            elif 'pause' in parts:
+                args['type'] = "pause"
+
+            if 'active-high' in parts:
+                args['active_high'] = True
+            elif 'active-low' in parts:
+                args['active_high'] = False
+
+            if 'source' in parts:
+                args['source'] = True
+            elif 'sink' in parts:
+                args['source'] = False
+
+            self.motor.configure_port(port, **args)
+
     def help_units(self):
         return trim("""
         Currently supported units are
