@@ -819,8 +819,10 @@ mdrive_communicate(mdrive_axis_t * axis, const char * command,
         // invalid and does not belong to this transaction.
         txid = ++axis->device->txid;
 
-        if (mdrive_write_buffer(axis, buffer, length))
-            return RESPONSE_IOERROR;
+        if (mdrive_write_buffer(axis, buffer, length)) {
+            status = RESPONSE_IOERROR;
+            goto finish;
+        }
 
         clock_gettime(CLOCK_REALTIME, &now);
         tsAdd(&now, &first_waittime, &timeout);
@@ -839,12 +841,14 @@ wait_longer:
                     &axis->device->rxlock, &timeout)) {
 
                 pthread_mutex_unlock(&axis->device->rxlock);
-                if (axis->echo == EM_QUIET && !options->expect_data)
+                if (axis->echo == EM_QUIET && !options->expect_data) {
                     // No response from unit. If the unit is EM=2
                     // (EM_QUIET), this is likely just a command with no
                     // response, which indicates success -- even if checksum
                     // is enabled
-                    return RESPONSE_OK;
+                    status = RESPONSE_OK;
+                    goto finish;
+                }
 
                 // Non-responsive unit
                 axis->stats.timeouts++;
@@ -963,6 +967,7 @@ resend:
         axis->stats.resends++;
     } // end while (i--)
 
+finish:
     if (response) {
         axis->stats.rx++;
         axis->stats.rxbytes += response->received;
