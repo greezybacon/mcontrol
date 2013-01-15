@@ -1,8 +1,8 @@
 CC=gcc
-CFLAGS=--std=gnu99 -Wall -D_GNU_SOURCE -pedantic -pg
+CFLAGS=--std=gnu99 -Wall -D_GNU_SOURCE -pedantic -g -pg
 LDFLAGS=-ldl -lrt -rdynamic -lrt -lpthread -lm -nopie
 
-SOURCES=main.c controller.c
+SOURCES=main.c controller.c scheduler.c worker.c
 OBJECTS=$(SOURCES:.c=.o) ../lib/*.o ../drivers/mdrive/*.o
 EXECUTABLE=mcontrol
 
