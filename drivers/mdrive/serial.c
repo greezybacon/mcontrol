@@ -830,7 +830,7 @@ mdrive_communicate(mdrive_axis_t * axis, const char * command,
         // If axis is not in checksum mode, add the more_waittime to the
         // timeout to since the unit will not send the early ACK of the
         // command receipt.
-        if (!axis->checksum)
+        if (!axis->checksum && options->expect_data)
             tsAdd(&timeout, &more_waittime, &timeout);
 
 wait_longer:
