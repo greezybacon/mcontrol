@@ -94,8 +94,8 @@ class MotorContext(Shell):
         self.motor.scale = int(scale), units
 
     def _do_get_stalled(self):
-        if self.last_move_event and self.last_move_event.data.stalled:
-            self.out(True)
+        if self.last_move_event and self.last_move_event.data:
+            self.out(self.last_move_event.data.stalled)
         else:
             self.out(self.motor.stalled)
 
