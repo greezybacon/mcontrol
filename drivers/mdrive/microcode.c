@@ -96,6 +96,10 @@ mdrive_microcode_inspect(mdrive_axis_t * axis) {
         .expect_err = true      // Error 30 handled here
     };
 
+    // No need to inspect global connections
+    if (axis->address == '*')
+        return 0;
+
     if (mdrive_communicate(axis, "EX CF", &opts))
         return EIO;
 
