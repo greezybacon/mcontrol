@@ -10,6 +10,7 @@ all_units = {
     k.MILLI_G:      "milli-g",
     k.MILLI_DEGREE: "milli-deg",
     k.MILLI_ROTATION: "milli-rev",
+    k.MICRO_REVS:   "micro-rev",    # Raw units
 
     "inch":         k.INCH,
     "mil":          k.MILLI_INCH,
@@ -17,7 +18,8 @@ all_units = {
     "mm":           k.MILLI_METER,
     "milli-g":      k.MILLI_G,
     "milli-deg":    k.MILLI_DEGREE,
-    "milli-rev":    k.MILLI_ROTATION
+    "milli-rev":    k.MILLI_ROTATION,
+    "micro-rev":    k.MICRO_REVS,   # Raw units
 }
 
 def scale_up(value, units):
