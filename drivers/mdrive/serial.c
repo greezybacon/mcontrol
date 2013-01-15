@@ -1073,7 +1073,13 @@ mdrive_connect(mdrive_address_t * address, mdrive_axis_t * axis) {
 
 void
 mdrive_disconnect(mdrive_axis_t * axis) {
+    if (!axis)
+        return;
+
     mdrive_axis_device_t * device = axis->device;
+
+    if (!device)
+        return;
 
     // Decrement active_axes counter for this device and cleanup the device
     // itself if there are no more active motors on this device
