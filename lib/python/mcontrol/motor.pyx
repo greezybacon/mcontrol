@@ -117,6 +117,13 @@ cdef class Motor:
                 "Unable to retrieve device state")
             return not not stalled
 
+        def __set__(self, state):
+            cdef int value
+            value = 1 if state else 0
+            raise_status(
+                mcPokeInteger(self.id, k.MCSTALLED, value),
+                "Unable to set stall flag")
+
     property profile:
         def __get__(self):
             if not self._has_profile:
