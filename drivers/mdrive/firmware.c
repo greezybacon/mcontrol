@@ -78,8 +78,8 @@ mdrive_firmware_write(mdrive_axis_t * axis, const char * filename) {
     // :e -- Enter into programming mode
     char * magic_codes[] =
         { ":IMSInc\r", "::v\r", "::c\r", "::p\r", "::s\r", "::e\r", NULL };
-    struct timespec waittime = { .tv_nsec=25e6 },
-        longer = { .tv_nsec=75e6 };
+    struct timespec waittime = { .tv_nsec=15e6 },
+        longer = { .tv_nsec=250e6 };
     for (char ** magic = magic_codes; *magic; magic++) {
         do {
             nanosleep(&waittime, NULL);
@@ -95,6 +95,7 @@ mdrive_firmware_write(mdrive_axis_t * axis, const char * filename) {
     options.waittime = NULL;
     // Read data from the input file
     char ch, buffer[64], *pBuffer;
+    int tries;
     do {
         // Reset the buffer position (for file reads)
         pBuffer = buffer;
@@ -133,13 +134,21 @@ mdrive_firmware_write(mdrive_axis_t * axis, const char * filename) {
         // Retry the send until we get a clear ACK from the unit. Even
         // though the unit is not in checksum mode, it will respond with an
         // ACK or NACK char to indicate receipt of the record.
-        do {
+        tries = 3;    // Three tries max
+        while (true) {
             nanosleep(&waittime, NULL);
             result.ack = false;
             mdrive_communicate(axis, buffer, &options);
-            if (!result.ack)
+            if (result.ack)
+                break;
+            else if (tries-- > 0) {
                 nanosleep(&longer, NULL);
-        } while (!result.ack);
+                waittime.tv_nsec += 1e6;
+            }
+            else
+                return EIO;
+        }
+
     } while (ch != EOF);
     fclose(file);
 
