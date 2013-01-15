@@ -5,6 +5,7 @@ from mcontrol import NoDaemonException
 
 from lib import term
 
+import math
 import time
 
 abbreviations = {
@@ -226,7 +227,7 @@ class MotorContext(Shell):
             parts.remove('right')
 
         if len(parts) < 1:
-            value, units = 500, 'mil'
+            value, units = 1000, all_units['mil']
         else:
             value, units = self.get_value_and_units(*parts)
 
@@ -247,6 +248,11 @@ class MotorContext(Shell):
 
         def find_hard_stop(rate, units):
             event = None
+            # Somehow, MDrive motors will require a non-zero move command to
+            # detect, signal, and clear the stall flag
+            self.motor.slew(math.copysign(2, rate), all_units['mil'])
+            self.motor.slew(0)
+            self.motor.stalled = False
             while True:
                 if not self.motor.moving:
                     if event and event.isset:
@@ -265,38 +271,25 @@ class MotorContext(Shell):
         if reverse:
             rate *= -1
         backup = rate
+        pos = []
         while True:
-            self.motor.profile.run_current = 45
-            self.motor.profile.slip = (5, 'mil')
+            self.motor.profile.run_current = 80
+            self.motor.profile.slip = (5000, 'micro-rev')
             self.motor.profile.commit()
-            self.motor.slew(0)
-            pos = find_hard_stop(rate*2, units)
+            pos.append(find_hard_stop(rate*2, units))
+
+            if len(pos) > 1 and abs(pos[-1] - pos[-2]) < 0.01:
+                break
 
             # Back up for 0.5 seconds
             self.motor.profile.run_current = rc
-            self.motor.profile.slip = (50, 'mil')
+            self.motor.profile.slip = slip
             self.motor.profile.commit()
 
-            tries = 3
-            while tries:
-                self.motor.move(-backup, units)
-                ev = self.motor.on(Event.EV_MOTION)
-                ev.wait()
-                if not ev.data.stalled:
-                    break
-                tries -= 1
+            self.motor.move(-backup, units)
+            self.motor.on(Event.EV_MOTION).wait()
 
-            self.motor.profile.run_current = 45
-            self.motor.profile.slip = (5, 'mil')
-            self.motor.profile.commit()
-            self.motor.slew(0)
-            pos2 = find_hard_stop(rate, units)
-
-            print(pos, pos2)
-            if abs(pos2 - pos) < 0.01:
-                break
-            else:
-                rate *= 0.8
+            rate *= 0.8
 
         # Reset motor profile
         self.motor.profile.slip = slip
