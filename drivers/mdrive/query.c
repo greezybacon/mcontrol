@@ -227,38 +227,51 @@ mdrive_name_poke(mdrive_axis_t * axis, struct motor_query * query,
     if (axis == NULL)
         return EINVAL;
 
+    // Handle devices with party mode set, but not device name ("!")
+
     // Since we're likely talking to more than one unit, turn off
     // unsolicited responses
     // -- Assume checksum is on
     axis->checksum = CK_ON;
     mdrive_set_checksum(axis, CK_OFF, false);
+    // Checksum is now off (this won't get set if more than one motor is on
+    // the line. If so, garbage will be returned before EM_QUIET is set)
+    axis->checksum = CK_OFF;
+
     mdrive_set_echo(axis, EM_QUIET, true);
 
     // Upload the naming routine
     char buffer[64];
-    char * routine[] = {
-        "ER",                       // Clear any current error
-        "CP N",                     // Clear any existing 'N' routine
-        "PG 100",
-        "LB N",
-            "BR N2, SN <> %1$s",    // All other motors skip
-            "DN = %2$d ' %1$1.1s",  // Set device name (2nd arg, 1st req'd)
-            "PY = 1",               // Enable party mode
-        "LB N2",
-        "E",                        // Program ends here
-        "PG",                       // Exit program mode
+    char ** sections[] = {
+        (char * []) {
+            "ER",                       // Clear any current error
+            "CP N",                     // Clear any existing 'N' routine
+            NULL
+        },
+        (char * []) {
+            "PG 100",
+            "LB N",
+                "BR N2, SN <> %1$s",    // All other motors skip
+                "DN = %2$d ' %1$1.1s",  // Set device name (2nd arg, 1st req'd)
+                "PY = 1",               // Enable party mode
+            "LB N2",
+            "E",                        // Program ends here
+            "PG",                       // Exit program mode
+            NULL
+        },
         NULL
     };
 
-    for (char ** line = routine; *line; line++) {
-        snprintf(buffer, sizeof buffer, *line,
-            query->arg.string, (unsigned int)query->string[0]);
-        mdrive_send(axis, buffer);
-    }
-
-    // Wait just a second
     struct timespec waittime = { .tv_nsec = 600e6 };
-    nanosleep(&waittime, NULL);
+    for (char *** section = sections; *section; section++) {
+        for (char ** line = *section; *line; line++) {
+            snprintf(buffer, sizeof buffer, *line,
+                query->arg.string, (unsigned int)query->string[0]);
+            mdrive_send(axis, buffer);
+        }
+        // Wait just a second
+        nanosleep(&waittime, NULL);
+    }
 
     // Call the naming routine now that we're done
     mdrive_send(axis, "EX N");
@@ -270,7 +283,8 @@ mdrive_name_poke(mdrive_axis_t * axis, struct motor_query * query,
     fake_axis.address = query->string[0];
     fake_axis.party_mode = true;
 
-    // Activate party mode and enable command acceptance on the new axis
+    // Activate party mode and enable command acceptance detection on the
+    // new axis
     mdrive_set_echo(&fake_axis, EM_PROMPT, false);
 
     // Attempt to read the serial number
