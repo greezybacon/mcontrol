@@ -85,12 +85,8 @@ cdef class MotorProfile(object):
 
     property accel:
         def __get__(self):
-            cdef int value
-            raise_status(
-                mcProfileGetAccel(self.motor.id, &self._profile,
-                    self.motor.units, &value),
-                "Unable to retrieve profile acceleration")
-            return value
+            return (self._profile.accel.value,
+                    self._profile.accel.units)
 
         def __set__(self, value):
             value, units = self._get_value_units(value)
@@ -99,12 +95,8 @@ cdef class MotorProfile(object):
 
     property decel:
         def __get__(self):
-            cdef int value
-            raise_status(
-                mcProfileGetDecel(self.motor.id, &self._profile,
-                    self.motor.units, &value),
-                "Unable to retrieve profile deceleration")
-            return value
+            return (self._profile.decel.value,
+                    self._profile.decel.units)
 
         def __set__(self, value):
             value, units = self._get_value_units(value)
@@ -113,12 +105,8 @@ cdef class MotorProfile(object):
 
     property vmax:
         def __get__(self):
-            cdef int value
-            raise_status(
-                mcProfileGetMaxV(self.motor.id, &self._profile,
-                    self.motor.units, &value),
-                "Unable to retrieve profile max velocity")
-            return value
+            return (self._profile.vmax.value,
+                    self._profile.vmax.units)
 
         def __set__(self, value):
             value, units = self._get_value_units(value)
@@ -127,12 +115,8 @@ cdef class MotorProfile(object):
 
     property vstart:
         def __get__(self):
-            cdef int value
-            raise_status(
-                mcProfileGetInitialV(self.motor.id, &self._profile,
-                    self.motor.units, &value),
-                "Unable to retrieve profile max velocity")
-            return value
+            return (self._profile.vstart.value,
+                    self._profile.vstart.units)
 
         def __set__(self, value):
             value, units = self._get_value_units(value)
@@ -141,12 +125,8 @@ cdef class MotorProfile(object):
 
     property slip:
         def __get__(self):
-            cdef int value
-            raise_status(
-                mcProfileGetMaxSlip(self.motor.id, &self._profile,
-                    self.motor.units, &value),
-                "Unable to retrieve profile max velocity")
-            return value
+            return (self._profile.slip_max.value,
+                    self._profile.slip_max.units)
 
         def __set__(self, value):
             value, units = self._get_value_units(value)
@@ -192,7 +172,13 @@ cdef class MotorProfile(object):
     def __repr__(self):
         return self.__unicode__()
     def __unicode__(self):
-        return "Profile(accel={0}, decel={1}, vstart={2}, vmax={3}, " \
-               "irun={4}, ihold={5}, slip={6}".format(
-               self.accel, self.decel, self.vstart, self.vmax,
-               self.run_current, self.hold_current, self.slip)
+        attrs = ('accel', 'decel', 'vstart', 'vmax', 'slip')
+        values = []
+        for a in attrs:
+            v, u = getattr(self, a)
+            if u != self.motor.units:
+                values.append("{0}={1}{2}".format(a, v, all_units[u]))
+            else:
+                values.append("{0}={1}".format(a, v))
+        return "Profile({0}, irun={1}, ihold={2})".format(
+               ', '.join(values), self.run_current, self.hold_current)
