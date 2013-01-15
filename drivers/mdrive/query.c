@@ -25,6 +25,7 @@ static PEEK(mdrive_var_peek);
 static POKE(mdrive_var_poke);
 static POKE(mdrive_ex_poke);
 static POKE(mdrive_io_poke);
+static POKE(mdrive_fd_poke);
 
 static struct query_variable query_xref[] = {
     { 9, MCPOSITION,        "P",    NULL,   mdrive_write_simple },
@@ -65,7 +66,7 @@ static struct query_variable query_xref[] = {
     { 6, MDRIVE_NAME,       NULL,   NULL,   mdrive_name_poke },
 
     { 6, MDRIVE_RESET,      NULL,   NULL,   NULL },
-    { 6, MDRIVE_HARD_RESET, "FD",   NULL,   NULL },
+    { 6, MDRIVE_HARD_RESET, "FD",   NULL,   mdrive_fd_poke },
 
     { 0, 0, NULL, NULL, NULL }
 };
@@ -558,6 +559,23 @@ mdrive_io_poke(mdrive_axis_t * axis, struct motor_query * query,
 
     if (mdrive_send(axis, buffer))
         return EIO;
+
+    return 0;
+}
+
+static int
+mdrive_fd_poke(mdrive_axis_t * axis, struct motor_query * query,
+        struct query_variable * q) {
+
+    if (axis == NULL)
+        return EINVAL;
+
+    struct mdrive_send_opts options = {
+        .expect_err = true,
+        .tries = 1
+    };
+    mdrive_communicate(axis, "", &options);
+    mdrive_communicate(axis, q->variable, &options);
 
     return 0;
 }

@@ -282,6 +282,11 @@ cdef class MdriveMotor(Motor):
                 mcPokeInteger(self.id, MDRIVE_ENCODER, val),
                 "Unable to set device encoder setting")
 
+    def factory_default(self):
+        raise_status(
+            mcPokeInteger(self.id, MDRIVE_HARD_RESET, 1),
+            "Unable to factory default motor(s)")
+
     def read_port(self, port):
         cdef int val
         raise_status(
