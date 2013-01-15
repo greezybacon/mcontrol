@@ -271,3 +271,31 @@ mdrive_config_inspect(mdrive_axis_t * axis, bool set) {
 
     return 0;
 }
+
+/**
+ * mdrive_config_after_reboot
+ *
+ * Should be run after a motor is rebooted. This routine will reset the
+ * configuration and motion settings so that the motor can continue to work
+ * without the software being reset as well
+ */
+int
+mdrive_config_after_reboot(mdrive_axis_t * device) {
+    // Assume the motor rebooted
+    device->loaded.mask = 0;
+
+    // Keep track of motor reboots
+    device->stats.reboots++;
+
+    // Unit is no longer in checksum mode
+    if (mdrive_config_inspect(device, true))
+        return EIO;
+
+    // Configure the encoder setting again
+    char buffer[32];
+    snprintf(buffer, sizeof buffer, "EE=%d", (device->encoder) ? 1 : 0);
+    if (mdrive_send(device, buffer))
+        return EIO;
+
+    return 0;
+}

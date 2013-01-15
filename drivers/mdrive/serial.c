@@ -1,8 +1,9 @@
 #include "mdrive.h"
 #include "serial.h"
 
-#include "queue.h"
+#include "config.h"
 #include "events.h"
+#include "queue.h"
 
 #include <errno.h>
 #include <signal.h>
@@ -249,6 +250,10 @@ mdrive_classify_response(mdrive_axis_t * axis, mdrive_response_t * response) {
         }
         else if (response->nack)
             return RESPONSE_NACK;
+        else if (!response->nack && !response->ack) {
+            mdrive_config_after_reboot(axis);
+            // Fall through to non checksum-mode checks
+        }
         else if (!response->checksum_good)
             return RESPONSE_BAD_CHECKSUM;
     }
