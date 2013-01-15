@@ -10,7 +10,7 @@ import re
 import shlex
 import sys
 
-class Shell(object, cmd.Cmd):
+class Shell(cmd.Cmd, object):
 
     prompt_text = "mcontrol> "
     intro = """
@@ -30,7 +30,8 @@ Version 0.1-beta
         'stdout': sys.stdout,
         'stderr': sys.stderr,
         'quiet': not sys.stdin.isatty(),
-        'tests': {}
+        'tests': {},
+        'ctrl-c-abort': False,
     }
 
     def __init__(self, context=None, script=None):
@@ -107,7 +108,7 @@ Version 0.1-beta
     def confirm(self, prompt, default=False):
         choices = "Y|n" if default else "y|N"
         while True:
-            answer = raw_input(prompt + " [{0}] ".format(choices))
+            answer = input(prompt + " [{0}] ".format(choices))
             if answer == '':
                 return default
             elif answer.lower() in ('y','n','yes','no'):
@@ -169,7 +170,9 @@ Version 0.1-beta
         try:
             return cmd.Cmd.onecmd(self, str)
         except KeyboardInterrupt:
-            return False
+            if not self['ctrl-c-abort']:
+                return False
+            raise
         except Exception as e:
             self.error("{0}: (Unhandled) {1}".format(
                 type(e).__name__, e))
