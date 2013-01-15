@@ -204,6 +204,7 @@ mdrive_bd_poke(mdrive_axis_t * axis, struct motor_query * query,
     if (axis == NULL)
         return EINVAL;
 
+    // TODO: Invalidate driver cache since the speed of this device has changed
     return mdrive_config_set_baudrate(axis, query->number);
 }
 
@@ -284,6 +285,11 @@ mdrive_name_poke(mdrive_axis_t * axis, struct motor_query * query,
     mdrive_communicate(&fake_axis, "CP N", &opts);
     mdrive_config_commit(&fake_axis);
 
+    // Invalidate the driver cache for this motor, because it changed names, so
+    // a request for a motor by the connection string that previously arrived
+    // at this motor should force a complete reconnect to whichever motor has
+    // that name
+    mcDriverCacheInvalidate(axis->driver);
     return 0;
 }
 

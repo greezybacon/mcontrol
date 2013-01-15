@@ -164,6 +164,10 @@ mdrive_config_set_baudrate(mdrive_axis_t * axis, int speed) {
     // Re-detect communication settings (reset by reboot)
     mdrive_config_inspect(axis, true);
 
+    // Invalidate driver cache so that a request on the original connection
+    // string that hit this motor will not be reused
+    mcDriverCacheInvalidate(axis->driver);
+
     return 0;
 }
 

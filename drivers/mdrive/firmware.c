@@ -170,8 +170,9 @@ mdrive_firmware_write(mdrive_axis_t * axis, const char * filename) {
     mdrive_config_inspect(axis, true);
     axis->address = '!';
 
-    // TODO: Invalidate driver cache so that a request on the original
-    //       connection string that hit this motor will not be reused
+    // Invalidate driver cache so that a request on the original connection
+    // string that hit this motor will not be reused
+    mcDriverCacheInvalidate(axis->driver);
     return 0;
 }
 

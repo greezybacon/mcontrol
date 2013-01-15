@@ -209,6 +209,17 @@ mcDriverDisconnect(Driver * driver) {
     driver->class->destroy(driver);
 }
 
+void
+mcDriverCacheInvalidate(Driver * driver) {
+    // Return a driver requested by the same connection string
+    for (struct driver_instance_list * m = motors->head; m; m=m->next) {
+        if (m->driver == driver) {
+            bzero(m->cxn_string, sizeof m->cxn_string);
+            return 0;
+        }
+    }
+}
+
 void __attribute__((destructor))
 _destroy_motors(void) {
     struct driver_instance_list * device;

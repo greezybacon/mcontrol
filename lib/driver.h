@@ -28,3 +28,6 @@ mcEnumDrivers(void);
 
 extern Driver *
 mcEnumDriversNext(void ** enum_id);
+
+extern void
+mcDriverCacheInvalidate(Driver * driver);
