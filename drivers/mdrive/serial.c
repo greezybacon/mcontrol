@@ -372,6 +372,16 @@ mdrive_process_response(char * buffer, mdrive_response_t * response,
                 // actual data followed, then the checksum char, and then
                 // the CR char. So we need to calculate the checksum from
                 // after the ACK to before the checksum char.
+                //
+                // Prompts only occur immediately before the \r or
+                // immediately after the \n. The latter case is handled in
+                // the '\n' block.  NOTE: This case only occurs in the
+                // Manchac custom firmware with EM=1
+                if (*(bufc-1) == '>' && response->length) {
+                    target--;
+                    response->length--;
+                    response->prompt = true;
+                }
                 break;
             case '\x06':
                 response->ack = true;
@@ -417,17 +427,9 @@ mdrive_process_response(char * buffer, mdrive_response_t * response,
                 response->error = true;
                 break;
             case '>':
-                // Prompts only occur immediately before the \r or
-                // immediately after the \n. The latter case is handled in
-                // the '\n' block.  NOTE: This case only occurs in the
-                // Manchac custom firmware with EM=1
-                if (*(bufc+1) == '\r') {
-                    response->prompt = true;
-                    break;
-                }
                 // in EM=0, the prompt can carry over from the previous
                 // response
-                else if (response->length == 0)
+                if (response->length == 0)
                     break;
                 goto normal_char;
             case '!':
