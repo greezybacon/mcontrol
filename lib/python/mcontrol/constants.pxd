@@ -3,6 +3,8 @@ cdef extern from "motor.h":
         MCPOSITION
         MCMOVING
         MCSTALLED
+        MCINPUT
+        MCOUTPUT
 
         MCPROFILE
         MCACCEL
