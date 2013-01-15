@@ -217,7 +217,8 @@ cdef extern from "drivers/mdrive/mdrive.h":
         IO_HOME,
         IO_PAUSE,
 
-        IO_OUTPUT
+        IO_OUTPUT,
+        IO_MOVING
 
 cdef class MdriveMotor(Motor):
 
@@ -323,6 +324,9 @@ cdef class MdriveMotor(Motor):
                 'output':       IO_OUTPUT,
                 'home':         IO_HOME,
                 'pause':        IO_PAUSE,
+
+                # Output types
+                'moving':       IO_MOVING,
             }
             if settings['type'].lower() not in types:
                 raise ValueError("{0}: Unsupported port type"

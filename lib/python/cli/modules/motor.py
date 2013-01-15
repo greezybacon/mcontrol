@@ -413,6 +413,8 @@ class MotorContext(Shell):
                 args['type'] = "output"
             elif 'pause' in parts:
                 args['type'] = "pause"
+            elif 'moving' in parts:
+                args['type'] = "moving"
 
             if 'active-high' in parts:
                 args['active_high'] = True
