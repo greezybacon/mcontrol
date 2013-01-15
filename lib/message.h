@@ -130,16 +130,4 @@ mcEventSend(int pid, struct event_message * evt);
 extern void
 mcMessageReply(request_message_t * message, void * payload, int payload_size);
 
-static int
-construct_request_raw(request_message_t * message, int type, void * payload,
-    int payload_size);
-
-static int
-construct_request(motor_t motor, request_message_t * message, int type,
-    void * payload, int payload_size);
-
-static int
-construct_response(request_message_t * message, response_message_t * response,
-    void * payload, int payload_size);
-
 #endif

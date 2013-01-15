@@ -24,6 +24,15 @@ static struct mq_attr _inbox_attr = {
     .mq_maxmsg = 8         // Backlog
 };
 
+static int
+construct_request_raw(request_message_t *, int, void *, int);
+
+static int
+construct_response(request_message_t *, response_message_t *, void *, int);
+
+static int
+construct_request(motor_t, request_message_t *, int, void *, int);
+
 int
 mcMessageBoxOpen(void) {
     char buffer[64];
