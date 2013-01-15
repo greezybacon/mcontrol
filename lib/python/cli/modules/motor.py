@@ -170,7 +170,7 @@ class MotorContext(Shell):
         """
         if self.last_move_event and self.last_move_event.isset:
             return
-        else:
+        elif self.last_move_event:
             self.last_move_event.wait()
 
     def do_slew(self, line):
