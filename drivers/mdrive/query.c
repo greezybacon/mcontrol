@@ -365,6 +365,8 @@ mdrive_ee_poke(mdrive_axis_t * axis, struct motor_query * query,
 
     // Reload motion configuration from the unit
     axis->loaded.encoder = false;
+    axis->loaded.profile = false;
+    axis->encoder = query->number;
     return 0;
 }
 
