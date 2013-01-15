@@ -243,9 +243,9 @@ class TestingRunContext(Shell):
         context = self if not motor else self.context['motors'][motor]
         if self.debug:
             if motor:
-                print("EXEC: {0} -> {1}".format(motor, command))
+                self.status("EXEC: {0} -> {1}".format(motor, command))
             else:
-                print("EXEC: {0}".format(command))
+                self.status("EXEC: {0}".format(command))
 
         # Capture the output of the command
         if capture:
@@ -253,9 +253,15 @@ class TestingRunContext(Shell):
             context['stdout'] = OutputCapture()
 
         try:
+            context['ctrl-c-abort'] = True
             result = context.onecmd(command)
+            context['ctrl-c-abort'] = False
         except KeyboardInterrupt:
             # User interrupted -- abort the test
+            if self.debug:
+                self.status("CTRL+C -- Aborting")
+            for m in self['motors'].values():
+                m.motor.slew(0)
             return self.do_abort(None)
 
         if capture:
@@ -268,7 +274,7 @@ class TestingRunContext(Shell):
 
     def expand(self, text):
         """
-        Replaces brace expressions with the results of the commands
+        Replaces bracket expressions with the results of the commands
         """
         return re.sub(r'\[(?P<command>[^][]+)\]',
             lambda match: self.execute(match.group(1), capture=True),
@@ -278,7 +284,7 @@ class TestingRunContext(Shell):
         """
         Evaluates the Python expression and returns the result
         """
-        # First off, search for brace expressions
+        # First off, search for bracket expressions
         expression = self.expand(expression)
         try:
             return eval(expression, {}, self.vars)
@@ -360,10 +366,10 @@ class TestingRunContext(Shell):
         If the condition evaluates to a boolean True value, then the given
         statement will be executed.
 
-        Sub commands can be used if enclosed in the usual braces. Otherwise,
+        Sub commands can be used if enclosed in the usual brackets. Otherwise,
         any valid Python expression is supported in the condition.
 
-        if {a -> get stalled}: abort
+        if [a -> get stalled]: abort
         """
         # Isolate the condition and statement
         # Evaluate the condition
@@ -379,7 +385,7 @@ class TestingRunContext(Shell):
         Abort the test immediately. No other statements will be executed and
         the test status will be marked as ABORTED
         """
-        if len(line):
+        if line and len(line):
             self.warn(self.eval(line))
         self.status = self.Status.ABORTED
         return True
@@ -389,7 +395,7 @@ class TestingRunContext(Shell):
         Succeed the test immediately. No other statements will be executed
         and the test status will be marked as SUCCEEDED
         """
-        if len(line):
+        if line and len(line):
             self.status(self.eval(line))
         self.status = self.Status.SUCCEEDED
         return True
@@ -399,7 +405,7 @@ class TestingRunContext(Shell):
         Fail the test immediately. No other statements will be executed and
         the test status will be marked as FAILED
         """
-        if len(line):
+        if line and len(line):
             self.error(self.eval(line))
         self.status = self.Status.FAILED
         return True
@@ -427,6 +433,8 @@ class TestingRunContext(Shell):
         Returns to the statement immediately following the previous 'call'
         statement
         """
+        if len(self.stack) == 0:
+            return self.error("Unbalanced stack: Return without call")
         self.next = self.stack.pop()
 
     def do_print(self, what):
@@ -434,13 +442,13 @@ class TestingRunContext(Shell):
         Outputs the value of the evaluated expression. The expression is
         evaluated in the context of the current test. So any local variabled
         defined with the 'let' statements may be used. Subcommands are also
-        supported if enclosed in braces.
+        supported if enclosed in brackets.
 
         Usage:
 
         let var = 13
         print var
-        print {a->get stalled}
+        print [a->get stalled]
         """
         self.out(self.eval(what))
 
@@ -458,11 +466,11 @@ class TestingRunContext(Shell):
         """
         Create or modify a local variable. Any valid python expression is
         valid. Commands to execute locally or by a motor should be enclosed
-        in the usual braces.
+        in the usual brackets.
 
         Usage:
 
-        let stalled = {a -> get stalled} or {b -> get stalled}
+        let stalled = [a -> get stalled] or [b -> get stalled]
         """
         if not '=' in line:
             return self.error("Incorrect usage", "See 'help let'")
@@ -510,6 +518,18 @@ class TestingRunContext(Shell):
         # Assume success if not otherwise set
         if self.status == self.Status.RUNNING:
             self.status = self.Status.SUCCEEDED
+
+    def postloop(self):
+        """
+        After the conclusion of a test (usually by fail or abort), stop all
+        the motors in the local context.
+        """
+        for name, context in self['motors'].items():
+            try:
+                context.motor.slew(0)
+            except:
+                pass
+
 
 # Add help for the commands in the Run context into the setup context
 for func in dir(TestingRunContext):
