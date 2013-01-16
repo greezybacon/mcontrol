@@ -105,6 +105,17 @@ Version 0.1-beta
         # Show the prompt and read the var
         self['env'][variable] = input(prompt)
 
+    def do_print(self, what):
+        """
+        Prints a message to the output. Useful for extra instructions
+        embedded in script files
+
+        Usage:
+
+        print Message here, quotes are not required
+        """
+        self.out(what)
+
     def confirm(self, prompt, default=False):
         choices = "Y|n" if default else "y|N"
         while True:

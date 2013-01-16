@@ -10,6 +10,8 @@ from . import Mixin, trim
 
 from cli import Shell
 
+import cmd
+
 class TestingCommands(Mixin):
 
     def do_create(self, line):
@@ -25,7 +27,7 @@ class TestingCommands(Mixin):
 
         test = TestingSetupContext(context=self.context.copy())
         test.cmdqueue = self.cmdqueue
-        test.run()
+        test.cmdloop()
         self.context['tests'][line] = test
 
     def do_run(self, name):
@@ -118,13 +120,13 @@ class Timer(object):
     def remaining(self):
         return max(0, self.seconds - self.elapsed)
 
-class TestingSetupContext(Shell):
+class TestingSetupContext(cmd.Cmd):
 
     prompt_text = "recording $ "
     intro = ""
 
     def __init__(self, *args, **kwargs):
-        Shell.__init__(self, *args, **kwargs)
+        cmd.Cmd.__init__(self)
         self.test = []
         self.labels = {}
 
@@ -144,11 +146,10 @@ class TestingSetupContext(Shell):
         # Drop comments
         line = re.sub(r'#.*$', '', line)
         # Skip empty lines
-        if re.match(r'^\s*$', line):
-            return
-        # TODO: Basic evaluation of the command. Sanity checks, overflow to
-        #       following line, etc.
-        self.test.append(line)
+        if not re.match(r'^\s*$', line):
+            # TODO: Basic evaluation of the command. Sanity checks, overflow to
+            #       following line, etc.
+            self.test.append(line)
 
     def do_label(self, name):
         """
@@ -164,6 +165,9 @@ class TestingSetupContext(Shell):
 
     def do_save(self, line):
         return True
+
+    def emptyline(self):
+        pass
 
     def __iter__(self):
         return iter(self.test)
