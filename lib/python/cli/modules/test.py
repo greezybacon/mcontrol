@@ -50,11 +50,11 @@ class TestingCommands(Mixin):
                 context=self.context)
         test.run()
 
-        if test.status == test.Status.ABORTED:
+        if test.state == test.Status.ABORTED:
             self.warn("Test was aborted")
-        elif test.status == test.Status.FAILED:
+        elif test.state == test.Status.FAILED:
             self.error("Test reports failure")
-        elif test.status == test.Status.SUCCEEDED:
+        elif test.state == test.Status.SUCCEEDED:
             self.status(">>> Test completed successfully")
         else:
             self.warn("Test aborted unexpectedly")
@@ -209,7 +209,7 @@ class TestingRunContext(Shell):
         self.test = test
         self.vars = {}
         self.debug = False
-        self.status = self.Status.READY
+        self.state = self.Status.READY
 
     def onecmd(self, str):
         try:
@@ -387,31 +387,31 @@ class TestingRunContext(Shell):
     def do_abort(self, line):
         """
         Abort the test immediately. No other statements will be executed and
-        the test status will be marked as ABORTED
+        the test state will be marked as ABORTED
         """
         if line and len(line):
             self.warn(self.eval(line))
-        self.status = self.Status.ABORTED
+        self.state = self.Status.ABORTED
         return True
 
     def do_succeed(self, line):
         """
         Succeed the test immediately. No other statements will be executed
-        and the test status will be marked as SUCCEEDED
+        and the test state will be marked as SUCCEEDED
         """
         if line and len(line):
-            self.status(self.eval(line))
-        self.status = self.Status.SUCCEEDED
+            self.state(self.eval(line))
+        self.state = self.Status.SUCCEEDED
         return True
 
     def do_fail(self, line):
         """
         Fail the test immediately. No other statements will be executed and
-        the test status will be marked as FAILED
+        the test state will be marked as FAILED
         """
         if line and len(line):
             self.error(self.eval(line))
-        self.status = self.Status.FAILED
+        self.state = self.Status.FAILED
         return True
 
     def do_goto(self, name):
@@ -512,7 +512,7 @@ class TestingRunContext(Shell):
     def run(self):
         self.next = 0
         instructions = list(self.test)
-        self.status = self.Status.RUNNING
+        self.state = self.Status.RUNNING
         while self.next < len(instructions):
             # Evaluate each command. Goto commands will change self.next, so
             # don't do a simple iteration of the instructions
@@ -520,8 +520,8 @@ class TestingRunContext(Shell):
                 break
             self.next += 1
         # Assume success if not otherwise set
-        if self.status == self.Status.RUNNING:
-            self.status = self.Status.SUCCEEDED
+        if self.state == self.Status.RUNNING:
+            self.state = self.Status.SUCCEEDED
 
     def postloop(self):
         """
