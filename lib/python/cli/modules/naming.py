@@ -213,9 +213,12 @@ class NamingContext(Shell):
             named_motor = MdriveMotor("mdrive://{0}@{1}:{2}"
                 .format(self['port'], speed, name.lower()))
 
-            if named_motor.firmware != version:
+            if named_motor.firmware == version:
+                self.status(("{0}: Firmware version is {1}"
+                    .format(name.lower(), version))
+            else:
                 try:
-                    print("{0}: Flashing firmware from {1}"
+                    self.status("{0}: Flashing firmware from {1}"
                         .format(name, path))
                     named_motor.load_firmware(path)
                     # Rename the motor
