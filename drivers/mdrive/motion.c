@@ -489,7 +489,7 @@ mdrive_stop(Driver * self, enum stop_type type) {
         return EINVAL;
 
     mdrive_axis_t * axis = self->internal;
-    mdrive_axis_t global = *axis;
+    mdrive_axis_t global;
 
     // Unit won't be moving any more
     bzero(&axis->movement, sizeof axis->movement);
@@ -500,10 +500,15 @@ mdrive_stop(Driver * self, enum stop_type type) {
         case MCHALT:
             return mdrive_send(axis, "\x1b");
         case MCESTOP:
+            global = *axis;
             global.address = '*';
+            // XXX: Detect if the targeted axis does not have party mode
             // XXX: Send with checksum toggled too, for safety
+            if (mdrive_send(&global, "\x1b"))
+                return EIO;
             // XXX: DE the motors too
-            return mdrive_send(&global, "\x1b");
+            if (mdrive_send(&global, "DE=0"))
+                return EIO;
         default:
             return ENOTSUP;
     }
