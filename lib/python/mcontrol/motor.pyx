@@ -22,6 +22,19 @@ all_units = {
     "micro-rev":    k.MICRO_REVS,   # Raw units
 }
 
+abbreviations = {
+    'in':           k.INCH
+}
+
+conversions = {
+    k.INCH:         (1000, k.MILLI_INCH),
+    k.METER:        (1000, k.MILLI_METER),
+    'g':            (1000, k.MILLI_G),
+
+    # Raw measure of motor spindle rate
+    'rpm':          (1000000 / 60., k.MICRO_REVS),
+}
+
 def scale_up(value, units):
     if units in (k.INCH, 'inch'):
         return value * 1000, 'mil'
@@ -46,6 +59,31 @@ cdef class Motor:
         status = mcConnect(&buf, &self.id, recovery)
 
         raise_status(status, "Unable to connect to motor")
+
+    def _get_value_and_units(self, value, units=None):
+        """
+        Allows the user to input units with a command, and the system will
+        convert them to the unit numbers used by mcontrol. Also, if a
+        floating point number is given, the value will be converted to a
+        smaller unit automagically
+        """
+        units = units or self._units
+
+        # Unabbreviate and convert the units
+        if units in abbreviations:
+            units = abbreviations[units]
+        if units in conversions:
+            conv = conversions[units]
+            value = float(value) * conv[0]
+            units = conv[1]
+        else:
+            value = int(value)
+        if type(units) is not int:
+            if units not in all_units:
+                raise ValueError("Unknown units given")
+            units = all_units[units]
+
+        return value, units
 
     property units:
         def __get__(self):
@@ -81,15 +119,7 @@ cdef class Motor:
         def __set__(self, position):
             units = None
             if type(position) is tuple:
-                if len(position) != 2:
-                    raise ValueError("Two item tuple required: "
-                        "(val, units)")
-                position, units = position
-
-                if type(units) not in (int, type(None)):
-                    if units not in all_units:
-                        raise ValueError("Unsupported units")
-                    units = all_units[units]
+                position, units = self._get_value_and_units(*position)
 
             if units:
                 raise_status(
