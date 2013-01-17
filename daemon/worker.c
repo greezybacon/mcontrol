@@ -93,6 +93,8 @@ WorkerEnqueue(Worker * worker, request_message_t * message) {
         .message = *message
     };
 
+    pthread_mutex_lock(&worker->queue_lock);
+
     if (!worker->queue_head)
         worker->queue_head = work;
     else {
@@ -102,6 +104,7 @@ WorkerEnqueue(Worker * worker, request_message_t * message) {
     }
     worker->queue_length++;
 
+    pthread_mutex_unlock(&worker->queue_lock);
 
     // Signal worker thread of new work
     if (worker->queue_length == 1)
