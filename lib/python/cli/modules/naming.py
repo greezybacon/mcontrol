@@ -214,7 +214,7 @@ class NamingContext(Shell):
                 .format(self['port'], speed, name.lower()))
 
             if named_motor.firmware == version:
-                self.status(("{0}: Firmware version is {1}"
+                self.status("{0}: Firmware version is {1}"
                     .format(name.lower(), version))
             else:
                 try:
