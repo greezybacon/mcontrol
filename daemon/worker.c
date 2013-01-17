@@ -1,3 +1,9 @@
+/**
+ * worker.c
+ *
+ * Defines a worker thread and queuing mechanics needed to enqueue things to
+ * a worker's queue.
+ */
 #include "worker.h"
 
 #include "../lib/dispatch.h"
@@ -10,6 +16,18 @@
 
 struct worker * AllWorkers;
 
+/**
+ * DaemonWorkerThread
+ *
+ * Worker thread that will wait for work to arrive in its queue, perform the
+ * work as requested and continue on while able. The worker should be
+ * started with the DaemonWorkerAdd() function, and work items should be
+ * queued with the WorkerEnqueue() function
+ *
+ * Parameters:
+ * arg - (void *)(Worker *) The structure with worker-specific information
+ *      configured in the DaemonWorkerAdd() function.
+ */
 static void *
 DaemonWorkerThread(void * arg) {
     Worker * self = arg;
@@ -21,7 +39,6 @@ DaemonWorkerThread(void * arg) {
         if (self->queue_head) {
             request_message_t * message = &self->queue_head->message;
             
-            printf("Received some work\n");
             pthread_mutex_unlock(&self->queue_lock);
             if (message->type > TYPE__FIRST)
                 mcDispatchProxyMessage(message);
@@ -46,9 +63,7 @@ DaemonWorkerThread(void * arg) {
 
 int
 DaemonWorkerInit(Worker * worker) {
-    *worker = (Worker) {
-        .available = true,
-    };
+    *worker = (Worker) {0};
     pthread_mutex_init(&worker->queue_lock, NULL);
 
     pthread_attr_t attr;
@@ -86,7 +101,6 @@ WorkerEnqueue(Worker * worker, request_message_t * message) {
         q->next = work;
     }
     worker->queue_length++;
-    worker->available = false;
 
 
     // Signal worker thread of new work
@@ -96,7 +110,7 @@ WorkerEnqueue(Worker * worker, request_message_t * message) {
     return 0;
 }
 
-int
+static int
 WorkerDequeue(Worker * worker) {
     if (!worker->queue_head)
         return EINVAL;
@@ -105,10 +119,8 @@ WorkerDequeue(Worker * worker) {
 
     if (worker->queue_head->next)
         worker->queue_head = worker->queue_head->next;
-    else {
+    else
         worker->queue_head = NULL;
-        worker->available = true;
-    }
     worker->queue_length--;
 
     free(dropped);

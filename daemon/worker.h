@@ -11,12 +11,14 @@ struct work_q_item {
 
 typedef struct worker Worker;
 struct worker {
-    bool                available;
     struct work_q_item * queue_head;
     pthread_mutex_t     queue_lock;
     pthread_cond_t      signal;
     int                 queue_length;
     pthread_t           thread_id;
+
+    // Used by the driver-group scheduler
+    int                 group;
 };
 
 static const int MAX_WORKERS = 16;
@@ -25,7 +27,7 @@ extern struct worker * AllWorkers;
 extern int
 WorkerEnqueue(Worker * worker, request_message_t * message);
 
-extern int
+static int
 WorkerDequeue(Worker * worker);
 
 extern int

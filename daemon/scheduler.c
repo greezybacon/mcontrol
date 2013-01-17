@@ -1,8 +1,8 @@
 /*
  * schedule.c
  *
- * Various scheduling routines which will be used to decide which thread an
- * incoming message should be associated with.
+ * Various scheduling routines which will be used to decide which worker
+ * thread an incoming message should be associated with.
  */
 
 #include "scheduler.h"
@@ -25,7 +25,7 @@ ScheduleLeastBusy(request_message_t * message) {
         if (!worker->thread_id)
             continue;
 
-        if (worker->available)
+        if (worker->queue_length == 0)
             return WorkerEnqueue(worker, message);
         else {
             if (worker->queue_length < shortest_queue) {
