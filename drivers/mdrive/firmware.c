@@ -182,6 +182,9 @@ mdrive_firmware_write(mdrive_axis_t * axis, const char * filename) {
     // Invalidate driver cache so that a request on the original connection
     // string that hit this motor will not be reused
     mcDriverCacheInvalidate(axis->driver);
+
+    // Clear cached firmware version
+    bzero(axis->firmware_version, sizeof axis->firmware_version);
     return 0;
 }
 
