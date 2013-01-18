@@ -25,4 +25,7 @@ mdrive_config_rollback(mdrive_axis_t * device);
 extern bool
 mdrive_config_commit(mdrive_axis_t * device);
 
+extern int
+mdrive_config_after_reboot(mdrive_axis_t * device);
+
 #endif
