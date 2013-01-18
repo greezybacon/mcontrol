@@ -189,6 +189,9 @@ class OutputCapture(object):
         else:
             return self.writes
 
+    def isatty(self):
+        return False
+
 import cmd
 import re
 class TestingRunContext(Shell):

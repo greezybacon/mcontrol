@@ -86,8 +86,8 @@ Version 0.1-beta
 
     def out(self, what):
         where = self.context['stdout']
-        if type(where) is file:
-            if type(what) not in (str, unicode):
+        if where.isatty():
+            if type(what) is not str:
                 what = repr(what)
             where.write(what + '\n')
         else:
