@@ -82,3 +82,25 @@ class UtilityCommands(Mixin):
 
         self.cmdqueue = list(open(filename, 'rt').readlines()) + self.cmdqueue
 
+    def do_confirm(self, line):
+        """
+        Allow the user to answer yes or no to a question.
+
+        Usage:
+
+        confirm "Prompt here" [default yes|no]
+        """
+        parts = shlex.split(line)
+
+        if 'default' in parts:
+            parts.remove('default')
+
+        if len(parts) < 1 or len(parts) > 2:
+            return self.error("Incorrect usage", "See 'help confirm'")
+        
+        prompt = parts.pop(0)
+        default = None
+        if len(parts):
+            default = True if parts.pop(0).upper() in ('YES', 'Y') else False
+
+        self.out(self.confirm(prompt, default))
