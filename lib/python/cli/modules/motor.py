@@ -428,6 +428,24 @@ class MotorContext(Shell):
 
             self.motor.configure_port(port, **args)
 
+    def do_reset(self, line):
+        """
+        Reset the motor. Optionally also restore to factory defaults.
+
+        Usage:
+
+        reset [factory]
+
+        If the "factory" option is given, the motor will be factory
+        defaulted
+        """
+        parts = line.split()
+        if 'factory' in parts:
+            self.motor.factory_default()
+        else:
+            # TODO: Implement motor reboot in driver
+            pass
+
     def help_units(self):
         return trim("""
         Currently supported units are
