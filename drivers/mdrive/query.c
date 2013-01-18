@@ -593,5 +593,8 @@ mdrive_fd_poke(mdrive_axis_t * axis, struct motor_query * query,
     mdrive_communicate(axis, "", &options);
     mdrive_communicate(axis, q->variable, &options);
 
+    // We now know nothing about the configuration of this motor
+    axis->loaded.mask = 0;
+
     return 0;
 }
