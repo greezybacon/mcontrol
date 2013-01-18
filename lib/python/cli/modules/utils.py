@@ -7,6 +7,7 @@ from __future__ import print_function
 from . import Mixin
 
 import os
+import shlex
 
 class UtilityCommands(Mixin):
 

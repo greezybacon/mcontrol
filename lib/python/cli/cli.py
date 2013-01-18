@@ -6,7 +6,6 @@ from lib import term
 import cmd
 import inspect
 import re
-import shlex
 import sys
 
 class Shell(cmd.Cmd, object):
