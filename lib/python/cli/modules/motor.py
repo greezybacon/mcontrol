@@ -196,9 +196,16 @@ class MotorContext(Shell):
 
     def do_stop(self, line):
         """
-        Stop the motor immediately
+        Stop the motor immediately by slewing down to 0
         """
         self.motor.stop()
+
+    def do_halt(self, line):
+        """
+        Stop the motor immediately and abort any running microcode routine
+        """
+        self.motor.halt()
+
 
     def do_home(self, line):
         """
