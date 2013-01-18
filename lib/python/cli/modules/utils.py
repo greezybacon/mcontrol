@@ -8,6 +8,7 @@ from . import Mixin
 
 import os
 import shlex
+import sys
 
 class UtilityCommands(Mixin):
 
@@ -36,6 +37,10 @@ class UtilityCommands(Mixin):
             return self.error("Incorrect usage", "See 'help read'")
 
         prompt, variable = parts
+
+        if sys.version_info[:2] < (3,0):
+            # Python3 renames raw_input -> input
+            input = raw_input
 
         # Show the prompt and read the var
         self['env'][variable] = input(prompt)

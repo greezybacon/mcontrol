@@ -53,6 +53,10 @@ Version 0.1-beta
             return ''
 
     def confirm(self, prompt, default=False):
+        if sys.version_info[:2] < (3,0):
+            # Python3 renames raw_input -> input
+            input = raw_input
+
         choices = "Y|n" if default else "y|N"
         while True:
             answer = input(prompt + " [{0}] ".format(choices))
