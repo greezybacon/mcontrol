@@ -28,6 +28,7 @@ PROXYIMPL (mcQueryInteger, motor_query_t query, OUT int value) {
     // Convert distance-based queries from microrevs
     switch (args->query) {
         case MCPOSITION:
+        case MCVELOCITY:
             mcMicroRevsToDistance(m, q.number, &args->value);
             break;
         default:
@@ -55,6 +56,7 @@ PROXYIMPL(mcQueryIntegerUnits, int, motor_query_t query, OUT int value,
     // Convert distance-based queries from microrevs
     switch (args->query) {
         case MCPOSITION:
+        case MCVELOCITY:
             mcMicroRevsToDistanceUnits(m, q.number, &args->value, args->units);
             break;
         default:
@@ -127,6 +129,7 @@ PROXYIMPL (mcQueryFloat, motor_query_t query, OUT double value) {
     // Convert distance-based queries from microrevs
     switch (args->query) {
         case MCPOSITION:
+        case MCVELOCITY:
             mcMicroRevsToDistanceF(m, q.number, &args->value);
             break;
         default:
@@ -154,6 +157,7 @@ PROXYIMPL(mcQueryFloatUnits, int, motor_query_t query, OUT int value,
     // Convert distance-based queries from microrevs
     switch (args->query) {
         case MCPOSITION:
+        case MCVELOCITY:
             mcMicroRevsToDistanceUnitsF(m, q.number, &args->value, args->units);
             break;
         default:

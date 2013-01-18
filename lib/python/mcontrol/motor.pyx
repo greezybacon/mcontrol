@@ -131,6 +131,14 @@ cdef class Motor:
                     mcPokeInteger(self.id, k.MCPOSITION, position),
                     "Unable to set device position")
 
+    property velocity:
+        def __get__(self):
+            cdef double velocity
+            raise_status(
+                mcQueryFloat(self.id, k.MCVELOCITY, &velocity),
+                "Unable to retrieve current velocity")
+            return velocity
+
     property moving:
         def __get__(self):
             cdef int status, moving
