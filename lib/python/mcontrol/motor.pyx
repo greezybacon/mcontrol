@@ -193,6 +193,11 @@ cdef class Motor:
             mcStop(self.id),
             "Unable to stop motor")
 
+    def halt(self):
+        raise_status(
+            mcHalt(self.id),
+            "Unable to halt motor")
+
     def on(self, event):
         return Event(self, event)
 

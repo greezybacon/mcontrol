@@ -11,6 +11,8 @@ cdef extern from "lib/client.h" nogil:
     int mcMoveAbsoluteUnits(int motor, int measure, int units)
     int mcSlewUnits(int motor, int rate, int units)
     int mcStop(int motor)
+    int mcHalt(int motor)
+    int mcEStop(int motor)
 
     int mcPokeString(int motor, int what, String * value)
     int mcPokeStringWithStringItem(int motor, int what, String * value,

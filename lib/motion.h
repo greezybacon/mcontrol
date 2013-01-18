@@ -13,6 +13,8 @@ PROXYDEF(mcSlew, int, int rate);
 PROXYDEF(mcSlewUnits, int, int rate, unit_type_t units);
 
 IMPORTANT PROXYDEF(mcStop, int);
+IMPORTANT PROXYDEF(mcHalt, int);
+IMPORTANT PROXYDEF(mcEStop, int);
 
 // XXX: What about profile (slew rate, etc)
 PROXYDEF(mcHome, int, enum home_type type, enum home_direction direction);

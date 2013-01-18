@@ -167,6 +167,34 @@ PROXYIMPL(mcStop) {
     RETURN( m->driver->class->stop(m->driver, MCSTOP) );
 }
 
+PROXYIMPL(mcHalt) {
+    UNPACK_ARGS(mcHalt, args);
+
+    Motor * m = find_motor_by_id(motor, message->pid);
+    if (m == NULL)
+        RETURN( EINVAL );
+
+    // Ensure the driver supports a stop operation
+    if (m->driver->class->stop == NULL)
+        RETURN( ENOTSUP );
+
+    RETURN( m->driver->class->stop(m->driver, MCHALT) );
+}
+
+PROXYIMPL(mcEStop) {
+    UNPACK_ARGS(mcEStop, args);
+
+    Motor * m = find_motor_by_id(motor, message->pid);
+    if (m == NULL)
+        RETURN( EINVAL );
+
+    // Ensure the driver supports a stop operation
+    if (m->driver->class->stop == NULL)
+        RETURN( ENOTSUP );
+
+    RETURN( m->driver->class->stop(m->driver, MCESTOP) );
+}
+
 PROXYIMPL(mcSlew, int rate) {
     UNPACK_ARGS(mcSlew, args);
 
