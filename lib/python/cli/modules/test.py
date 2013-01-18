@@ -407,7 +407,7 @@ class TestingRunContext(Shell):
         and the test state will be marked as SUCCEEDED
         """
         if line and len(line):
-            self.state(self.eval(line))
+            self.status(self.eval(line))
         self.state = self.Status.SUCCEEDED
         return True
 
