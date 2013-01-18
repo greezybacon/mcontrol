@@ -265,7 +265,7 @@ class TestingRunContext(Shell):
 
         try:
             context['ctrl-c-abort'] = True
-            result = context.onecmd(command)
+            result = context.onecmd(command.format(**self['env']))
             context['ctrl-c-abort'] = False
         except KeyboardInterrupt:
             # User interrupted -- abort the test
