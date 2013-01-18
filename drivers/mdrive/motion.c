@@ -47,6 +47,7 @@ mdrive_move(Driver * self, motion_instruction_t * command) {
                 return 0;
             snprintf(buffer, sizeof buffer, "SL %d", steps);
             // XXX: Device position will no longer be known
+            // TODO: Cancel motion completion callback event if any
             break;
 
         case MCJITTER:
@@ -56,16 +57,21 @@ mdrive_move(Driver * self, motion_instruction_t * command) {
             return ENOTSUP;
     }
 
-    if (device->microcode.features.move)
-        mdrive_move_assisted(device, command, steps);
+
+    device->movement = move_info;
+    clock_gettime(CLOCK_REALTIME, &device->movement.start);
+
+    int status;
+    if (device->microcode.features.move) {
+        status = mdrive_move_assisted(device, command, steps);
+        if (status)
+            return status;
+    }
     else {
         mdrive_set_profile(device, &command->profile);
         if (RESPONSE_OK != mdrive_send(device, buffer))
             return EIO;
     }
-
-    device->movement = move_info;
-    clock_gettime(CLOCK_REALTIME, &device->movement.start);
 
     // Signal completion event
     if (command->type != MCSLEW)
@@ -180,6 +186,32 @@ travel_to_time(mdrive_axis_t * device, long long urevs,
     return 0;
 }
 
+/**
+ * mdrive_project_completion
+ *
+ * Estimates the resting time, from the start of the move operation, of the
+ * motor for the move descrived in the the given motion_details. Projected
+ * time of completion is stored as an absolute (struct timespec) value into
+ * the detail->projected member. Also, the parts of the move are broken down
+ * in to time spent accelerating and time spent decelerating. Those pieces
+ * are saved into the details->vmax_us and details->decel_us respectively.
+ * The times will reflect the time when the motor is expected to reach the
+ * maximum velocity of the move and the time when the motor is expected to
+ * start decelerating. Both figures are in micro-seconds from the start of
+ * the move (details->start).
+ *
+ * If the unit will never reach the profile VMAX, the vmax_us and decel_us
+ * times will have the same value, because the unit will start decelerating
+ * at the time it reaches the max velocity of the move.
+ *
+ * Parameters:
+ * device - (struct mdrive_axis_t *) Device performing the move
+ * details - (struct motion_details *) Contains information about the move,
+ *      and will receive the estimated timing characteristics of the move
+ *
+ * Returns:
+ * 0 upon success. EINVAL if unable to determine the resting time.
+ */
 int
 mdrive_project_completion(mdrive_axis_t * device,
         struct motion_details * details) {
@@ -239,6 +271,7 @@ mdrive_estimate_position_at(mdrive_axis_t * device,
     // we are traveling at vmax, decelerating or still accelerating
     int phase, dt_us;
     long long pos_urev=0;
+    // TODO: Add case for motion already completed
     if (details->decel_us < when)
         // Unit is now decelerating
         phase = 3;
@@ -273,18 +306,25 @@ mdrive_estimate_position_at(mdrive_axis_t * device,
 }
 
 /**
+ * 
+ * (Callback) mdrive_async_completion_correct
  *
- * Called at device latency seconds before the expected completion of a
- * movement. This routine should collect the current device position and
- * compare it against the expected device position. From there, estimated
- * following error can be projected, and the estimated time of completion
- * can be adjusted based on the position error.
+ * Called at (half of the) device latency seconds before the expected
+ * completion of a movement. This routine should collect the current device
+ * position and compare it against the expected device position. From there,
+ * estimated following error can be projected, and the estimated time of
+ * completion can be adjusted based on the position error.
+ *
+ * If the motor is at rest when the callback is performed (optimal), the
+ * EV_MOTION event will be signaled and the details about the move will be
+ * included with the event data.
  */
 static void *
 mdrive_async_completion_correct(void * arg) {
     mdrive_axis_t * device = arg;
 
-    device->cb_complete = 0;
+    // Detect if this callback is canceled while in progress
+    int callback_id = device->cb_complete;
 
     struct timespec now;
     clock_gettime(CLOCK_REALTIME, &now);
@@ -316,6 +356,12 @@ mdrive_async_completion_correct(void * arg) {
         expected += device->movement.pstart;
         error = pos - expected;
     }
+    // Check for possible race. If a callback has been scheduled since we
+    // started at the top of this procedure, than anoter, completely new
+    // move is in progress, and this move should be abandoned.
+    // XXX: Consider a lock on cb_complete to make this easier to manage
+    if (callback_id != device->cb_complete)
+        return NULL;
 
     bool completed = true;
 
@@ -358,13 +404,13 @@ mdrive_async_completion_correct(void * arg) {
             mcTraceF(50, MDRIVE_CHANNEL, "Early. Callback in %dns",
 		        callback.tv_nsec);
             // Subtract time for device latency
-            callback.tv_nsec -= (device->stats.latency >> 1) + 1e6;
+            callback.tv_nsec -= (device->stats.latency >> 1) - 1e6;
             while (callback.tv_nsec < 0) {
                 callback.tv_sec--;
                 callback.tv_nsec += (int)1e9;
             }
             // Call this routine again at the estimated time of completion
-            // (minus about half of the unit's latency)
+            // (minus about half of the unit's latency).
             device->cb_complete = mcCallback(&callback,
                 mdrive_async_completion_correct, device);
             completed = false;
@@ -494,10 +540,14 @@ mdrive_stop(Driver * self, enum stop_type type) {
     // Unit won't be moving any more
     bzero(&axis->movement, sizeof axis->movement);
 
+    // TODO: Cancel motion completion callback event if any
+
     switch (type) {
         case MCSTOP:
             return mdrive_send(axis, "SL 0");
         case MCHALT:
+            // Handle non-addressed mode (ES) where multiple responses will
+            // be received from this command.
             return mdrive_send(axis, "\x1b");
         case MCESTOP:
             global = *axis;
