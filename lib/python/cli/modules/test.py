@@ -21,6 +21,10 @@ class TestingCommands(Mixin):
         context, commands entered are not executed immediately. Instead,
         they are saved into a test script that is run with the 'run'
         command.
+
+        Usage:
+
+        create <name>
         """
         if line == "":
             raise SyntaxError("Test name must be specified")
@@ -230,7 +234,7 @@ class TestingRunContext(Shell):
         If the command is not targeted at a motor, the motor item of the
         tuple will be None
         """
-        match = re.match(r'(?:(?P<motor>\w+)\s*->\s*)?(?P<cmd>.*$)', command)
+        match = re.match(r'(?:(?P<motor>[\w*!^]+)\s*->\s*)?(?P<cmd>.*$)', command)
         return (match.groupdict()['motor'], match.groupdict()['cmd'])
 
     def execute(self, command, capture=False):
