@@ -842,11 +842,15 @@ wait_longer:
                     &axis->device->rxlock, &timeout)) {
 
                 pthread_mutex_unlock(&axis->device->rxlock);
-                if (axis->echo == EM_QUIET && !options->expect_data) {
+                if ((axis->echo == EM_QUIET || axis->address == '*')
+                        && !options->expect_data) {
                     // No response from unit. If the unit is EM=2
                     // (EM_QUIET), this is likely just a command with no
                     // response, which indicates success -- even if checksum
                     // is enabled
+                    //
+                    // Globally addressed devices will usually not respond
+                    // to commands
                     status = RESPONSE_OK;
                     goto finish;
                 }
@@ -981,7 +985,7 @@ finish:
     else if (i == 0) {
         // Motor refused to ACK the command (no response)
         mcTraceF(10, MDRIVE_CHANNEL, "Out of retries: %d, %d", i, status);
-        status = -EIO;
+        status = RESPONSE_IOERROR;
     }
 
     axis->txnest--;
