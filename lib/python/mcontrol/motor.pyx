@@ -279,7 +279,14 @@ cdef class MdriveMotor(Motor):
         def __set__(self, address):
             cdef String buf = bufferFromString(address[0])
             cdef int status
+            cdef timespec old
+            cdef timespec new
+            new.tv_sec = 5
+
+            # This will take a while. Use a different timeout
+            mcClientTimeoutSet(&new, &old)
             status = mcPokeString(self.id, MDRIVE_ADDRESS, &buf)
+            mcClientTimeoutSet(&old, NULL)
 
             if status != 0:
                 raise RuntimeError(status)
@@ -386,6 +393,7 @@ cdef class MdriveMotor(Motor):
         cdef String addr = bufferFromString(address[0])
         cdef String sn = bufferFromString(serial_number)
         cdef int status
+
         status = mcPokeStringWithStringItem(self.id, MDRIVE_NAME, &addr, &sn)
         raise_status(status, "Unable to name motor")
 

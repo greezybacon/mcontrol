@@ -62,7 +62,10 @@ mdrive_config_commit(mdrive_axis_t * device) {
     if (mdrive_communicate(device, "S", &options) != RESPONSE_OK)
         return false;
 
-    return mdrive_config_inspect(device, true) == 0;
+    if (mdrive_config_inspect(device, true))
+        return false;
+        
+    return true;
 }
 
 bool
@@ -192,14 +195,14 @@ mdrive_config_set_address(mdrive_axis_t * axis, char address) {
             return -EIO;
 
         axis->party_mode = true;
-        
-        // Send extra CTRL+J (\n)
-        if (RESPONSE_OK != mdrive_send(axis, ""))
-            return -EIO;
     }
 
-    if (!mdrive_config_commit(axis));
+    if (!mdrive_config_commit(axis))
         return -EIO;
+
+    // Invalidate driver cache so that a request on the original connection
+    // string that hit this motor will not be reused
+    mcDriverCacheInvalidate(axis->driver);
 
     return 0;
 }

@@ -4,8 +4,15 @@ cdef extern from "lib/message.h":
         char        buffer[256]
 
 from constants cimport motion_increment
+cdef extern from "time.h":
+    ctypedef long int time_t
+
+    struct timespec:
+        int         tv_sec
+        long int    tv_nsec
 
 cdef extern from "lib/client.h" nogil:
+    void mcClientTimeoutSet(timespec * new, timespec * old)
     int mcConnect(String * connection, int * m, int)
     int mcMoveRelativeUnits(int motor, int measure, int units)
     int mcMoveAbsoluteUnits(int motor, int measure, int units)
