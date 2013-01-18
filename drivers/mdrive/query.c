@@ -591,7 +591,14 @@ mdrive_fd_poke(mdrive_axis_t * axis, struct motor_query * query,
         .tries = 1
     };
     mdrive_communicate(axis, "", &options);
+
+    // Assume axis is in checksum mode (if the unit is not, this won't hurt.
+    // If the unit is in checksum mode, it will refuse the command without a
+    // checksum)
+    int ck = axis->checksum;
+    axis->checksum = CK_ON;
     mdrive_communicate(axis, q->variable, &options);
+    axis->checksum = ck;
 
     // We now know nothing about the configuration of this motor
     axis->loaded.mask = 0;
