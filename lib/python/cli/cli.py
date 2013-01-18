@@ -128,14 +128,21 @@ Version 0.1-beta
 
     def run(self):
         shell = self
-        self['quiet'] = not sys.stdin.isatty()
         while True:
             shell.cmdloop()
             if shell.afterlife:
                 shell = shell.afterlife
                 shell.afterlife = None
             else:
+                self.halt_all_motors()
                 break
+
+    def halt_all_motors(self):
+        for name, context in self['motors'].items():
+            try:
+                context.motor.stop()
+            except:
+                pass
 
 # Warning: Major magic mojo
 #

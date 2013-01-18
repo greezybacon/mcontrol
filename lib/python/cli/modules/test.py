@@ -509,7 +509,7 @@ class TestingRunContext(Shell):
         except ValueError:
             return self.error("Incorrect wait time", "See 'help wait'")
 
-    def run(self):
+    def cmdloop(self):
         self.next = 0
         instructions = list(self.test)
         self.state = self.Status.RUNNING
@@ -523,17 +523,7 @@ class TestingRunContext(Shell):
         if self.state == self.Status.RUNNING:
             self.state = self.Status.SUCCEEDED
 
-    def postloop(self):
-        """
-        After the conclusion of a test (usually by fail or abort), stop all
-        the motors in the local context.
-        """
-        for name, context in self['motors'].items():
-            try:
-                context.motor.slew(0)
-            except:
-                pass
-
+    postloop = Shell.halt_all_motors
 
 # Add help for the commands in the Run context into the setup context
 for func in dir(TestingRunContext):
