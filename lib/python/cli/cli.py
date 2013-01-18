@@ -5,7 +5,6 @@ from lib import term
 
 import cmd
 import inspect
-import os
 import re
 import shlex
 import sys
@@ -53,68 +52,6 @@ Version 0.1-beta
             return self.prompt_text
         else:
             return ''
-
-    def do_source(self, filename):
-        """
-        Executes all the commands in the given filename in the current shell
-        context.
-
-        Usage:
-
-        source <filename>
-        """
-        if not filename:
-            return self.error("Specify filename of script to source")
-        elif not os.path.exists(filename):
-            return self.error("{0}: Script does not exist")
-
-        self.status("Reading script from {0}".format(filename))
-
-        # Force quiet mode and swich standard-in to the script file
-        quiet, self.context['quiet'] = self.context['quiet'], True
-        stdin, sys.stdin = sys.stdin, open(filename, 'rt')
-        intro, self.intro = self.intro, ''
-
-        # Execute all the commands in the script file
-        self.run()
-
-        # Restore previous quiet mode and standard-in
-        self.context['quiet'] = quiet
-        sys.stdin = stdin
-        self.intro = intro
-
-    def do_read(self, line):
-        """
-        Reads a variable from the user after presenting a prompt
-
-        Usage:
-
-        read "Prompt" into var
-        """
-        parts = shlex.split(line)
-        if 'into' not in parts:
-            return self.error("Incorrect usage", "See 'help read'")
-
-        parts.remove('into')
-
-        if len(parts) != 2:
-            return self.error("Incorrect usage", "See 'help read'")
-
-        prompt, variable = parts
-
-        # Show the prompt and read the var
-        self['env'][variable] = input(prompt)
-
-    def do_print(self, what):
-        """
-        Prints a message to the output. Useful for extra instructions
-        embedded in script files
-
-        Usage:
-
-        print Message here, quotes are not required
-        """
-        self.out(what)
 
     def confirm(self, prompt, default=False):
         choices = "Y|n" if default else "y|N"

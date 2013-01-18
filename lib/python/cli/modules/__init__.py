@@ -1,4 +1,4 @@
-__all__ = ['connect', 'naming', 'microcode', 'test', 'Mixin']
+__all__ = ['connect', 'naming', 'microcode', 'test', 'utils', 'Mixin']
 
 class Mixin(object): pass
 
