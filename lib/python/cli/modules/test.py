@@ -133,6 +133,7 @@ class TestingSetupContext(cmd.Cmd):
         cmd.Cmd.__init__(self)
         self.test = []
         self.labels = {}
+        self.atexit = []
 
     def default(self, line):
         """
@@ -169,6 +170,39 @@ class TestingSetupContext(cmd.Cmd):
 
     def do_save(self, line):
         return True
+
+    def do_atexit(self, line):
+        """
+        Defines a label which should be run at the exit of the script.
+        Regardless of how the script terminates, whether by success, fail,
+        abort, or unhandled error, the atexit labels will be (attempted to
+        be) executed.
+
+        The labels will be executed with the 'call' commands (see 'help
+        call'), so to prevent execution from flowing into the following
+        label, use the 'return' command to exit the label.
+
+        Example usage:
+
+        atexit cleanup
+
+        label main-loop
+            ...
+            succeed
+
+        label cleanup
+
+            # Turn off the pump before completing the test
+            a -> port 1 set low
+
+            return
+        """
+        line = line.strip()
+        if len(line) == 0:
+            return self.error("Incorrect usage", "See 'help atexit'")
+
+        if line not in self.atexit:
+            self.atexit.append(line)
 
     def emptyline(self):
         pass
@@ -209,11 +243,11 @@ class TestingRunContext(Shell):
 
     def __init__(self, test, *args, **kwargs):
         Shell.__init__(self, *args, **kwargs)
+        self.test = test
         self.context['counters'] = {}
         self.context['labels'] = []
         self.context['timers'] = {}
         self.stack = []
-        self.test = test
         self.vars = {}
         self.debug = False
         self.state = self.Status.READY
@@ -271,9 +305,9 @@ class TestingRunContext(Shell):
             # User interrupted -- abort the test
             if self.debug:
                 self.status("CTRL+C -- Aborting")
-            for m in self['motors'].values():
-                m.motor.slew(0)
             return self.do_abort(None)
+        except Exception as ex:
+            return self.error("Unexpected Error: {0!r}".format(ex))
 
         if capture:
             result = context['stdout'].as_result()
@@ -473,6 +507,10 @@ class TestingRunContext(Shell):
         # Handled at compile time in the Setup context.
         pass
 
+    def do_atexit(self, line):
+        # Handled at compile time
+        pass
+
     def do_let(self, line):
         """
         Create or modify a local variable. Any valid python expression is
@@ -516,16 +554,36 @@ class TestingRunContext(Shell):
         except ValueError:
             return self.error("Incorrect wait time", "See 'help wait'")
 
-    def cmdloop(self):
-        self.next = 0
+    def do_atexit(self, line):
+        # This is handled at compile time
+        pass
+
+    def execute_script(self, start=0):
+        self.next = start
         instructions = list(self.test)
-        self.state = self.Status.RUNNING
         while self.next < len(instructions):
             # Evaluate each command. Goto commands will change self.next, so
             # don't do a simple iteration of the instructions
             if self.execute(instructions[self.next]):
                 break
+            if self.next is None:
+                break
             self.next += 1
+
+    def cmdloop(self):
+        self.state = self.Status.RUNNING
+
+        # Execute the main script
+        self.execute_script(0)
+
+        for atexit in self.test.atexit:
+            # Advance the script to the location of the atexit label and
+            # execute the script from there. If a 'return' is encountered,
+            # leave a 'None' on the stack to signal the script should not be
+            # continued.
+            self.stack.append(None)
+            self.execute_script(self.test.labels[atexit])
+
         # Assume success if not otherwise set
         if self.state == self.Status.RUNNING:
             self.state = self.Status.SUCCEEDED
