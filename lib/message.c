@@ -65,6 +65,7 @@ mcMessageBoxOpen(void) {
         // Make sure mcGoodBye is called at program exit
         struct sigaction action = { .sa_handler = mcRudeGoodBye };
         sigaction(SIGTERM, &action, NULL);
+        sigaction(SIGHUP, &action, NULL);
     }
     return (_inbox > 0) ? 0 : -1;
 }
