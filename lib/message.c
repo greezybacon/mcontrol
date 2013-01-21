@@ -14,7 +14,7 @@
 
 static mqd_t _inbox = 0;        // Client's queue for return traffic,
                                 //      server's queue for incoming traffic
-static mqd_t _outbox = 0;       // Server's queue for client's perpective
+static mqd_t _outbox = 0;       // Server's queue from client's perpective
 static unsigned long message_id = 1;
 
 static bool _async_registered = false;
@@ -33,6 +33,26 @@ construct_response(request_message_t *, response_message_t *, void *, int);
 static int
 construct_request(motor_t, request_message_t *, int, void *, int);
 
+void __attribute__((constructor))
+mcInitialize(void) {
+    mcMessageBoxOpen();
+}
+
+static void __attribute__((destructor))
+mcGoodBye(void) {
+    char buffer[64];
+
+    // Create queue for the client and events
+    snprintf(buffer, sizeof buffer, CLIENT_QUEUE_FMT, getpid(), "wait");
+    mq_unlink(buffer);
+}
+
+static void
+mcRudeGoodBye(int signal) {
+    // Run all the destructors
+    exit(0);
+}
+
 int
 mcMessageBoxOpen(void) {
     char buffer[64];
@@ -41,6 +61,11 @@ mcMessageBoxOpen(void) {
     _inbox = mq_open(buffer, O_CREAT | O_EXCL, 0600, &_inbox_attr);
     if (_inbox == -1)
         printf("Unable to open event queue: %d\n", errno);
+    else {
+        // Make sure mcGoodBye is called at program exit
+        struct sigaction action = { .sa_handler = mcRudeGoodBye };
+        sigaction(SIGTERM, &action, NULL);
+    }
     return (_inbox > 0) ? 0 : -1;
 }
 

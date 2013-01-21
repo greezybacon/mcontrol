@@ -17,20 +17,6 @@ static int motor_conn_count = 0;
 static struct backend_motor * motor_list = NULL;
 static int motor_uid = 1;
 
-void __attribute__((constructor))
-mcInitialize(void) {
-    mcMessageBoxOpen();
-}
-
-void __attribute__((destructor))
-mcGoodBye(void) {
-    char buffer[64];
-
-    // Create queue for the client and events
-    snprintf(buffer, sizeof buffer, CLIENT_QUEUE_FMT, getpid(), "wait");
-    mq_unlink(buffer);
-}
-
 static void
 mcGarbageCollect(void) {
     // Performs various cleanup of internally static lists
