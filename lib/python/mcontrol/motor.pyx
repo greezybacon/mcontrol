@@ -60,6 +60,18 @@ cdef class Motor:
 
         raise_status(status, "Unable to connect to motor")
 
+    def disconnect(self):
+        """
+        Ordinarily, connections to the motor's device are held by the daemon
+        until its exit. This will preserve statistics and synced motor
+        characteristics (motion profile, communication, etc) to speed future
+        connections to the same motor. This method can be used to instruct
+        the connection to the motor to be severed. This is mostly useful if
+        the motor is about to be replaced by another or the motor is about
+        to be used by different software without closing the mcontrol daemon
+        """
+        mcDisconnect(self.id)
+
     def _get_value_and_units(self, value, units=None):
         """
         Allows the user to input units with a command, and the system will

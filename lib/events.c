@@ -151,7 +151,7 @@ mcSignalEvent(Driver * driver, struct event_info * info) {
         status = mcEventSend(m->client_pid, &evt);
         if (status < 0)
             // Client went away -- and didn't say bye!
-            mcDisconnect(m->id);
+            mcInactivate(m);
 
         // XXX: Reregistration might be necessary, if requested by the
         //      subscriber. Otherwise, the event entry should be marked

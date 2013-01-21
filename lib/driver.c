@@ -1,4 +1,3 @@
-#include "../drivers/driver.h"
 #include "driver.h"
 
 #include "events.h"
@@ -11,26 +10,8 @@
 #include <dlfcn.h>
 #include <regex.h>
 
-typedef struct driver_list driver_info_t;
-struct driver_list {
-    char *              name;
-    DriverClass *       driver;         // XXX: Name driver_class?
-
-    driver_info_t *     head;
-    driver_info_t *     next;
-};
-
-typedef struct driver_instance_list driver_instance_info_t;
-struct driver_instance_list {
-    Driver *            driver;
-    char                cxn_string[64];
-
-    driver_instance_info_t * head;
-    driver_instance_info_t * next;
-};
-
 static struct driver_list * drivers = NULL;
-static struct driver_instance_list * motors = NULL;
+static struct driver_instance * motors = NULL;
 static int motor_uid = 1;
 
 /**
@@ -125,14 +106,15 @@ mcDriverSearch(DriverClass * class, char * results, int size) {
  *      is the format of connection strings required by the respective
  *      driver format. See DriverClass::initialize for the respective driver
  *      for the specific format.
- * driver - (Driver **) pointer to the driver which will be set inside this
- *      routine
+ * driver - (struct driver_instance **) pointer to the driver instance which
+ *      will contain information about the connection to the device driver.
+ *      The first-level pointer will be set by this routine.
  *
  * Returns:
  * (Driver) instance of the connected device
  */
 int
-mcDriverConnect(const char * cxn_string, Driver ** driver) {
+mcDriverConnect(const char * cxn_string, struct driver_instance ** instance) {
     static const char * regex = "^([^:]+)://(.+)$";
     static regex_t re_cxn;
 
@@ -164,10 +146,11 @@ mcDriverConnect(const char * cxn_string, Driver ** driver) {
     }
 
     // Return a driver requested by the same connection string
-    for (struct driver_instance_list * m = motors->head; m; m=m->next) {
+    for (struct driver_instance * m = motors->head; m; m=m->next) {
         if (strncmp(m->cxn_string, cxn_string, sizeof m->cxn_string) == 0
-                && strlen(m->cxn_string) == strlen(cxn_string)) {
-            *driver = m->driver;
+                && strlen(m->cxn_string) == strlen(cxn_string)
+                && m->driver) {
+            *instance = m;
             return 0;
         }
     }
@@ -186,7 +169,7 @@ mcDriverConnect(const char * cxn_string, Driver ** driver) {
     motors->driver->id = motor_uid++;
     motors->driver->class = class;
 
-    *driver = motors->driver;
+    *instance = motors;
 
     int status = class->initialize(motors->driver,
             cxn_string + matches[2].rm_so);
@@ -200,37 +183,52 @@ mcDriverConnect(const char * cxn_string, Driver ** driver) {
     return 0;
 }
 
+/**
+ * mcDriverDisconnect
+ *
+ * Disconnects a device driver. This might be similar to a *nix hangup
+ * signal. The device's destroy() method is called, and then the memory held
+ * in this library for the device is freed and the device will then be set
+ * to point to NULL.
+ */
 void
-mcDriverDisconnect(Driver * driver) {
+mcDriverDisconnect(struct driver_instance * instance) {
+    if (instance == NULL)
+        return;
+
+    Driver * driver = instance->driver;
     if (driver == NULL || driver->class == NULL)
         // XXX: Set some kind of error response
         return;
 
-    driver->class->destroy(driver);
+    if (driver->class->destroy)
+        driver->class->destroy(driver);
+
+    free(driver);
+    instance->driver = NULL;
 }
 
 void
 mcDriverCacheInvalidate(Driver * driver) {
     // Return a driver requested by the same connection string
-    for (struct driver_instance_list * m = motors->head; m; m=m->next) {
+    for (struct driver_instance * m = motors->head; m; m=m->next) {
         if (m->driver == driver) {
             bzero(m->cxn_string, sizeof m->cxn_string);
-            return 0;
+            return;
         }
     }
 }
 
 void __attribute__((destructor))
 _destroy_motors(void) {
-    struct driver_instance_list * device;
+    struct driver_instance * device;
     if (motors)
         device = motors->head;
     else
         return;
 
     while (device) {
-        mcDriverDisconnect(device->driver);
-        free(device->driver);
+        mcDriverDisconnect(device);
         device = device->next;
     }
 }
@@ -248,7 +246,7 @@ mcDriverLookup(const char * name) {
 
 Driver *
 find_driver_by_id(int id) {
-    for (struct driver_instance_list * m = motors->head; m; m=m->next)
+    for (struct driver_instance * m = motors->head; m; m=m->next)
         if (m->driver->id == id)
             return m->driver;
 }
@@ -267,7 +265,7 @@ mcEnumDriversNext(void ** enum_id) {
 
     // XXX: Make this safer
 
-    struct driver_instance_list * m = *enum_id;
+    struct driver_instance * m = *enum_id;
     retval = (Driver *) m->driver;
     *enum_id = m->next;
 

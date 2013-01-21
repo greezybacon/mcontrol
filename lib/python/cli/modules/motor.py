@@ -1,6 +1,6 @@
 from cli import Shell
 
-from mcontrol import all_units, Profile, Event
+from mcontrol import all_units, Profile, Event, Motor
 from mcontrol import NoDaemonException
 
 from lib import term
@@ -28,6 +28,10 @@ class MotorContext(Shell):
         self.prompt_text = Shell.prompt_text[:-2] + ":{0}> ".format(name)
         self.parent = parent
         self.context['profiles'] = {}
+
+    def do_disconnect(self, what):
+        return self.motor.disconnect()
+    do_disconnect.__doc__ = Motor.disconnect.__doc__
 
     def do_get(self, what):
         try:
