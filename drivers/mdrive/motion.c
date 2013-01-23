@@ -73,10 +73,11 @@ mdrive_move(Driver * self, motion_instruction_t * command) {
             return EIO;
     }
 
-    // Signal completion event
+    // Signal completion event -- cancel in-progress one first
+    mdrive_async_complete_cancel(device);
     if (command->type != MCSLEW)
         // XXX: Ensure device position is known
-        mdrive_on_async_complete(device, true);
+        mdrive_async_complete(device);
 
     return 0;
 }
@@ -441,18 +442,11 @@ mdrive_async_completion_correct(void * arg) {
 }
 
 int
-mdrive_on_async_complete(mdrive_axis_t * device, bool cancel) {
+mdrive_async_complete(mdrive_axis_t * device) {
     // If not currently waiting on the completion of this device, setup a
     // new timeout and callback
-    if (device->trip.completion) {
-        if (cancel) {
-            if (device->cb_complete)
-                mcCallbackCancel(device->cb_complete);
-            // TODO: Signal motion-complete cancel event
-        }
-        else
-            return EBUSY;
-    }
+    if (device->trip.completion)
+        return EBUSY;
 
     // Calculate estimated time of completion
     mdrive_project_completion(device, &device->movement);
@@ -479,6 +473,37 @@ mdrive_on_async_complete(mdrive_axis_t * device, bool cancel) {
 
     device->trip.completion = true;
 
+    return 0;
+}
+
+/**
+ * mdrive_async_complete_cancel
+ *
+ * Cancels a scheduled motion-complete callback if any is scheduled. If so,
+ * a EV_MOTION is signalled to indicate that the move was cancelled
+ *
+ * Parameters:
+ * device - (mdrive_axis_t *) Device for which to check and cancel motion
+ *      callback
+ *
+ * Returns:
+ * (int) 0 upon success
+ */
+int
+mdrive_async_complete_cancel(mdrive_axis_t * device) {
+    if (device->trip.completion) {
+        if (device->cb_complete)
+            mcCallbackCancel(device->cb_complete);
+        // No longer to trip on motion-complete
+        device->trip.completion = false;
+        // TODO: Signal motion-complete cancel event
+        union event_data data = {
+            .motion = {
+                .cancelled = true
+            }
+        };
+        mdrive_signal_event(device, EV_MOTION, &data);
+    }
     return 0;
 }
 
@@ -540,7 +565,8 @@ mdrive_stop(Driver * self, enum stop_type type) {
     // Unit won't be moving any more
     bzero(&axis->movement, sizeof axis->movement);
 
-    // TODO: Cancel motion completion callback event if any
+    // Cancel motion completion callback event if any
+    mdrive_async_complete_cancel(axis);
 
     switch (type) {
         case MCSTOP:
