@@ -1,6 +1,17 @@
-__all__ = ['connect', 'naming', 'microcode', 'test', 'utils', 'Mixin']
+__all__ = ['connect', 'naming', 'microcode', 'standalone', 'test', 'trace',
+           'utils', 'Mixin']
 
 class Mixin(object): pass
+
+def initializer(func):
+    """
+    Specifies an initialization function to be run when the shell is
+    constructed.
+    """
+    func.initializer = True
+    return func
+
+initializer.ignore = True
 
 def trim(docstring):
     if not docstring:

@@ -31,11 +31,14 @@ Version 0.1-beta
         'tests': {},
         'ctrl-c-abort': False,
     }
+    initializers = []
 
     def __init__(self, context=None, script=None):
         cmd.Cmd.__init__(self)
         if context and type(context) is dict:
             self.context.update(context)
+        for x in self.initializers:
+            x(self)
         if script:
             self.cmdqueue = open(script, 'rt').readlines()
 
@@ -44,6 +47,9 @@ Version 0.1-beta
 
     def __setitem__(self, what, item):
         self.context[what] = item
+
+    def __contains__(self, what):
+        return what in self.context
 
     @property
     def prompt(self):
@@ -79,6 +85,8 @@ Version 0.1-beta
     def mixin(cls, mixin):
         for prop in dir(mixin):
             method = getattr(mixin, prop)
+            if hasattr(method, 'ignore'):
+                continue
             if inspect.ismethod(method):
                 # Python2
                 setattr(cls, prop, method.im_func)
@@ -86,6 +94,8 @@ Version 0.1-beta
                 # Python3
                 setattr(cls, prop, method)
                 method.__doc__ = trim(method.__doc__)
+            if hasattr(method, 'initializer'):
+                cls.initializers.append(method)
 
     def out(self, what):
         where = self.context['stdout']
@@ -125,6 +135,7 @@ Version 0.1-beta
                 return False
             raise
         except Exception as e:
+            raise
             self.error("{0}: (Unhandled) {1}".format(
                 type(e).__name__, e))
             return True
