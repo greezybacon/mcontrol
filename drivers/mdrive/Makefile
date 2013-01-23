@@ -1,11 +1,11 @@
 CC=gcc
 CFLAGS=-I../../ --std=gnu99 -O2 -march=native -Wall -fPIC -D_GNU_SOURCE -pedantic -g -pg
-LDFLAGS=-lrt -lm -lpthread
+LDFLAGS=-lrt -lm -lpthread -L../../lib -lmcontrol
 
 SOURCES=driver.c serial.c queue.c config.c query.c motion.c search.c \
 	events.c profile.c firmware.c microcode.c
 OBJECTS=$(SOURCES:.c=.o)
-LIBRARY=mdrive.so
+LIBRARY=../mdrive.so
 
 .PHONY: all
 all: $(SOURCES) $(LIBRARY)

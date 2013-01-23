@@ -1,6 +1,6 @@
 CC=gcc
 CFLAGS=--std=gnu99 -Wall -D_GNU_SOURCE -pedantic
-LDFLAGS=-ldl -lrt -rdynamic -lrt -lpthread -lm
+LDFLAGS=-ldl -lrt -lrt -lpthread -lm
 DEBUG=1
 
 SOURCES=main.c controller.c scheduler.c worker.c
