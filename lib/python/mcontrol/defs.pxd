@@ -54,6 +54,13 @@ cdef extern from "lib/client.h" nogil:
     int mcTraceUnsubscribeRemote(int, int id)
     int mcTraceSubscribeAdd(int, int id, String * name)
     int mcTraceSubscribeRemove(int, int id, String * name)
+    int mcTraceChannelEnum(int, String * channels)
+
+cdef extern from "lib/trace.h" nogil:
+    ctypedef void (*trace_callback_t)(int id, int level, int channel, char * buffer)
+    int mcTraceSubscribe(int level, long long channel_mask, trace_callback_t callback)
+    int mcTraceUnsubscribe(int id)
+    int mcTraceChannelLookup(char * name)
 
 cdef struct event_trace_data:
     char    level

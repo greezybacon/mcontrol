@@ -57,3 +57,15 @@ cdef class Trace(object):
 
     def emit(self, level, channel, text):
         print("{0}: {1}".format(channel, text))
+
+    @classmethod
+    def enum(cls):
+        cdef String buf
+        cdef int count = mcTraceChannelEnum(0, &buf)
+        cdef char * pos = buf.buffer
+        channels = []
+        for i in range(count):
+            channel = pos.decode('latin-1')
+            channels.append(channel)
+            pos += len(channel) + 1
+        return channels
