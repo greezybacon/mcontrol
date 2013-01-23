@@ -15,7 +15,8 @@ struct client_callback {
     event_cb_t      callback;
     bool            active;
     bool            waiting;
-    bool            in_process;
+    // Signaled by SIGINT handler for in-process wait
+    bool            interrupted;
     void *          data;
     pthread_cond_t * wait;
 };

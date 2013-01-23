@@ -47,7 +47,6 @@ mcSubscribeWithData(motor_t motor, event_t event, int * reg_id,
         .id = ++registration_uid,
         .active = true,
         .event = event,
-        .in_process = mcClientCallModeGet() == MC_CALL_IN_PROCESS,
         .callback = callback,
         .data = data
     };
@@ -169,6 +168,7 @@ mcSignalEvent(Driver * driver, struct event_info * info) {
         //      subscriber. Otherwise, the event entry should be marked
         //      inactive.
     }
+    return 0;
 }
 
 /**
@@ -281,6 +281,7 @@ mcDispatchSignaledEvent(struct event_message * evt) {
         }
         reg++;
     }
+    return 0;
 }
 
 static int
@@ -346,7 +347,7 @@ mcEventWaitForMessage(motor_t motor, event_t event) {
 
     // Allow the process to be interrupted elsewhere
     if (status == EINTR)
-        kill(getpid(), SIGINT);
+        raise(SIGINT);
 
     // Mark event registration active (if not unsubscribed, which might make
     // reg be a registration for something else, now)
@@ -355,6 +356,26 @@ mcEventWaitForMessage(motor_t motor, event_t event) {
 
     // Awaited event received
     return status;
+}
+
+/**
+ * mcEventWaitForCondIntr
+ *
+ * Signal handler used by mcEventWaitForCondition, since pthread_cond_wait
+ * will not return from a SIGINT interruption. This handler, when explicity
+ * configured to handle an interruption signal such as SIGINT, will set the
+ * ->interrupted flag on all waiting conditions
+ */
+static void
+mcEventWaitForCondIntr(int signal) {
+    struct client_callback * reg = events;
+    while (reg && reg->motor) {
+        if (reg->waiting && reg->wait) {
+            reg->interrupted = true;
+            pthread_cond_signal(reg->wait);
+        }
+        reg++;
+    }
 }
 
 static int
@@ -381,6 +402,14 @@ mcEventWaitForCondition(motor_t motor, event_t event) {
     pthread_cond_t signal = PTHREAD_COND_INITIALIZER;
     pthread_mutex_t useless = PTHREAD_MUTEX_INITIALIZER;
 
+    // Trap the SIGINT signal to abort the wait
+    struct sigaction save, catch = { .sa_handler = mcEventWaitForCondIntr };
+    sigset_t mask;
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGINT);
+    pthread_sigmask(SIG_BLOCK, &mask, NULL);
+    sigaction(SIGINT, &catch, &save);
+
     reg->wait = &signal;
 
     pthread_mutex_lock(&useless);
@@ -389,8 +418,11 @@ mcEventWaitForCondition(motor_t motor, event_t event) {
         status = pthread_cond_wait(&signal, &useless);
         if (status != 0)
             break;
+        // SIGINT handler will set interrupted flag
+        else if (reg->interrupted)
+            break;
         // Signaler will clear waiting flag
-        if (!reg->waiting)
+        else if (!reg->waiting)
             break;
     }
 
@@ -402,6 +434,13 @@ mcEventWaitForCondition(motor_t motor, event_t event) {
 
     reg->wait = NULL;
     reg->waiting = false;
+
+    // Cleanup SIGINT trapping
+    pthread_sigmask(SIG_UNBLOCK, &mask, NULL);
+    sigaction(SIGINT, &save, NULL);
+    // Raise SIGINT to the default handler
+    if (reg->interrupted)
+        raise(SIGINT);
 
     return status;
 }
