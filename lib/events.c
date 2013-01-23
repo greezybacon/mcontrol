@@ -387,6 +387,7 @@ mcEventWaitForCondition(motor_t motor, event_t event) {
         if (motor == reg->motor && event == reg->event
                 && reg->active) {
             reg->waiting = true;
+            reg->interrupted = false;
             break;
         }
         reg++;
