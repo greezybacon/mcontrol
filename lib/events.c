@@ -41,12 +41,13 @@ mcSubscribeWithData(motor_t motor, event_t event, int * reg_id,
     // Advance to first inactive callback
     struct client_callback * e = events;
     while (e->active) e++;
-    
+
     *e = (struct client_callback) {
         .motor = motor,
         .id = ++registration_uid,
         .active = true,
         .event = event,
+        .in_process = mcClientCallModeGet() == MC_CALL_IN_PROCESS,
         .callback = callback,
         .data = data
     };
@@ -146,12 +147,23 @@ mcSignalEvent(Driver * driver, struct event_info * info) {
         if (m->subscriptions[info->event] < 1)
             continue;
 
-        evt.id = 1;
-        evt.motor = m->id;
-        status = mcEventSend(m->client_pid, &evt);
-        if (status < 0)
-            // Client went away -- and didn't say bye!
-            mcInactivate(m);
+        if (mcClientCallModeGet() == MC_CALL_IN_PROCESS) {
+            // Find the callback
+            struct event_message evt = {
+                .event = info->event,
+                .motor = m->id,
+            };
+            evt.data = *info->data,
+            status = mcDispatchSignaledEvent(&evt);
+        }
+        else {
+            evt.id = 1;
+            evt.motor = m->id;
+            status = mcEventSend(m->client_pid, &evt);
+            if (status < 0)
+                // Client went away -- and didn't say bye!
+                mcInactivate(m);
+        }
 
         // XXX: Reregistration might be necessary, if requested by the
         //      subscriber. Otherwise, the event entry should be marked
@@ -228,19 +240,23 @@ PROXYIMPL(mcEventUnregister, int event) {
  * channel.
  */
 int
-mcDispatchSignaledEvent(response_message_t * event) {
-    struct client_callback * reg = events;
-
-    if (!reg)
-        // Events not initialized yet
-        return 0;
+mcDispatchSignaledEventMessage(response_message_t * event) {
 
     if (!event)
         return EINVAL;
     else if (!event->payload)
         return EINVAL;
 
-    struct event_message * evt = (void *) event->payload;
+    return mcDispatchSignaledEvent((void *) event->payload);
+}
+
+int
+mcDispatchSignaledEvent(struct event_message * evt) {
+    struct client_callback * reg = events;
+
+    if (!reg)
+        // Events not initialized yet
+        return 0;
 
     // Walk to high-water-mark of the callback registrations using the
     // motor_id, which isn't reset on unsubscription
@@ -258,7 +274,8 @@ mcDispatchSignaledEvent(response_message_t * event) {
                 // XXX: Should the (struct client_callback) just be passed ?
                 reg->callback(&notify);
             }
-            else if (reg->wait) {
+            if (reg->wait) {
+                reg->waiting = false;
                 pthread_cond_signal(reg->wait);
             }
         }
@@ -266,18 +283,8 @@ mcDispatchSignaledEvent(response_message_t * event) {
     }
 }
 
-/**
- * mcEventWait
- *
- * Wait for the arrival of a registered event.
- *
- * Returns:
- * (int) EINVAL if no registration was found for the indicated event.
- *       EINTR if the wait was interrupted.  Otherwise, 0 after the event is
- *       received
- */
-int
-mcEventWait(motor_t motor, event_t event) {
+static int
+mcEventWaitForMessage(motor_t motor, event_t event) {
     // Find the registration of this event and mark it inactive, which
     // will block the dispatch to the callback function.
     struct client_callback * reg = events;
@@ -300,11 +307,14 @@ mcEventWait(motor_t motor, event_t event) {
     sigaddset(&mask, SIGINT);
 
     // Block the delivery of the async signal to this process
-    sigprocmask(SIG_BLOCK, &mask, NULL);
+    pthread_sigmask(SIG_BLOCK, &mask, NULL);
 
     siginfo_t info;
     response_message_t msg;
     struct event_message * evt;
+
+    bool available;
+
     do {
         // Await delivery of the event signal to this thread
         sigwaitinfo(&mask, &info);
@@ -315,16 +325,24 @@ mcEventWait(motor_t motor, event_t event) {
         }
         else if (info.si_code != SI_MESGQ)
             continue;
-        else if (1 > mcResponseReceive2(&msg, false, NULL))
-            continue;
-        
+        else {
+            // Drain all events from the inbox
+            do {
+                if (mcIsMessageAvailable(&available))
+                    break;
+                else if (!available)
+                    break;
+                else if (1 > mcResponseReceive2(&msg, false, NULL))
+                    break;
+            } while (true);
+        } 
         evt = (void *) msg.payload;
         if (evt->motor == motor && evt->event == event)
             break;
     } while (true);
 
     // Allow delivery of the async signal again
-    sigprocmask(SIG_UNBLOCK, &mask, NULL);
+    pthread_sigmask(SIG_UNBLOCK, &mask, NULL);
 
     // Allow the process to be interrupted elsewhere
     if (status == EINTR)
@@ -337,4 +355,71 @@ mcEventWait(motor_t motor, event_t event) {
 
     // Awaited event received
     return status;
+}
+
+static int
+mcEventWaitForCondition(motor_t motor, event_t event) {
+    struct client_callback * reg = events;
+
+    // Find the event the caller is requesting a wait on
+    while (reg && reg->motor) {
+        if (motor == reg->motor && event == reg->event
+                && reg->active) {
+            reg->waiting = true;
+            break;
+        }
+        reg++;
+    }
+
+    if (!reg || !reg->motor)
+        return EINVAL;
+
+    // Already waiting on this event?
+    if (reg->wait)
+        return EBUSY;
+
+    pthread_cond_t signal = PTHREAD_COND_INITIALIZER;
+    pthread_mutex_t useless = PTHREAD_MUTEX_INITIALIZER;
+
+    reg->wait = &signal;
+
+    pthread_mutex_lock(&useless);
+    int status;
+    while (true) {
+        status = pthread_cond_wait(&signal, &useless);
+        if (status != 0)
+            break;
+        // Signaler will clear waiting flag
+        if (!reg->waiting)
+            break;
+    }
+
+    pthread_cond_destroy(&signal);
+
+    // Done. Cleanup and return
+    pthread_mutex_unlock(&useless);
+    pthread_mutex_destroy(&useless);
+
+    reg->wait = NULL;
+    reg->waiting = false;
+
+    return status;
+}
+
+/**
+ * mcEventWait
+ *
+ * Wait for the arrival of a registered event.
+ *
+ * Returns:
+ * (int) EINVAL if no registration was found for the indicated event.
+ *       EINTR if the wait was interrupted.  Otherwise, 0 after the event is
+ *       received
+ */
+int
+mcEventWait(motor_t motor, event_t event) {
+    if (mcClientCallModeGet() == MC_CALL_IN_PROCESS)
+        return mcEventWaitForCondition(motor, event);
+    else
+        return mcEventWaitForMessage(motor, event);
 }

@@ -13,6 +13,10 @@ cdef extern from "time.h":
 
 cdef extern from "lib/client.h" nogil:
     void mcClientTimeoutSet(timespec * new, timespec * old)
+    int mcClientCallModeGet()
+    void mcClientCallModeSet(int)
+    void mcDriverLoad(char * path)
+
     int mcConnect(String * connection, int * m, int)
     int mcDisconnect(int)
     int mcMoveRelativeUnits(int motor, int measure, int units)

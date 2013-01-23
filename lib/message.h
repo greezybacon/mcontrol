@@ -83,9 +83,9 @@ struct event_message {
 
 #define RETURN(what) \
     do { \
-        args->returned = what; \
+        __args->returned = what; \
         if (__args->outofproc) \
-            mcMessageReply(message, args, sizeof *args); \
+            mcMessageReply(message, __args, sizeof *__args); \
         return; \
     } while(0)
 
@@ -115,6 +115,9 @@ mcInboxExpunge(void);
 
 extern void
 mcAsyncReceive(void);
+
+extern int
+mcIsMessageAvailable(bool * available);
 
 extern int
 mcResponseReceive(response_message_t * response,

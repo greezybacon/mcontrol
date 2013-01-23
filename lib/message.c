@@ -315,6 +315,17 @@ mcAsyncReceive(void) {
 }
 
 int
+mcIsMessageAvailable(bool * available) {
+    struct mq_attr attrs;
+    int status = mq_getattr(_inbox, &attrs);
+    if (status)
+        return status;
+
+    *available = attrs.mq_curmsgs > 0;
+    return 0;
+}
+
+int
 mcResponseReceive2(response_message_t * response, bool message,
         const struct timespec * timeout) {
     unsigned int priority, length;
@@ -344,7 +355,7 @@ mcResponseReceive2(response_message_t * response, bool message,
 
         // Handle events directly from here (client side)
         if (priority == PRIORITY_EVENT)
-            mcDispatchSignaledEvent(response);
+            mcDispatchSignaledEventMessage(response);
         else
             // If event was received when a message was expected, another
             // call to mq_receive should be made until a message is received

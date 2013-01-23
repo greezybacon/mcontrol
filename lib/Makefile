@@ -40,4 +40,5 @@ $(LIBRARY): $(OBJECTS)
 clean:
 	$(RM) $(OBJECTS)
 	$(RM) $(LIBRARY)
+	$(RM) client.c client.h dispatch.h
 	set -e; for d in $(DIRS); do $(MAKE) -C $$d clean; done

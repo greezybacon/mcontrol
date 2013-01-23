@@ -11,10 +11,10 @@ def unpack_return(arg):
     name = arg.split()[-1]
     type = " ".join(arg.split()[1:-1])
     if '*' in type:
-        return "memcpy({0}, &payload.{0}, sizeof({1}));" \
+        return "memcpy({0}, &payload->{0}, sizeof({1}));" \
             .format(name, type.replace("*","").strip())
     else:
-        return "{0} = payload.{0};".format(name)
+        return "{0} = payload->{0};".format(name)
 
 print("""
 /**
@@ -48,6 +48,18 @@ mcClientTimeoutSet(const struct timespec * new_timeout,
         *old_timeout = timeout;
     timeout = *new_timeout;
 }
+
+static enum mcCallMode call_mode = MC_CALL_CROSS_PROCESS;
+
+void
+mcClientCallModeSet(enum mcCallMode mode) {
+    call_mode = mode;
+}
+
+enum mcCallMode
+mcClientCallModeGet(void) {
+    return call_mode;
+}
 """)
 
 import sys
@@ -72,9 +84,13 @@ for doth in sys.argv:
             arg_names = []
             remote_args = []
         items['motor_arg'] = motor_arg
+        items['motor_arg_name'] = motor_arg.split()[-1] if motor_arg else ''
+        items['arg_names'] = ','.join([x.split()[-1] for x in args])
         if not len(motor_arg) and len(args):
             # Drop leading comma from args list
             items['args'] = items['args'].strip()[1:]
+        elif len(motor_arg) and len(args):
+            items['motor_arg_name'] += ','
 
         items['remote_args'] = remote_args
         items['unpacked_args'] = ",\n        ".join(
@@ -107,27 +123,52 @@ for doth in sys.argv:
 for name in sorted(proxies):
     items = proxies[name]
     print("""
-%(ret)s %(name)s(%(motor_arg)s%(args)s) {
-    %(null_pointer_checks)s
-    struct _%(name)s_args payload = {
+{ret} {name}OutOfProc({motor_arg}{args}) {{
+    {null_pointer_checks}
+    struct _{name}_args args = {{
         .outofproc = true,
-        %(unpacked_args)s
-    };
+        {unpacked_args}
+    }};
     response_message_t response;
-    struct timespec * waittime = %(timeout)s;
-    int size = mcMessageSendWait(motor, TYPE_%(name)s, &payload,
-        sizeof payload, %(priority)s, &response, waittime);
+    struct timespec * waittime = {timeout};
+    int size = mcMessageSendWait(motor, TYPE_{name}, &args,
+        sizeof args, {priority}, &response, waittime);
 
-    switch (size) {
+    switch (size) {{
         case -ENOENT:
         case -EAGAIN:
             return -ER_NO_DAEMON;
         case -ETIMEDOUT:
             return -ER_DAEMON_BUSY;
-    }
+    }}
 
-    payload = * (struct _%(name)s_args *) response.payload;
+    struct _{name}_args * payload = (struct _{name}_args *)(char *) response.payload;
 
-    %(unpacked_rets)s
-    return payload.returned;
-}""" % items)
+    {unpacked_rets}
+    return payload->returned;
+}}
+
+{ret} {name}InProc({motor_arg}{args}) {{
+    request_message_t message = {{
+        .id = 0,
+        .pid = getpid(),
+        .motor_id = motor,
+    }};
+    struct _{name}_args args = {{
+        .inproc = true,
+        {unpacked_args}
+    }};
+    *(struct _{name}_args *)message.payload = args;
+    {name}Impl(&message);
+    struct _{name}_args * payload = (struct _{name}_args *)(char *) message.payload;
+    {unpacked_rets}
+    return payload->returned;
+}}
+
+{ret} {name}({motor_arg}{args}) {{
+    if (call_mode == MC_CALL_CROSS_PROCESS)
+        return {name}OutOfProc({motor_arg_name}{arg_names});
+    else
+        return {name}InProc({motor_arg_name}{arg_names});
+}}
+""".format(**items))

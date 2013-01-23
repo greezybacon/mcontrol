@@ -15,6 +15,7 @@ struct client_callback {
     event_cb_t      callback;
     bool            active;
     bool            waiting;
+    bool            in_process;
     void *          data;
     pthread_cond_t * wait;
 };
@@ -23,7 +24,9 @@ PROXYDEF(mcEventRegister, int, int event);
 PROXYDEF(mcEventUnregister, int, int event);
 
 extern int
-mcDispatchSignaledEvent(response_message_t * event);
+mcDispatchSignaledEvent(struct event_message * event);
+extern int
+mcDispatchSignaledEventMessage(response_message_t * event);
 
 extern int
 mcSignalEvent(Driver * driver, struct event_info *);

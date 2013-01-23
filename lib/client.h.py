@@ -33,9 +33,18 @@ print("""
 #include "message.h"
 
 extern void mcClientTimeoutSet(const struct timespec *, struct timespec *);
+
+enum mcCallMode {
+    MC_CALL_CROSS_PROCESS,
+    MC_CALL_IN_PROCESS,
+};
+
+extern enum mcCallMode mcClientCallModeGet(void);
+extern void mcClientCallModeSet(enum mcCallMode);
 """)
 
 import sys
+
 for doth in sys.argv:
     if doth == "message.h" or '.py' in doth:
         continue
@@ -62,11 +71,13 @@ for doth in sys.argv:
 for name in sorted(proxies):
     items = proxies[name]
     print("""
-extern %(ret)s %(name)s(%(motor_arg)s%(args)s);
-
-struct _%(name)s_args {
+struct _{name}_args {{
     bool inproc;        // If the call is made in-process (server-server)
     bool outofproc;     // If the call is made out-of-process (client-server)
-    %(ret)s returned;
-    %(args_no_pointer)s
-};""" % items)
+    {ret} returned;
+    {args_no_pointer}
+}};
+extern {ret} {name}({motor_arg}{args});
+extern {ret} {name}InProc({motor_arg}{args});
+extern {ret} {name}OutOfProc({motor_arg}{args});
+""".format(**items))

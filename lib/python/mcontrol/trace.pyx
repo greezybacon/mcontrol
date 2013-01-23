@@ -4,7 +4,7 @@ cdef int ANY_MOTOR = -1
 
 import logging
 
-cdef void pyTraceCallback(event_info_t * info) with gil:
+cdef void pyTraceEventCallback(event_info_t * info) with gil:
     if info.event != EV_TRACE:
         # Spurious event
         return
@@ -16,22 +16,40 @@ cdef void pyTraceCallback(event_info_t * info) with gil:
         info.data.trace.level,
         info.data.trace.channel, text.decode('latin-1'))
 
-cdef class Trace:
+trace_instances = {}
+cdef void pyTraceCallback(int id, int level, int channel,
+        char * buffer) with gil:
+    PyEval_InitThreads()
+    if id in trace_instances:
+        trace_instances[id].emit(level, channel, buffer.decode('latin-1'))
+
+cdef class Trace(object):
     cdef int id
     cdef int event_id
 
-    def __init__(self, level=20):
-        mcSubscribeWithData(ANY_MOTOR, EV_TRACE, &self.event_id,
-            pyTraceCallback, <void *>self)
-        self.id = mcTraceSubscribeRemote(ANY_MOTOR, level, 0)
+    def __cinit__(self, level=40):
+        if not Library.is_in_process():
+            mcSubscribeWithData(ANY_MOTOR, EV_TRACE, &self.event_id,
+                pyTraceEventCallback, <void *>self)
+            self.id = mcTraceSubscribeRemote(ANY_MOTOR, level, 0)
+        else:
+            self.id = mcTraceSubscribe(level, 0, <trace_callback_t>pyTraceCallback)
+        trace_instances[self.id] = self
 
     def __dealloc__(self):
-        mcTraceUnsubscribeRemote(ANY_MOTOR, self.id)
-        mcUnsubscribe(ANY_MOTOR, self.event_id)
+        if self.id:
+            del trace_instances[self.id]
+            if not Library.is_in_process():
+                mcTraceUnsubscribeRemote(ANY_MOTOR, self.id)
+                mcUnsubscribe(ANY_MOTOR, self.event_id)
+            else:
+                mcTraceUnsubscribe(self.id)
 
-    def add(self, channel):
+    def add(self, channel, level=20):
         cdef String buf = bufferFromString(channel)
-        mcTraceSubscribeAdd(ANY_MOTOR, self.id, &buf)
+        status = mcTraceSubscribeAdd(ANY_MOTOR, self.id, &buf)
+        if status < 0:
+            raise ValueError('{0}: No such channel'.format(channel))
 
     def remove(self, channel):
         cdef String buf = bufferFromString(channel)
