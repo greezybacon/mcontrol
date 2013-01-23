@@ -33,14 +33,17 @@ Version 0.1-beta
     }
     initializers = []
 
-    def __init__(self, context=None, script=None):
+    def __init__(self, context=None, scripts=None, options=None):
         cmd.Cmd.__init__(self)
         if context and type(context) is dict:
             self.context.update(context)
+        if options and options.standalone:
+            self.do_standalone('')
         for x in self.initializers:
             x(self)
-        if script:
-            self.cmdqueue = open(script, 'rt').readlines()
+        if scripts:
+            for s in scripts:
+                self.cmdqueue = open(s, 'rt').readlines()
 
     def __getitem__(self, what):
         return self.context[what]
@@ -177,8 +180,12 @@ for name in modules.__all__:
         if type(cls) is type and issubclass(cls, modules.Mixin):
             Shell.mixin(cls)
 
+# Commandline option parsing
+import optparse
+parser = optparse.OptionParser()
+parser.add_option('--standalone',help="Run script in standalone mode",
+    action="store_true", dest="standalone", default=False)
+
 if __name__ == '__main__':
-    if len(sys.argv) > 1:
-        Shell(script=sys.arv[1]).run()
-    else:
-        Shell().run()
+    options, args = parser.parse_args()
+    Shell(options=options, scripts=args).run()

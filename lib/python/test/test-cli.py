@@ -11,7 +11,5 @@ for lib in glob.glob(install_path + '/build/lib.linux-*-{0}.{1}'.format(
     sys.path.insert(0, lib)
 
 import cli
-if len(sys.argv) > 1:
-    cli.Shell(script=sys.argv[1]).run()
-else:
-    cli.Shell().run()
+options, args = cli.parser.parse_args()
+cli.Shell(scripts=args, options=options).run()
