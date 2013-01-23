@@ -86,7 +86,9 @@ cdef class Motor:
     def __init__(self, connection, recovery=False):
         cdef int status
         cdef String buf = bufferFromString(connection)
-        status = mcConnect(&buf, &self.id, recovery)
+        cdef int _recovery = recovery
+        with nogil:
+            status = mcConnect(&buf, &self.id, _recovery)
 
         raise_status(status, "Unable to connect to motor")
 
@@ -100,7 +102,8 @@ cdef class Motor:
         the motor is about to be replaced by another or the motor is about
         to be used by different software without closing the mcontrol daemon
         """
-        mcDisconnect(self.id)
+        with nogil:
+            mcDisconnect(self.id)
 
     def _get_value_and_units(self, value, units=None):
         """
@@ -136,6 +139,8 @@ cdef class Motor:
             return self._scale
 
         def __set__(self, urevs):
+            cdef int status
+
             if type(urevs) not in (list, tuple) or len(urevs) != 2:
                 raise ValueError("Two-item tuple expected")
             scale, units = urevs
@@ -143,68 +148,72 @@ cdef class Motor:
                 if units not in all_units:
                     raise ValueError("Unsupported units")
                 units = all_units[units]
-            raise_status(
-                mcUnitScaleSet(self.id, units, scale),
-                "Unable to configure scale and untis")
+
+            cdef int _units = units, _scale = scale
+            with nogil:
+                status = mcUnitScaleSet(self.id, _units, _scale)
+            raise_status(status, "Unable to configure scale and untis")
             self._scale = scale
             self._units = units
 
     property position:
         def __get__(self):
             cdef double position
-            raise_status(
-                mcQueryFloat(self.id, k.MCPOSITION, &position),
-                "Unable to retrieve current position")
+            cdef int status
+            with nogil:
+                status = mcQueryFloat(self.id, k.MCPOSITION, &position)
+            raise_status(status, "Unable to retrieve current position")
 
             return position
 
         def __set__(self, position):
+            cdef int status
             units = None
             if type(position) is tuple:
                 position, units = self._get_value_and_units(*position)
 
+            cdef int _position = position, _units = units
             if units:
-                raise_status(
-                    mcPokeIntegerUnits(self.id, k.MCPOSITION, position,
-                        units),
-                    "Unable to set device position")
+                with nogil:
+                    status = mcPokeIntegerUnits(self.id, k.MCPOSITION,
+                        _position, _units)
             else:
-                raise_status(
-                    mcPokeInteger(self.id, k.MCPOSITION, position),
-                    "Unable to set device position")
+                with nogil:
+                    status = mcPokeInteger(self.id, k.MCPOSITION, _position)
+
+            raise_status(status, "Unable to set device position")
 
     property velocity:
         def __get__(self):
             cdef double velocity
-            raise_status(
-                mcQueryFloat(self.id, k.MCVELOCITY, &velocity),
-                "Unable to retrieve current velocity")
+            cdef int status
+            with nogil:
+                status = mcQueryFloat(self.id, k.MCVELOCITY, &velocity)
+            raise_status(status, "Unable to retrieve current velocity")
             return velocity
 
     property moving:
         def __get__(self):
             cdef int status, moving
-            status = mcQueryInteger(self.id, k.MCMOVING, &moving)
-
-            if status != 0:
-                raise RuntimeError(status)
-
+            with nogil:
+                status = mcQueryInteger(self.id, k.MCMOVING, &moving)
+            raise_status(status, "Unable to query device status")
             return not not moving
 
     property stalled:
         def __get__(self):
-            cdef int stalled
-            raise_status(
-                mcQueryInteger(self.id, k.MCSTALLED, &stalled),
-                "Unable to retrieve device state")
+            cdef int status, stalled
+            with nogil:
+                status = mcQueryInteger(self.id, k.MCSTALLED, &stalled)
+            raise_status(status, "Unable to retrieve device state")
             return not not stalled
 
         def __set__(self, state):
-            cdef int value
+            cdef int status, value
             value = 1 if state else 0
-            raise_status(
-                mcPokeInteger(self.id, k.MCSTALLED, value),
-                "Unable to set stall flag")
+            with nogil:
+                status = mcPokeInteger(self.id, k.MCSTALLED, value)
+            raise_status(status, "Unable to set stall flag")
 
     property profile:
         def __get__(self):
@@ -224,51 +233,59 @@ cdef class Motor:
             self._profile.commit()
 
     def move(self, how_much, units=None):
-        raise_status(
-            mcMoveRelativeUnits(self.id, how_much, units or self.units),
-            "Unable to command relative move")
+        cdef int status, _how_much = how_much
+        cdef int _units = units or self.units
+        with nogil:
+            status = mcMoveRelativeUnits(self.id, _how_much, _units)
+        raise_status(status, "Unable to command relative move")
 
     def moveTo(self, where, units=None):
-        raise_status(
-            mcMoveAbsoluteUnits(self.id, where, units or self.units),
-            "Unable to command absolute move")
+        cdef int status, _where = where, _units = units or self.units
+        with nogil:
+            status = mcMoveAbsoluteUnits(self.id, _where, _units)
+        raise_status(status, "Unable to command absolute move")
 
     def slew(self, rate, units=None):
-        raise_status(
-            mcSlewUnits(self.id, rate, units or self.units),
-            "Unable to slew motor")
+        cdef int status, _rate = rate, _units = units or self.units
+        with nogil:
+            status = mcSlewUnits(self.id, _rate, _units)
+        raise_status(status, "Unable to slew motor")
 
     def stop(self):
-        raise_status(
-            mcStop(self.id),
-            "Unable to stop motor")
+        cdef int status
+        with nogil:
+            status = mcStop(self.id)
+        raise_status(status, "Unable to stop motor")
 
     def halt(self):
-        raise_status(
-            mcHalt(self.id),
-            "Unable to halt motor")
+        cdef int status
+        with nogil:
+            status = mcHalt(self.id)
+        raise_status(status, "Unable to halt motor")
 
     def on(self, event):
         return Event(self, event)
 
     def load_firmware(self, filename):
         cdef String buf = bufferFromString(filename)
-        status = mcFirmwareLoad(self.id, &buf);
-
-        if status != 0:
-            raise RuntimeError(status)
+        cdef int status
+        with nogil:
+            status = mcFirmwareLoad(self.id, &buf);
+        raise_status(status, "Unable to flash firmware")
 
     def load_microcode(self, filename):
         cdef String buf = bufferFromString(filename)
-        status = mcMicrocodeLoad(self.id, &buf);
-
-        if status != 0:
-            raise RuntimeError(status)
+        cdef int status
+        with nogil:
+            status = mcMicrocodeLoad(self.id, &buf);
+        raise_status(status, "Unable to load microcode")
 
     def search(cls, driver):
         cdef String dri = bufferFromString(driver)
         cdef String results
-        count = mcSearch(0, &dri, &results)
+        cdef int count
+        with nogil:
+            count = mcSearch(0, &dri, &results)
         print("Found %d motors" % count)
 
     search = classmethod(search)
@@ -313,7 +330,8 @@ cdef class MdriveMotor(Motor):
         def __get__(self):
             cdef String buf
             cdef int status
-            status = mcQueryString(self.id, MDRIVE_ADDRESS, &buf)
+            with nogil:
+                status = mcQueryString(self.id, MDRIVE_ADDRESS, &buf)
             if status != 0:
                 raise RuntimeError(status)
             return buf.buffer.decode('latin-1')
@@ -327,7 +345,8 @@ cdef class MdriveMotor(Motor):
 
             # This will take a while. Use a different timeout
             mcClientTimeoutSet(&new, &old)
-            status = mcPokeString(self.id, MDRIVE_ADDRESS, &buf)
+            with nogil:
+                status = mcPokeString(self.id, MDRIVE_ADDRESS, &buf)
             mcClientTimeoutSet(&old, NULL)
 
             if status != 0:
@@ -336,7 +355,8 @@ cdef class MdriveMotor(Motor):
     property baudrate:
         def __get__(self):
             cdef int val, status
-            status = mcQueryInteger(self.id, MDRIVE_BAUDRATE, &val)
+            with nogil:
+                status = mcQueryInteger(self.id, MDRIVE_BAUDRATE, &val)
 
             if status != 0:
                 raise RuntimeError(status)
@@ -344,8 +364,9 @@ cdef class MdriveMotor(Motor):
                 return val
 
         def __set__(self, rate):
-            cdef int status
-            status = mcPokeInteger(self.id, MDRIVE_BAUDRATE, rate)
+            cdef int status, _rate = rate
+            with nogil:
+                status = mcPokeInteger(self.id, MDRIVE_BAUDRATE, _rate)
 
             if status != 0:
                 raise RuntimeError(status)
@@ -353,65 +374,79 @@ cdef class MdriveMotor(Motor):
     property serial:
        def __get__(self):
             cdef String buf
-            raise_status(mcQueryString(self.id, MDRIVE_SERIAL, &buf),
-                "Unable to fetch serial number")
+            cdef int status
+            with nogil:
+                status = mcQueryString(self.id, MDRIVE_SERIAL, &buf)
+            raise_status(status, "Unable to fetch serial number")
             return buf.buffer.decode('latin-1')
 
     property part:
         def __get__(self):
             cdef String buf
-            raise_status(mcQueryString(self.id, MDRIVE_PART, &buf),
-                "Unable to fetch part number")
+            cdef int status
+            with nogil:
+                status = mcQueryString(self.id, MDRIVE_PART, &buf)
+            raise_status(status, "Unable to fetch part number")
             return buf.buffer.decode('latin-1')
 
     property firmware:
         def __get__(self):
             cdef String buf
-            raise_status(mcQueryString(self.id, MDRIVE_FIRMWARE, &buf),
-                "Unable to fetch firmware version")
+            cdef int status
+            with nogil:
+                status = mcQueryString(self.id, MDRIVE_FIRMWARE, &buf)
+            raise_status(status, "Unable to fetch firmware version")
             return buf.buffer.decode('latin-1')
 
     property encoder:
         def __get__(self):
-            cdef int val
-            raise_status(
-                mcQueryInteger(self.id, MDRIVE_ENCODER, &val),
-                "Unable to fetch device encoder settings")
+            cdef int val, status
+            with nogil:
+                status = mcQueryInteger(self.id, MDRIVE_ENCODER, &val)
+            raise_status(status, "Unable to fetch device encoder settings")
             return not not val
 
         def __set__(self, val):
-            raise_status(
-                mcPokeInteger(self.id, MDRIVE_ENCODER, val),
-                "Unable to set device encoder setting")
+            cdef int status, _val = val
+            with nogil:
+                status = mcPokeInteger(self.id, MDRIVE_ENCODER, _val)
+            raise_status(status, "Unable to set device encoder setting")
 
     def factory_default(self):
-        raise_status(
-            mcPokeInteger(self.id, MDRIVE_HARD_RESET, 1),
-            "Unable to factory default motor(s)")
+        cdef int status
+        with nogil:
+            status = mcPokeInteger(self.id, MDRIVE_HARD_RESET, 1)
+        raise_status(status, "Unable to factory default motor(s)")
 
     def read_port(self, port):
-        cdef int val
-        raise_status(
-            mcQueryIntegerWithIntegerItem(self.id, k.MCINPUT, &val, port),
-            "Unable to read device port state")
+        cdef int val, status, _port = port
+        with nogil:
+            status = mcQueryIntegerWithIntegerItem(self.id, k.MCINPUT,
+                &val, _port)
+        raise_status(status, "Unable to read device port state")
         return val
 
     def write_port(self, port, value):
-        raise_status(
-            mcPokeIntegerWithIntegerItem(self.id, k.MCOUTPUT, value, port),
-            "Unable to write device port state")
+        cdef int status, _value = value, _port = port
+        with nogil:
+            status = mcPokeIntegerWithIntegerItem(self.id, k.MCOUTPUT, _value,
+                _port)
+        raise_status(status, "Unable to write device port state")
 
     def configure_port(self, port, **settings):
+        cdef int status, _port = port, _setting
         if 'source' in settings:
-            raise_status(
-                mcPokeIntegerWithIntegerItem(self.id, MDRIVE_IO_PARM2,
-                    settings['source'], port),
-                "Unable to configure port source/sink setting")
+            _setting = settings['source']
+            with nogil:
+                status = mcPokeIntegerWithIntegerItem(self.id, MDRIVE_IO_PARM2,
+                    _setting, _port)
+            raise_status(status, "Unable to configure port source/sink setting")
         if 'active_high' in settings:
-            raise_status(
-                mcPokeIntegerWithIntegerItem(self.id, MDRIVE_IO_PARM1,
-                    settings['active_high'], port),
-                "Unable to configure port active-high/low setting")
+            _setting = settings['active_high']
+            with nogil:
+                status = mcPokeIntegerWithIntegerItem(self.id, MDRIVE_IO_PARM1,
+                    _setting, _port)
+            raise_status(status, "Unable to configure port active-high/low setting")
         if 'type' in settings:
             types = {
                 'input':        IO_INPUT,
@@ -425,18 +460,20 @@ cdef class MdriveMotor(Motor):
             if settings['type'].lower() not in types:
                 raise ValueError("{0}: Unsupported port type"
                     .format(settings['type']))
-            type = types[settings['type'].lower()]
-            raise_status(
-                mcPokeIntegerWithIntegerItem(self.id, MDRIVE_IO_TYPE,
-                    type, port),
-                "Unable to configure port type")
+            _setting = types[settings['type'].lower()]
+            with nogil:
+                status = mcPokeIntegerWithIntegerItem(self.id, MDRIVE_IO_TYPE,
+                    _setting, _port)
+            raise_status(status, "Unable to configure port type")
 
     def name_set(self, address, serial_number):
         cdef String addr = bufferFromString(address[0])
         cdef String sn = bufferFromString(serial_number)
         cdef int status
 
-        status = mcPokeStringWithStringItem(self.id, MDRIVE_NAME, &addr, &sn)
+        with nogil:
+            status = mcPokeStringWithStringItem(self.id, MDRIVE_NAME,
+                &addr, &sn)
         raise_status(status, "Unable to name motor")
 
     def search(cls):
@@ -445,20 +482,27 @@ cdef class MdriveMotor(Motor):
 
     def call(self, label):
         cdef String _label = bufferFromString(label)
-        mcPokeString(self.id, MDRIVE_EXECUTE, &_label)
+        cdef int status
+        with nogil:
+            status = mcPokeString(self.id, MDRIVE_EXECUTE, &_label)
 
     def read(self, variable):
-        cdef int value
+        cdef int value, status
         cdef String var = bufferFromString(variable)
-        mcQueryIntegerWithStringItem(self.id, MDRIVE_VARIABLE, &value, &var)
+        with nogil:
+            status = mcQueryIntegerWithStringItem(self.id, MDRIVE_VARIABLE,
+                &value, &var)
         return value
 
     def write(self, variable, value):
         cdef String var = bufferFromString(variable)
-        mcPokeIntegerWithStringItem(self.id, MDRIVE_VARIABLE, value, &var)
+        cdef int status, _value = value
+        with nogil:
+            status = mcPokeIntegerWithStringItem(self.id, MDRIVE_VARIABLE,
+                _value, &var)
 
-from libc.stdio cimport fflush, stdout
 cdef void pyEventCallback(event_info_t * info) with gil:
+    PyEval_InitThreads()
     assert info is not NULL
     assert info.user is not NULL
     cdef object data = None
@@ -476,6 +520,22 @@ cdef class MotionDetails(object):
     cdef public bool pos_known
     cdef public int error
     cdef public object position
+
+    def __repr__(self):
+        return self.__unicode__()
+    def __unicode__(self):
+        state = pos = ""
+        if self.completed:
+            state = "ARRIVE"
+        elif self.stalled:
+            state = "STALL"
+        elif self.cancelled:
+            state = "CANCEL"
+        elif self.stopped:
+            state = "STOP"
+        if self.pos_known:
+            pos = " POS: %d".format(self.position)
+        return "{0}{1}".format(state, pos)
 
 cdef MotionDetails mdFromEventData(event_data_t * data):
     if data == NULL:
@@ -512,7 +572,8 @@ cdef class Event(object):
         self.reset()
 
     def __dealloc__(self):
-        mcUnsubscribe(self.motor.id, self.id)
+        if self.id:
+            mcUnsubscribe(self.motor.id, self.id)
 
     def reset(self):
         self.isset = False
@@ -536,4 +597,5 @@ cdef class Event(object):
         return self
 
     def wait(self):
-        mcEventWait(self.motor.id, self.event)
+        with nogil:
+            mcEventWait(self.motor.id, self.event)

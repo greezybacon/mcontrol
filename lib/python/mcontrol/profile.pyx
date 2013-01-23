@@ -59,14 +59,18 @@ cdef class MotorProfile(object):
         """
         Forces local values to reflect those currently set in the motor
         """
-        cdef int status = mcProfileGet(self.motor.id, &self._profile)
+        cdef int status
+        with nogil:
+            status = mcProfileGet(self.motor.id, &self._profile)
         raise_status(status, "Unable to get motor profile")
 
     def commit(self):
         """
         Flush local profile changes to the motor
         """
-        cdef int status = mcProfileSet(self.motor.id, &self._profile)
+        cdef int status
+        with nogil:
+            status = mcProfileSet(self.motor.id, &self._profile)
         raise_status(status, "Unable to set motor profile")
 
     def _get_value_units(self, value):

@@ -98,6 +98,9 @@ cdef extern from "lib/events.h" nogil:
     int mcSubscribeWithData(int, int, int *, event_cb_t, void *)
     int mcEventWait(int, int)
 
+cdef extern from "Python.h":
+    void PyEval_InitThreads()
+
 from libc.stdio cimport snprintf, printf
 
 cdef inline String bufferFromString(string):
