@@ -158,7 +158,7 @@ for name in sorted(proxies):
         .inproc = true,
         {unpacked_args}
     }};
-    *(struct _{name}_args *)message.payload = args;
+    memcpy(message.payload, &args, sizeof(args));
     {name}Impl(&message);
     struct _{name}_args * payload = (struct _{name}_args *)(char *) message.payload;
     {unpacked_rets}

@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=--std=gnu99 -Wall -fPIC -D_GNU_SOURCE -pedantic
+CFLAGS=--std=gnu99 -Wall -fPIC -D_GNU_SOURCE -pedantic -O2
 LDFLAGS=-lrt -ldl -lpthread
 DEBUG=1
 
@@ -12,7 +12,7 @@ LIBRARY=libmcontrol.so
 DIRS=python
 
 ifeq ($(DEBUG), 1)
-CFLAGS += -g -pg
+CFLAGS += -g
 # If DEBUG is enabled on a PIE system, add -nopie to the linker flags
 PIE_SYSTEM=$(shell $(CC) -v 2>&1 | grep -- "--enable-esp" | wc -l)
 ifeq ($(PIE_SYSTEM), 1)

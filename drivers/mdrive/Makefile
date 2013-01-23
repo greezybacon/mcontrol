@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-I../../ --std=gnu99 -O2 -march=native -Wall -fPIC -D_GNU_SOURCE -pedantic -g -pg
+CFLAGS=-I../../ --std=gnu99 -O2 -march=native -Wall -fPIC -D_GNU_SOURCE -pedantic -g
 LDFLAGS=-lrt -lm -lpthread -L../../lib -lmcontrol
 
 SOURCES=driver.c serial.c queue.c config.c query.c motion.c search.c \

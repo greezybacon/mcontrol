@@ -284,8 +284,6 @@ mcDriverLoad(const char * path) {
         snprintf(modulepath, sizeof modulepath, "%s", path);
     }
 
-    printf("Loading driver from: %s\n", modulepath);
-
     void * module = dlopen(modulepath, RTLD_NOW);
 
     if (!module) {
