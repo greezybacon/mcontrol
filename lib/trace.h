@@ -5,7 +5,7 @@
 
 #include <stdbool.h>
 
-typedef void (*trace_callback_t)(int level, int channel, const char * buffer);
+typedef void (*trace_callback_t)(int id, int level, int channel, const char * buffer);
 
 typedef struct trace_subscriber trace_subscriber_t;
 struct trace_subscriber {
@@ -37,14 +37,17 @@ mcTraceBuffer(int level, int channel, const char * buffer,
         int length);
 
 extern int
-mcTraceSubscribe(int level, long long channel_mask, trace_callback_t callback);
+mcTraceSubscribe(int level, unsigned long long channel_mask,
+    trace_callback_t callback);
 
 extern int
 mcTraceUnsubscribe(int id);
 
-PROXYDEF(mcTraceSubscribeRemote, int, int level, long long mask);
+PROXYDEF(mcTraceSubscribeRemote, int, int level, unsigned 
+    long long mask);
 PROXYDEF(mcTraceUnsubscribeRemote, int, int id);
 PROXYDEF(mcTraceSubscribeAdd, int, int id, String * name);
 PROXYDEF(mcTraceSubscribeRemove, int, int id, String * name);
+PROXYDEF(mcTraceChannelEnum, int, OUT String * channels);
 
 #endif

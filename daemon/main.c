@@ -16,7 +16,7 @@ void cleanup(int signal) {
 }
 
 void
-trace_output(int level, int channel, const char * buffer) {
+trace_output(int id, int level, int channel, const char * buffer) {
     fprintf(stderr, "%d: %s\n", channel, buffer);
 }
 
