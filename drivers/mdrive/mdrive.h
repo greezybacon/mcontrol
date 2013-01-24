@@ -114,8 +114,8 @@ struct motion_details {
 
 #include "queue.h"
 
-typedef struct mdrive_axis_device_list mdrive_axis_device_t;
-struct mdrive_axis_device_list {
+typedef struct mdrive_comm_device_list mdrive_comm_device_t;
+struct mdrive_comm_device_list {
     pthread_mutex_t     txlock;
     pthread_mutex_t     rxlock;
     char                name[32];       // Name of device (serial port)
@@ -133,7 +133,7 @@ struct mdrive_axis_device_list {
     queue_t             queue;
     pthread_t           read_thread;
 
-    mdrive_axis_device_t * next;
+    mdrive_comm_device_t * next;
 };
 
 enum mdrive_io_type {
@@ -165,9 +165,9 @@ struct mdrive_io_config {
     bool                wide_range;     // For the analog input
 };
 
-typedef struct mdrive_axis_list mdrive_axis_t;
-struct mdrive_axis_list {
-    mdrive_axis_device_t * device;
+typedef struct mdrive_device_list mdrive_device_t;
+struct mdrive_device_list {
+    mdrive_comm_device_t * comm;
     char                serial_number[16];
     char                part_number[16];
     char                firmware_version[8]; // System firmware version
@@ -181,7 +181,7 @@ struct mdrive_axis_list {
     bool                upgrade_mode;   // Unit is in upgrade mode
     bool                ignore_errors;  // Don't auto-fetch error number
 
-    int                 speed;          // Speed of this axis, which allows
+    int                 speed;          // Speed of this device, which allows
                                         // axes to share a port and operate
                                         // at different speeds
     mdrive_stats_t      stats;          // Communication and performance stats
@@ -246,7 +246,7 @@ struct mdrive_axis_list {
         } labels;
     } microcode;
 
-    Driver *            driver;         // Driver for the axis (useful for signaling events)
+    Driver *            driver;         // Driver for the device (useful for signaling events)
 };
 
 typedef struct mdrive_address mdrive_address_t;

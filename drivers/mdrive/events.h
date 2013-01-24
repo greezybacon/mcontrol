@@ -6,11 +6,11 @@ extern int
 mdrive_unsubscribe(Driver * self, driver_event_callback_t callback);
 
 extern int
-mdrive_signal_error_event(mdrive_axis_t * axis, int error);
+mdrive_signal_error_event(mdrive_device_t * device, int error);
 
 extern int
-mdrive_signal_event(mdrive_axis_t * axis, int code, union event_data *);
+mdrive_signal_event(mdrive_device_t * device, int code, union event_data *);
 
 extern int
-mdrive_signal_event_device(mdrive_axis_device_t * device, char address,
+mdrive_signal_event_device(mdrive_comm_device_t * comm, char address,
     int event);

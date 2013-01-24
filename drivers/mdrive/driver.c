@@ -38,7 +38,7 @@ int mdrive_init(Driver * self, const char * cxn) {
     mdrive_address_t address;
     int status;
 
-    self->internal = calloc(1, sizeof(mdrive_axis_t));
+    self->internal = calloc(1, sizeof(mdrive_device_t));
     if (self->internal == NULL)
         // Indicate out-of-memory condition
         return -ENOMEM;
@@ -50,7 +50,7 @@ int mdrive_init(Driver * self, const char * cxn) {
     if ((status = regexec(&re_cxn, cxn, 4, matches, 0) != 0)) {
         // XXX: Set error condition somewhere
         mcTraceF(10, MDRIVE_CHANNEL, "Bad connection string: %d", status);
-        return -1;
+        return EINVAL;
     }
 
     snprintf(address.port,
@@ -67,7 +67,7 @@ int mdrive_init(Driver * self, const char * cxn) {
     else
         address.speed = DEFAULT_PORT_SPEED;
 
-    mdrive_axis_t * device = self->internal;
+    mdrive_device_t * device = self->internal;
     if (mdrive_connect(&address, device) != 0)
         // XXX: Set some error indication (or set it in mdrive_connect)
         return -1;
@@ -89,7 +89,7 @@ void mdrive_uninit(Driver * self) {
     if (self == NULL)
         return;
 
-    mdrive_axis_t * motor = self->internal;
+    mdrive_device_t * motor = self->internal;
 
     // Configure device for debugging (user usage)
     mdrive_set_checksum(motor, CK_OFF, false);
@@ -100,7 +100,7 @@ void mdrive_uninit(Driver * self) {
     free(self->internal);
 }
 
-int mdrive_reboot(mdrive_axis_t * device) {
+int mdrive_reboot(mdrive_device_t * device) {
     static struct cmd_wait {
         const char *    text;
         int             wait;
@@ -141,7 +141,7 @@ int mdrive_reboot(mdrive_axis_t * device) {
 }
 
 int mdrive_reset(Driver * self) {
-    mdrive_axis_t * device = self->internal;
+    mdrive_device_t * device = self->internal;
     return mdrive_reboot(device);
 }
 

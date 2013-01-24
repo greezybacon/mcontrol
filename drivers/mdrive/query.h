@@ -6,8 +6,8 @@ struct query_variable {
     char type;
     motor_query_t query;
     char * variable;
-    int (*read)(mdrive_axis_t *, struct motor_query *, struct query_variable *);
-    int (*write)(mdrive_axis_t *, struct motor_query *, struct query_variable *);
+    int (*read)(mdrive_device_t *, struct motor_query *, struct query_variable *);
+    int (*write)(mdrive_device_t *, struct motor_query *, struct query_variable *);
 };
     
 
@@ -18,10 +18,10 @@ extern int
 mdrive_write_variable(Driver * self, struct motor_query * query);
 
 extern int
-mdrive_write_simple(mdrive_axis_t * axis, struct motor_query * query,
+mdrive_write_simple(mdrive_device_t * device, struct motor_query * query,
     struct query_variable * q);
 
-#define PEEK(x) int x(mdrive_axis_t *, struct motor_query *, \
+#define PEEK(x) int x(mdrive_device_t *, struct motor_query *, \
     struct query_variable *)
 
 #define POKE(x) PEEK(x)

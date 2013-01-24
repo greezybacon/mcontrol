@@ -84,7 +84,7 @@ mdrive_read_variable(Driver * self, struct motor_query * query) {
         if (q->query == query->query)
             break;
 
-    mdrive_axis_t * motor = self->internal;
+    mdrive_device_t * motor = self->internal;
     switch (q->type) {
         case 1:
         case 9:
@@ -139,7 +139,7 @@ mdrive_write_variable(Driver * self, struct motor_query * query) {
 }
 
 int
-mdrive_write_simple(mdrive_axis_t * axis, struct motor_query * query,
+mdrive_write_simple(mdrive_device_t * device, struct motor_query * query,
         struct query_variable * q) {
 
     char cmd[16], variable[16];
@@ -147,10 +147,10 @@ mdrive_write_simple(mdrive_axis_t * axis, struct motor_query * query,
     switch (q->type & 0x0f) {
         case 9:
             // Convert first, then fall through to set integer
-            value = mdrive_microrevs_to_steps(axis, value);
+            value = mdrive_microrevs_to_steps(device, value);
             // If setting the position, keep it internally
             if (query->query == MCPOSITION)
-                axis->position = value;
+                device->position = value;
         case 1:
             snprintf(cmd, sizeof cmd, "%s=%d", q->variable, value);
             break;
@@ -166,30 +166,30 @@ mdrive_write_simple(mdrive_axis_t * axis, struct motor_query * query,
             return ENOTSUP;
     }
 
-    if (RESPONSE_OK != mdrive_send(axis, cmd))
+    if (RESPONSE_OK != mdrive_send(device, cmd))
         return EIO;
 
     return 0;
 }
 
 static int
-mdrive_address_poke(mdrive_axis_t * axis, struct motor_query * query,
+mdrive_address_poke(mdrive_device_t * device, struct motor_query * query,
         struct query_variable * q) {
-    if (axis == NULL)
+    if (device == NULL)
         return EINVAL;
 
-    return mdrive_config_set_address(axis, *query->string);
+    return mdrive_config_set_address(device, *query->string);
 }
 
 static int
-mdrive_bd_peek(mdrive_axis_t * axis, struct motor_query * query,
+mdrive_bd_peek(mdrive_device_t * device, struct motor_query * query,
         struct query_variable * q) {
-    if (axis == NULL)
+    if (device == NULL)
         return EINVAL;
 
     const struct baud_rate * s;
     for (s=baud_rates; s->human; s++)
-        if (s->human == axis->speed)
+        if (s->human == device->speed)
             break;
     if (s->human == 0)
         // Speed is not corrent -- unknown?
@@ -200,31 +200,31 @@ mdrive_bd_peek(mdrive_axis_t * axis, struct motor_query * query,
 }
 
 static int
-mdrive_bd_poke(mdrive_axis_t * axis, struct motor_query * query,
+mdrive_bd_poke(mdrive_device_t * device, struct motor_query * query,
         struct query_variable * q) {
-    if (axis == NULL)
+    if (device == NULL)
         return EINVAL;
 
     // TODO: Invalidate driver cache since the speed of this device has changed
-    return mdrive_config_set_baudrate(axis, query->number);
+    return mdrive_config_set_baudrate(device, query->number);
 }
 
 static int
-mdrive_checksum_poke(mdrive_axis_t * axis, struct motor_query * query,
+mdrive_checksum_poke(mdrive_device_t * device, struct motor_query * query,
         struct query_variable * q) {
-    if (axis == NULL)
+    if (device == NULL)
         return EINVAL;
-    return mdrive_set_checksum(axis, query->number, false);
+    return mdrive_set_checksum(device, query->number, false);
 }
 
 static int
-mdrive_name_poke(mdrive_axis_t * axis, struct motor_query * query,
+mdrive_name_poke(mdrive_device_t * device, struct motor_query * query,
         struct query_variable * q) {
 
     // For this mode, we assume that any of the devices to be named are in
     // default modes (non-party), and the serial number is sent as the
     // argument of the query
-    if (axis == NULL)
+    if (device == NULL)
         return EINVAL;
 
     // Handle devices with party mode set, but not device name ("!")
@@ -232,13 +232,13 @@ mdrive_name_poke(mdrive_axis_t * axis, struct motor_query * query,
     // Since we're likely talking to more than one unit, turn off
     // unsolicited responses
     // -- Assume checksum is on
-    axis->checksum = CK_ON;
-    mdrive_set_checksum(axis, CK_OFF, false);
+    device->checksum = CK_ON;
+    mdrive_set_checksum(device, CK_OFF, false);
     // Checksum is now off (this won't get set if more than one motor is on
     // the line. If so, garbage will be returned before EM_QUIET is set)
-    axis->checksum = CK_OFF;
+    device->checksum = CK_OFF;
 
-    mdrive_set_echo(axis, EM_QUIET, true);
+    mdrive_set_echo(device, EM_QUIET, true);
 
     // Upload the naming routine
     char buffer[64];
@@ -267,138 +267,138 @@ mdrive_name_poke(mdrive_axis_t * axis, struct motor_query * query,
         for (char ** line = *section; *line; line++) {
             snprintf(buffer, sizeof buffer, *line,
                 query->arg.string, (unsigned int)query->string[0]);
-            mdrive_send(axis, buffer);
+            mdrive_send(device, buffer);
         }
         // Wait just a second
         nanosleep(&waittime, NULL);
     }
 
     // Call the naming routine now that we're done
-    mdrive_send(axis, "EX N");
+    mdrive_send(device, "EX N");
 
-    // Now, assume that the axis address is changed.  Leave the axis address
+    // Now, assume that the device address is changed.  Leave the device address
     // as the global one for further naming. To communicate with the renamed
-    // axis, a separate connection will be required.
-    mdrive_axis_t fake_axis = *axis;
-    fake_axis.address = query->string[0];
-    fake_axis.party_mode = true;
+    // device, a separate connection will be required.
+    mdrive_device_t fake_device = *device;
+    fake_device.address = query->string[0];
+    fake_device.party_mode = true;
 
     // Activate party mode and enable command acceptance detection on the
-    // new axis
-    mdrive_set_echo(&fake_axis, EM_PROMPT, false);
+    // new device
+    mdrive_set_echo(&fake_device, EM_PROMPT, false);
 
     // Attempt to read the serial number
-    if (0 > mdrive_get_string(&fake_axis, "SN", buffer, sizeof buffer))
+    if (0 > mdrive_get_string(&fake_device, "SN", buffer, sizeof buffer))
         return EIO;
 
     if (strcmp(buffer, query->arg.string) != 0)
         return EIO;
 
     // Everything looks good. Clear the naming routine and save the settings
-    // on the newly-named axis
+    // on the newly-named device
     struct mdrive_send_opts opts = { .waittime = &waittime };
-    mdrive_communicate(&fake_axis, "CP N", &opts);
-    mdrive_config_commit(&fake_axis, NULL);
+    mdrive_communicate(&fake_device, "CP N", &opts);
+    mdrive_config_commit(&fake_device, NULL);
 
     // Invalidate the driver cache for this motor, because it changed names, so
     // a request for a motor by the connection string that previously arrived
     // at this motor should force a complete reconnect to whichever motor has
     // that name
-    mcDriverCacheInvalidate(axis->driver);
+    mcDriverCacheInvalidate(device->driver);
     return 0;
 }
 
 static int
-mdrive_sn_peek(mdrive_axis_t * axis, struct motor_query * query,
+mdrive_sn_peek(mdrive_device_t * device, struct motor_query * query,
         struct query_variable * q) {
-    if (axis == NULL)
+    if (device == NULL)
         return EINVAL;
 
-    if (*axis->serial_number == 0)
-        mdrive_get_string(axis, q->variable, axis->serial_number,
-            sizeof axis->serial_number);
+    if (*device->serial_number == 0)
+        mdrive_get_string(device, q->variable, device->serial_number,
+            sizeof device->serial_number);
 
     return snprintf(query->string, sizeof query->string, "%s",
-        axis->serial_number);
+        device->serial_number);
 }
 
 static int
-mdrive_pn_peek(mdrive_axis_t * axis, struct motor_query * query,
+mdrive_pn_peek(mdrive_device_t * device, struct motor_query * query,
         struct query_variable * q) {
-    if (axis == NULL)
+    if (device == NULL)
         return EINVAL;
 
-    if (*axis->part_number == 0)
-        mdrive_get_string(axis, q->variable, axis->part_number,
-            sizeof axis->part_number);
+    if (*device->part_number == 0)
+        mdrive_get_string(device, q->variable, device->part_number,
+            sizeof device->part_number);
 
     return snprintf(query->string, sizeof query->string, "%s",
-        axis->part_number);
+        device->part_number);
 }
 
 static int
-mdrive_vr_peek(mdrive_axis_t * axis, struct motor_query * query,
+mdrive_vr_peek(mdrive_device_t * device, struct motor_query * query,
         struct query_variable * q) {
-    if (axis == NULL)
+    if (device == NULL)
         return EINVAL;
 
-    if (*axis->firmware_version == 0)
-        mdrive_get_string(axis, q->variable, axis->firmware_version,
-            sizeof axis->firmware_version);
+    if (*device->firmware_version == 0)
+        mdrive_get_string(device, q->variable, device->firmware_version,
+            sizeof device->firmware_version);
 
     return snprintf(query->string, sizeof query->string, "%s",
-        axis->firmware_version);
+        device->firmware_version);
 }
 
 static int
-mdrive_ee_poke(mdrive_axis_t * axis, struct motor_query * query,
+mdrive_ee_poke(mdrive_device_t * device, struct motor_query * query,
         struct query_variable * q) {
-    if (axis == NULL)
+    if (device == NULL)
         return EINVAL;
 
-    if (axis->encoder == query->number)
+    if (device->encoder == query->number)
         return 0;
 
-    int status = mdrive_write_simple(axis, query, q);
+    int status = mdrive_write_simple(device, query, q);
     if (status)
         return status;
 
     // Reload motion configuration from the unit
-    axis->loaded.encoder = false;
-    axis->loaded.profile = false;
-    axis->encoder = query->number;
+    device->loaded.encoder = false;
+    device->loaded.profile = false;
+    device->encoder = query->number;
     return 0;
 }
 
 static int
-mdrive_profile_peek(mdrive_axis_t * axis, struct motor_query * query,
+mdrive_profile_peek(mdrive_device_t * device, struct motor_query * query,
         struct query_variable * q) {
-    if (axis == NULL)
+    if (device == NULL)
         return EINVAL;
 
-    mdrive_lazyload_profile(axis);
+    mdrive_lazyload_profile(device);
 
     switch (query->query) {
         case MCACCEL:
-            query->number = axis->profile.accel.value;
+            query->number = device->profile.accel.value;
             break;
         case MCDECEL:
-            query->number = axis->profile.decel.value;
+            query->number = device->profile.decel.value;
             break;
         case MCVINITIAL:
-            query->number = axis->profile.vstart.value;
+            query->number = device->profile.vstart.value;
             break;
         case MCVMAX:
-            query->number = axis->profile.vmax.value;
+            query->number = device->profile.vmax.value;
             break;
         case MCRUNCURRENT:
-            query->number = axis->profile.current_run;
+            query->number = device->profile.current_run;
             break;
         case MCHOLDCURRENT:
-            query->number = axis->profile.current_hold;
+            query->number = device->profile.current_hold;
             break;
         case MCSLIPMAX:
-            query->number = axis->profile.slip_max.value;
+            query->number = device->profile.slip_max.value;
             break;
         default:
             return EINVAL;
@@ -408,21 +408,21 @@ mdrive_profile_peek(mdrive_axis_t * axis, struct motor_query * query,
 }
 
 static int
-mdrive_ex_poke(mdrive_axis_t * axis, struct motor_query * query,
+mdrive_ex_poke(mdrive_device_t * device, struct motor_query * query,
         struct query_variable * q) {
 
     char buffer[64];
     snprintf(buffer, sizeof buffer, "EX %2.2s", query->string);
 
-    return mdrive_send(axis, buffer);
+    return mdrive_send(device, buffer);
 }
 
 static int
-mdrive_var_peek(mdrive_axis_t * axis, struct motor_query * query,
+mdrive_var_peek(mdrive_device_t * device, struct motor_query * query,
         struct query_variable * q) {
 
     int value;
-    if (mdrive_get_integer(axis, query->arg.string, &value))
+    if (mdrive_get_integer(device, query->arg.string, &value))
         return EIO;
 
     query->number = value;
@@ -430,14 +430,14 @@ mdrive_var_peek(mdrive_axis_t * axis, struct motor_query * query,
 }
 
 static int
-mdrive_var_poke(mdrive_axis_t * axis, struct motor_query * query,
+mdrive_var_poke(mdrive_device_t * device, struct motor_query * query,
         struct query_variable * q) {
 
     char buffer[64];
     snprintf(buffer, sizeof buffer, "%2.2s=%lld", query->string,
         query->arg.number);
 
-    if (mdrive_send(axis, buffer))
+    if (mdrive_send(device, buffer))
         return EIO;
 
     return 0;
@@ -455,7 +455,7 @@ mdrive_var_poke(mdrive_axis_t * axis, struct motor_query * query,
  * 0 upon success. EIO if unable to communicate with the device.
  */
 int
-mdrive_lazyload_io(mdrive_axis_t * device) {
+mdrive_lazyload_io(mdrive_device_t * device) {
     if (device->loaded.io)
         return 0;
 
@@ -490,7 +490,7 @@ mdrive_lazyload_io(mdrive_axis_t * device) {
  * upon success.
  */
 static int
-mdrive_io_poke(mdrive_axis_t * axis, struct motor_query * query,
+mdrive_io_poke(mdrive_device_t * device, struct motor_query * query,
         struct query_variable * q) {
 
     // XXX: Some units sport more than 5 IOs. Check the model number of the
@@ -501,8 +501,8 @@ mdrive_io_poke(mdrive_axis_t * axis, struct motor_query * query,
     else if (port > 5)
         return ENOTSUP;
 
-    mdrive_lazyload_io(axis);
-    struct mdrive_io_config io = axis->io[port-1];
+    mdrive_lazyload_io(device);
+    struct mdrive_io_config io = device->io[port-1];
 
     switch (query->query) {
         case MDRIVE_IO_TYPE:
@@ -573,35 +573,35 @@ mdrive_io_poke(mdrive_axis_t * axis, struct motor_query * query,
             port, io.type, io.active_high ? 1 : 0,
             io.source ? 1 : 0);
 
-    if (mdrive_send(axis, buffer))
+    if (mdrive_send(device, buffer))
         return EIO;
 
     return 0;
 }
 
 static int
-mdrive_fd_poke(mdrive_axis_t * axis, struct motor_query * query,
+mdrive_fd_poke(mdrive_device_t * device, struct motor_query * query,
         struct query_variable * q) {
 
-    if (axis == NULL)
+    if (device == NULL)
         return EINVAL;
 
     struct mdrive_send_opts options = {
         .expect_err = true,
         .tries = 1
     };
-    mdrive_communicate(axis, "", &options);
+    mdrive_communicate(device, "", &options);
 
-    // Assume axis is in checksum mode (if the unit is not, this won't hurt.
+    // Assume device is in checksum mode (if the unit is not, this won't hurt.
     // If the unit is in checksum mode, it will refuse the command without a
     // checksum)
-    int ck = axis->checksum;
-    axis->checksum = CK_ON;
-    mdrive_communicate(axis, q->variable, &options);
-    axis->checksum = ck;
+    int ck = device->checksum;
+    device->checksum = CK_ON;
+    mdrive_communicate(device, q->variable, &options);
+    device->checksum = ck;
 
     // We now know nothing about the configuration of this motor
-    axis->loaded.mask = 0;
+    device->loaded.mask = 0;
 
     return 0;
 }

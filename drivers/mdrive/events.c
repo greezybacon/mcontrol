@@ -23,7 +23,7 @@ static struct event_xref {
 int
 mdrive_notify(Driver * self, event_t code, int condition,
         driver_event_callback_t callback) {
-    mdrive_axis_t * device = self->internal;
+    mdrive_device_t * device = self->internal;
 
     if (device == NULL)
         return EINVAL;
@@ -62,13 +62,13 @@ mdrive_notify(Driver * self, event_t code, int condition,
 
 int
 mdrive_unsubscribe(Driver * self, driver_event_callback_t callback) {
-    mdrive_axis_t * axis = self->internal;
+    mdrive_device_t * device = self->internal;
 
-    if (axis == NULL)
+    if (device == NULL)
         return EINVAL;
 
     int i = MAX_SUBSCRIPTIONS;
-    struct event_callback * event = axis->event_handlers;
+    struct event_callback * event = device->event_handlers;
     for (; i; i--, event++)
         if (event->callback == callback)
             break;
@@ -78,7 +78,7 @@ mdrive_unsubscribe(Driver * self, driver_event_callback_t callback) {
         return EINVAL;
 
     // Remove the subscriber from the list by setting the active flag to false
-    axis->event_handlers[i].active = false;
+    device->event_handlers[i].active = false;
 
     return 0;
 }
@@ -96,8 +96,8 @@ mdrive_unsubscribe(Driver * self, driver_event_callback_t callback) {
  * (int) 0 upon successful lookup, EINVAL otherwise
  */
 int
-mdrive_signal_error_event(mdrive_axis_t * axis, int error) {
-    if (axis == NULL)
+mdrive_signal_error_event(mdrive_device_t * device, int error) {
+    if (device == NULL)
         return EINVAL;
 
     struct event_xref * xref = event_xrefs;
@@ -114,22 +114,22 @@ mdrive_signal_error_event(mdrive_axis_t * axis, int error) {
     // Update stats for interesting events
     switch (error) {
         case MDRIVE_ESTALL:
-            axis->stats.stalls++;
+            device->stats.stalls++;
             data.motion.stalled = true;
             // Clear the stall flag on the device
-            mdrive_send(axis, "ST");
+            mdrive_send(device, "ST");
             // Device is no longer moving
-            axis->movement.moving = false;
+            device->movement.moving = false;
             break;
 
         case MDRIVE_ETEMP:
-            mdrive_get_integer(axis, "IT", &temp);
+            mdrive_get_integer(device, "IT", &temp);
             mcTraceF(10, MDRIVE_CHANNEL,
                 "WARNING: %c: Unit reports over temperature: %d",
-                axis->address, temp);
+                device->address, temp);
             break;
     }
-    int status = mdrive_signal_event(axis, xref->event_code, &data);
+    int status = mdrive_signal_event(device, xref->event_code, &data);
     return status;
 }
 
@@ -141,7 +141,7 @@ mdrive_signal_error_event(mdrive_axis_t * axis, int error) {
  * the event_xrefs[] array defined at the top of this module.
  *
  * Parameters:
- * axis - (mdrive_axis_t *) Device signaling the event
+ * device - (mdrive_device_t *) Device signaling the event
  * code - (int) event code to be signaled. Use codes from {enum event_name}.
  * data - (union event_data *) information to be coupled with the event
  *      code. Can be set to NULL if no other data is pertinent
@@ -151,23 +151,23 @@ mdrive_signal_error_event(mdrive_axis_t * axis, int error) {
  *       corresponding mcontrol event code, 0 otherwise
  */
 int
-mdrive_signal_event(mdrive_axis_t * axis, int code, union event_data * data) {
-    if (axis == NULL)
+mdrive_signal_event(mdrive_device_t * device, int code, union event_data * data) {
+    if (device == NULL)
         return EINVAL;
 
     // TODO: Send "EV=0" to the unit to signal the receipt of the event
     // Update stats for interesting events
     switch (code) {
         case MDRIVE_RESET:
-            axis->stats.reboots++;
-            mdrive_config_inspect(axis, true);
+            device->stats.reboots++;
+            mdrive_config_inspect(device, true);
             // Reset lazy loaded flags
-            axis->loaded.mask = 0;
+            device->loaded.mask = 0;
             break;
     }
 
     // Broadcast the event to all (active) subscribers
-    struct event_callback * event = axis->event_handlers;
+    struct event_callback * event = device->event_handlers;
     struct event_info info = {
         .event = code,
         .data = data
@@ -175,7 +175,7 @@ mdrive_signal_event(mdrive_axis_t * axis, int code, union event_data * data) {
     int i = MAX_SUBSCRIPTIONS;
     for (; i; i--, event++) {
         if (event->active && !event->paused && event->event == code) {
-            event->callback(axis->driver, &info);
+            event->callback(device->driver, &info);
             // Subscriber will have to request notification for the same
             // type of event again
             event->active = false;
@@ -188,7 +188,7 @@ mdrive_signal_event(mdrive_axis_t * axis, int code, union event_data * data) {
 /**
  * mdrive_signal_event_device
  *
- * Used when the axis signaling the event is unknown. This is most likely
+ * Used when the device signaling the event is unknown. This is most likely
  * from the async receive thread that will receive events for multiple
  * devices in party mode.
  *
@@ -207,10 +207,10 @@ mdrive_signal_event(mdrive_axis_t * axis, int code, union event_data * data) {
  *       otherwise, the value from mdrive_signal_event is returned.
  */
 int
-mdrive_signal_event_device(mdrive_axis_device_t * device, char address,
+mdrive_signal_event_device(mdrive_comm_device_t * comm, char address,
         int event) {
     Driver * d;
-    mdrive_axis_t * axis;
+    mdrive_device_t * device;
     void * handle;
     handle = mcEnumDrivers();
 
@@ -220,9 +220,9 @@ mdrive_signal_event_device(mdrive_axis_device_t * device, char address,
             break;
 
         if (strcmp(d->class->name, "mdrive") == 0) {
-            axis = d->internal;
-            if (axis->address == address)
-                return mdrive_signal_event(axis, event, NULL);
+            device = d->internal;
+            if (device->address == address)
+                return mdrive_signal_event(device, event, NULL);
         }
     }
 

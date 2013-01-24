@@ -9,7 +9,7 @@
 
 int
 mdrive_microcode_load(Driver * self, const char * filename) {
-    mdrive_axis_t * axis = self->internal;
+    mdrive_device_t * device = self->internal;
 
     mcTraceF(10, MDRIVE_CHANNEL, "Loading microcode from: %s", filename);
     
@@ -28,13 +28,13 @@ mdrive_microcode_load(Driver * self, const char * filename) {
     }
 
     // Reset any unsaved changes (comm configuration, etc)
-    if (!mdrive_config_rollback(axis))
+    if (!mdrive_config_rollback(device))
         return EIO;
 
     // Clear stored microcode
     struct timespec longtime = { .tv_nsec = 900e6 };
     struct mdrive_send_opts opts = { .waittime = &longtime };
-    if (mdrive_communicate(axis, "CP", &opts) != RESPONSE_OK)
+    if (mdrive_communicate(device, "CP", &opts) != RESPONSE_OK)
         return EIO;
 
     // Read data from the input file
@@ -104,7 +104,7 @@ mdrive_microcode_load(Driver * self, const char * filename) {
         tries = 2;
         while (tries--) {
             result.code = 0;
-            if (mdrive_communicate(axis, bol, &opts) == RESPONSE_OK)
+            if (mdrive_communicate(device, bol, &opts) == RESPONSE_OK)
                 break;
             else if (result.code == MDRIVE_ECLOBBER) {
                 // Variable/label already exists on the device
@@ -116,7 +116,7 @@ mdrive_microcode_load(Driver * self, const char * filename) {
                     // No default value set in microcode
                     break;
                 // Send default value from microcode instead
-                else if (mdrive_communicate(axis, bol+3, &opts) == RESPONSE_OK)
+                else if (mdrive_communicate(device, bol+3, &opts) == RESPONSE_OK)
                     break;
                 else {
                     status = EIO;
@@ -146,25 +146,25 @@ mdrive_microcode_load(Driver * self, const char * filename) {
     if (programming)
         // Bogus microcode -- it entered program mode but didn't exit.
         // TODO: Come up with some nicely-worded error code to return
-        if (RESPONSE_OK == mdrive_send(axis, "PG"))
+        if (RESPONSE_OK == mdrive_send(device, "PG"))
             programming = false;
 
     // Commit the new microcode and settings to NVRAM
-    if (mdrive_config_commit(axis, &preserve)) 
+    if (mdrive_config_commit(device, &preserve)) 
         goto exit;
     else
         status = EIO;
 
 safe_bail:
     if (programming)
-        mdrive_send(axis, "PG");
+        mdrive_send(device, "PG");
 
 exit:
     return status;
 }
 
 int
-mdrive_microcode_inspect(mdrive_axis_t * axis) {
+mdrive_microcode_inspect(mdrive_device_t * device) {
     mdrive_response_t resp;
     struct mdrive_send_opts opts = {
         .result = &resp,
@@ -173,10 +173,10 @@ mdrive_microcode_inspect(mdrive_axis_t * axis) {
     };
 
     // No need to inspect global connections
-    if (axis->address == '*')
+    if (device->address == '*')
         return 0;
 
-    if (mdrive_communicate(axis, "EX CF", &opts))
+    if (mdrive_communicate(device, "EX CF", &opts))
         return EIO;
 
     else if (resp.code == MDRIVE_ENOLABEL)
@@ -201,7 +201,7 @@ mdrive_microcode_inspect(mdrive_axis_t * axis) {
     if (version == -1)
         return EIO;
 
-    axis->microcode.version = version;
+    device->microcode.version = version;
     mcTraceF(50, MDRIVE_CHANNEL, "Unit has microcode version %d", version);
     
     if (head == NULL)
@@ -212,25 +212,25 @@ mdrive_microcode_inspect(mdrive_axis_t * axis) {
     if (version >= 0x0001) {
         // Move label
         if (next) {
-            snprintf(axis->microcode.labels.move,
-                sizeof axis->microcode.labels.move, "%s", next);
-            if (*axis->microcode.labels.move != '-')
-                axis->microcode.features.move = true;
+            snprintf(device->microcode.labels.move,
+                sizeof device->microcode.labels.move, "%s", next);
+            if (*device->microcode.labels.move != '-')
+                device->microcode.features.move = true;
         }
 
         // Following error variable
         next = strtok_r(head, " ", &head);
         if (next) {
-            snprintf(axis->microcode.labels.following_error,
-                sizeof axis->microcode.labels.following_error, "%s", next);
-            if (*axis->microcode.labels.following_error != '-')
-                axis->microcode.features.following_error = true;
+            snprintf(device->microcode.labels.following_error,
+                sizeof device->microcode.labels.following_error, "%s", next);
+            if (*device->microcode.labels.following_error != '-')
+                device->microcode.features.following_error = true;
         }
     }
     mcTraceF(50, MDRIVE_CHANNEL, "Unit uses move label %s",
-        axis->microcode.labels.move);
+        device->microcode.labels.move);
     mcTraceF(50, MDRIVE_CHANNEL, "Unit uses fe var %s",
-        axis->microcode.labels.following_error);
+        device->microcode.labels.following_error);
 
     return 0;
 }

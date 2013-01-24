@@ -22,7 +22,7 @@
  * (int) EIO if unable to retrieve settings from motor, 0 otherwise
  */
 int
-mdrive_lazyload_profile(mdrive_axis_t * device) {
+mdrive_lazyload_profile(mdrive_device_t * device) {
     if (device->loaded.profile)
         return 0;
     
@@ -65,7 +65,7 @@ mdrive_lazyload_profile(mdrive_axis_t * device) {
 }
 
 int
-mdrive_profile_accel(mdrive_axis_t * device, long long accel) {
+mdrive_profile_accel(mdrive_device_t * device, long long accel) {
     mdrive_lazyload_profile(device);
 
     if (device->profile.accel.value == accel)
@@ -83,7 +83,7 @@ mdrive_profile_accel(mdrive_axis_t * device, long long accel) {
 }
 
 int
-mdrive_profile_decel(mdrive_axis_t * device, long long decel) {
+mdrive_profile_decel(mdrive_device_t * device, long long decel) {
     mdrive_lazyload_profile(device);
 
     if (device->profile.decel.value == decel)
@@ -101,7 +101,7 @@ mdrive_profile_decel(mdrive_axis_t * device, long long decel) {
 }
 
 int
-mdrive_profile_vmax(mdrive_axis_t * device, long long vmax) {
+mdrive_profile_vmax(mdrive_device_t * device, long long vmax) {
     mdrive_lazyload_profile(device);
 
     if (device->profile.vmax.value == vmax)
@@ -119,7 +119,7 @@ mdrive_profile_vmax(mdrive_axis_t * device, long long vmax) {
 }
 
 int
-mdrive_profile_vstart(mdrive_axis_t * device, long long vstart) {
+mdrive_profile_vstart(mdrive_device_t * device, long long vstart) {
     mdrive_lazyload_profile(device);
 
     if (device->profile.vstart.value == vstart)
@@ -137,7 +137,7 @@ mdrive_profile_vstart(mdrive_axis_t * device, long long vstart) {
 }
 
 int
-mdrive_profile_slipmax(mdrive_axis_t * device, long long slipmax) {
+mdrive_profile_slipmax(mdrive_device_t * device, long long slipmax) {
     mdrive_lazyload_profile(device);
 
     if (device->profile.slip_max.value == slipmax)
@@ -160,7 +160,7 @@ mdrive_profile_slipmax(mdrive_axis_t * device, long long slipmax) {
 }
 
 int
-mdrive_profile_irun(mdrive_axis_t * device, int irun) {
+mdrive_profile_irun(mdrive_device_t * device, int irun) {
     mdrive_lazyload_profile(device);
 
     if (device->profile.current_run == irun)
@@ -177,7 +177,7 @@ mdrive_profile_irun(mdrive_axis_t * device, int irun) {
 }
 
 int
-mdrive_profile_ihold(mdrive_axis_t * device, int ihold) {
+mdrive_profile_ihold(mdrive_device_t * device, int ihold) {
     mdrive_lazyload_profile(device);
 
     if (device->profile.current_hold == ihold)
@@ -194,7 +194,7 @@ mdrive_profile_ihold(mdrive_axis_t * device, int ihold) {
 }
 
 int
-mdrive_set_profile(mdrive_axis_t * device, struct motion_profile * profile) {
+mdrive_set_profile(mdrive_device_t * device, struct motion_profile * profile) {
     // TODO: Add error checking
     // XXX: Check units for each measurable item is MICRO_REVS
     mdrive_profile_accel(device, profile->accel.value);

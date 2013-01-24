@@ -10,7 +10,7 @@
 #include <time.h>
 
 int
-mdrive_firmware_write(mdrive_axis_t * axis, const char * filename) {
+mdrive_firmware_write(mdrive_device_t * device, const char * filename) {
     static const struct timespec wait = { .tv_nsec = 500e6 }; // 500ms
 
     mcTraceF(10, MDRIVE_CHANNEL, "Loading firmware from: %s", filename);
@@ -30,29 +30,29 @@ mdrive_firmware_write(mdrive_axis_t * axis, const char * filename) {
     }
 
     // Put device in upgrade mode
-    mdrive_send(axis, "UG 2956102");
+    mdrive_send(device, "UG 2956102");
 
     // The unit may indicate NACKs, but will not respond to PR ER
-    axis->ignore_errors = true;
+    device->ignore_errors = true;
 
     // Unset checksum mode and party mode -- the unit now has an address
     // of ':'
-    axis->checksum = CK_OFF;
-    axis->party_mode = false;
+    device->checksum = CK_OFF;
+    device->party_mode = false;
 
     // Reset the motor
-    mdrive_reboot(axis);
+    mdrive_reboot(device);
 
     // Change to 19200 baud
-    if (mdrive_set_baudrate(axis->device, 19200) == 0)
-       axis->speed = 19200;
+    if (mdrive_set_baudrate(device->comm, 19200) == 0)
+       device->speed = 19200;
 
     // Reset the motor -- (which will allow reading the '$' prompt sent back
     // from the unit when rebooted in upgrade mode)
-    mdrive_reboot(axis);
+    mdrive_reboot(device);
 
     // Ensure the device is in upgrade mode
-    if (!axis->upgrade_mode)
+    if (!device->upgrade_mode)
         return EIO;
 
     // Prepare options for sending firmware lines
@@ -84,7 +84,7 @@ mdrive_firmware_write(mdrive_axis_t * axis, const char * filename) {
         do {
             nanosleep(&waittime, NULL);
             result.ack = false;
-            mdrive_communicate(axis, *magic, &options);
+            mdrive_communicate(device, *magic, &options);
         } while (!result.ack);
     }
 
@@ -138,7 +138,7 @@ mdrive_firmware_write(mdrive_axis_t * axis, const char * filename) {
         while (true) {
             nanosleep(&waittime, NULL);
             result.ack = false;
-            mdrive_communicate(axis, buffer, &options);
+            mdrive_communicate(device, buffer, &options);
             if (result.ack)
                 break;
             else if (tries-- > 0) {
@@ -153,19 +153,19 @@ mdrive_firmware_write(mdrive_axis_t * axis, const char * filename) {
     fclose(file);
 
     // Restore error handling
-    axis->ignore_errors = false;
+    device->ignore_errors = false;
 
     // Wait for the unit to settle
     sleep(1);
 
     // Clear upgrade mode (mdrive_reboot will set it if the unit is still
     // in upgrade mode)
-    axis->upgrade_mode = false;
+    device->upgrade_mode = false;
 
     // Reboot the motor (again)
-    mdrive_reboot(axis);
+    mdrive_reboot(device);
 
-    if (axis->upgrade_mode)
+    if (device->upgrade_mode)
         return EIO;
 
     // Wait for the unit to settle
@@ -173,18 +173,18 @@ mdrive_firmware_write(mdrive_axis_t * axis, const char * filename) {
 
     // Unit is now factory defaulted. Change to default speed and re-inspect
     // comm settings
-    if (mdrive_set_baudrate(axis->device, DEFAULT_PORT_SPEED) == 0)
-        axis->speed = DEFAULT_PORT_SPEED;
+    if (mdrive_set_baudrate(device->comm, DEFAULT_PORT_SPEED) == 0)
+        device->speed = DEFAULT_PORT_SPEED;
 
-    mdrive_config_inspect(axis, true);
-    axis->address = '!';
+    mdrive_config_inspect(device, true);
+    device->address = '!';
 
     // Invalidate driver cache so that a request on the original connection
     // string that hit this motor will not be reused
-    mcDriverCacheInvalidate(axis->driver);
+    mcDriverCacheInvalidate(device->driver);
 
     // Clear cached firmware version
-    bzero(axis->firmware_version, sizeof axis->firmware_version);
+    bzero(device->firmware_version, sizeof device->firmware_version);
     return 0;
 }
 

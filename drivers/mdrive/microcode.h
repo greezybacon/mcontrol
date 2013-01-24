@@ -5,6 +5,6 @@ extern int
 mdrive_microcode_load(Driver * self, const char * filename);
 
 extern int
-mdrive_microcode_inspect(mdrive_axis_t * axis);
+mdrive_microcode_inspect(mdrive_device_t * device);
 
 #endif

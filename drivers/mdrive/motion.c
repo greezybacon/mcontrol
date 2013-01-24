@@ -1,5 +1,6 @@
 #include "mdrive.h"
 
+#include "events.h"
 #include "motion.h"
 #include "serial.h"
 #include "profile.h"
@@ -15,7 +16,7 @@ int
 mdrive_move(Driver * self, motion_instruction_t * command) {
     if (self == NULL)
         return EINVAL;
-    mdrive_axis_t * device = self->internal;
+    mdrive_device_t * device = self->internal;
 
     char buffer[24];
     int steps = mdrive_microrevs_to_steps(device, command->amount),
@@ -82,9 +83,8 @@ mdrive_move(Driver * self, motion_instruction_t * command) {
     return 0;
 }
 
-
 int
-mdrive_move_assisted(mdrive_axis_t * device, motion_instruction_t * command,
+mdrive_move_assisted(mdrive_device_t * device, motion_instruction_t * command,
         int steps) {
     struct micrcode_packed_move_op {
         unsigned    mode        :3;
@@ -170,7 +170,7 @@ struct travel_time_info {
  * EINVAL if the unit will reach the current profile's vmax. 0 upon success.
  */
 static int
-travel_to_time(mdrive_axis_t * device, long long urevs,
+travel_to_time(mdrive_device_t * device, long long urevs,
         struct travel_time_info * info) {
     double A = device->profile.accel.value;
     double D = device->profile.decel.value;
@@ -206,7 +206,7 @@ travel_to_time(mdrive_axis_t * device, long long urevs,
  * at the time it reaches the max velocity of the move.
  *
  * Parameters:
- * device - (struct mdrive_axis_t *) Device performing the move
+ * device - (struct mdrive_device_t *) Device performing the move
  * details - (struct motion_details *) Contains information about the move,
  *      and will receive the estimated timing characteristics of the move
  *
@@ -214,7 +214,7 @@ travel_to_time(mdrive_axis_t * device, long long urevs,
  * 0 upon success. EINVAL if unable to determine the resting time.
  */
 int
-mdrive_project_completion(mdrive_axis_t * device,
+mdrive_project_completion(mdrive_device_t * device,
         struct motion_details * details) {
     // Acceleration ramp
     double ramp = device->profile.vmax.value - device->profile.vstart.value,
@@ -265,7 +265,7 @@ mdrive_project_completion(mdrive_axis_t * device,
 }
 
 int
-mdrive_estimate_position_at(mdrive_axis_t * device,
+mdrive_estimate_position_at(mdrive_device_t * device,
         struct motion_details * details, int when) {
 
     // Travel time is time in microseconds into the device movement. See if
@@ -322,7 +322,7 @@ mdrive_estimate_position_at(mdrive_axis_t * device,
  */
 static void *
 mdrive_async_completion_correct(void * arg) {
-    mdrive_axis_t * device = arg;
+    mdrive_device_t * device = arg;
 
     // Detect if this callback is canceled while in progress
     int callback_id = device->cb_complete;
@@ -442,7 +442,7 @@ mdrive_async_completion_correct(void * arg) {
 }
 
 int
-mdrive_async_complete(mdrive_axis_t * device) {
+mdrive_async_complete(mdrive_device_t * device) {
     // If not currently waiting on the completion of this device, setup a
     // new timeout and callback
     if (device->trip.completion)
@@ -457,7 +457,7 @@ mdrive_async_complete(mdrive_axis_t * device) {
     exp.tv_nsec -= device->stats.latency / 2;
     // We'll also need time to communicate with the unit. Assume 15 chars
     // necessary to get the current position and such
-    exp.tv_nsec -= mdrive_xmit_time(device->device, 15);
+    exp.tv_nsec -= mdrive_xmit_time(device->comm, 15);
     // Add back 1ms to account for variations in the device latency
     exp.tv_nsec += (int)1e6;
 
@@ -483,14 +483,14 @@ mdrive_async_complete(mdrive_axis_t * device) {
  * a EV_MOTION is signalled to indicate that the move was cancelled
  *
  * Parameters:
- * device - (mdrive_axis_t *) Device for which to check and cancel motion
+ * device - (mdrive_device_t *) Device for which to check and cancel motion
  *      callback
  *
  * Returns:
  * (int) 0 upon success
  */
 int
-mdrive_async_complete_cancel(mdrive_axis_t * device) {
+mdrive_async_complete_cancel(mdrive_device_t * device) {
     if (device->trip.completion) {
         if (device->cb_complete)
             mcCallbackCancel(device->cb_complete);
@@ -508,7 +508,7 @@ mdrive_async_complete_cancel(mdrive_axis_t * device) {
 }
 
 int
-mdrive_lazyload_motion_config(mdrive_axis_t * device) {
+mdrive_lazyload_motion_config(mdrive_device_t * device) {
     if (!device->loaded.encoder) {
         // Fetch microstep and encoder settings
         const char * vars[] = { "MS", "EE" };
@@ -525,7 +525,7 @@ mdrive_lazyload_motion_config(mdrive_axis_t * device) {
 }
 
 int
-mdrive_microrevs_to_steps(mdrive_axis_t * device, long long microrevs) {
+mdrive_microrevs_to_steps(mdrive_device_t * device, long long microrevs) {
     int steps_per_rev;
 
     if (mdrive_lazyload_motion_config(device))
@@ -540,7 +540,7 @@ mdrive_microrevs_to_steps(mdrive_axis_t * device, long long microrevs) {
 }
 
 long long
-mdrive_steps_to_microrevs(mdrive_axis_t * device, int steps) {
+mdrive_steps_to_microrevs(mdrive_device_t * device, int steps) {
     int steps_per_rev;
 
     if (mdrive_lazyload_motion_config(device))
@@ -559,26 +559,26 @@ mdrive_stop(Driver * self, enum stop_type type) {
     if (self == NULL || self->internal == NULL)
         return EINVAL;
 
-    mdrive_axis_t * axis = self->internal;
-    mdrive_axis_t global;
+    mdrive_device_t * device = self->internal;
+    mdrive_device_t global;
 
     // Unit won't be moving any more
-    bzero(&axis->movement, sizeof axis->movement);
+    bzero(&device->movement, sizeof device->movement);
 
     // Cancel motion completion callback event if any
-    mdrive_async_complete_cancel(axis);
+    mdrive_async_complete_cancel(device);
 
     switch (type) {
         case MCSTOP:
-            return mdrive_send(axis, "SL 0");
+            return mdrive_send(device, "SL 0");
         case MCHALT:
             // Handle non-addressed mode (ES) where multiple responses will
             // be received from this command.
-            return mdrive_send(axis, "\x1b");
+            return mdrive_send(device, "\x1b");
         case MCESTOP:
-            global = *axis;
+            global = *device;
             global.address = '*';
-            // XXX: Detect if the targeted axis does not have party mode
+            // XXX: Detect if the targeted device does not have party mode
             // XXX: Send with checksum toggled too, for safety
             if (mdrive_send(&global, "\x1b"))
                 return EIO;
@@ -595,7 +595,7 @@ mdrive_home(Driver * self, enum home_type type, enum home_direction dir) {
     if (self == NULL || self->internal == NULL)
         return EINVAL;
 
-    mdrive_axis_t * motor = self->internal;
+    mdrive_device_t * motor = self->internal;
 
     switch (type) {
         case MCHOMEDEF:

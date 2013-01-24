@@ -30,31 +30,31 @@ enum variable_persistence {
 typedef enum variable_persistence persistence_t;
 
 extern bool
-mdrive_set_checksum(mdrive_axis_t * axis, checksum_mode_t mode, bool);
+mdrive_set_checksum(mdrive_device_t * device, checksum_mode_t mode, bool);
 
 extern bool
-mdrive_set_echo(mdrive_axis_t * axis, echo_mode_t mode, bool);
+mdrive_set_echo(mdrive_device_t * device, echo_mode_t mode, bool);
 
 extern int
-mdrive_config_inspect(mdrive_axis_t * axis, bool);
+mdrive_config_inspect(mdrive_device_t * device, bool);
 
 extern int
-mdrive_config_set_baudrate(mdrive_axis_t * axis, int speed);
+mdrive_config_set_baudrate(mdrive_device_t * device, int speed);
 
 extern int
-mdrive_config_set_address(mdrive_axis_t * axis, char address);
+mdrive_config_set_address(mdrive_device_t * device, char address);
 
 extern bool
-mdrive_set_variable(mdrive_axis_t * axis, const char * variable, int value);
+mdrive_set_variable(mdrive_device_t * device, const char * variable, int value);
 
 extern bool
-mdrive_config_rollback(mdrive_axis_t * device);
+mdrive_config_rollback(mdrive_device_t * device);
 
 extern bool
-mdrive_config_commit(mdrive_axis_t * device,
+mdrive_config_commit(mdrive_device_t * device,
     struct mdrive_config_flags * preserve);
 
 extern int
-mdrive_config_after_reboot(mdrive_axis_t * device);
+mdrive_config_after_reboot(mdrive_device_t * device);
 
 #endif
