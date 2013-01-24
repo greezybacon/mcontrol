@@ -82,9 +82,6 @@ int mdrive_init(Driver * self, const char * cxn) {
     if (mdrive_config_inspect(device, true))
         return ER_COMM_FAIL;
 
-    // Inspect microcode information
-    mdrive_microcode_inspect(device);
-
     return 0;
 }
 
