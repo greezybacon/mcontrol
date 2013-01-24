@@ -248,7 +248,7 @@ class TestingRunContext(Shell):
         self.context['labels'] = []
         self.context['timers'] = {}
         self.stack = []
-        self.vars = {}
+        self.vars = self.context['env'].copy()
         self.debug = False
         self.state = self.Status.READY
 
@@ -268,7 +268,8 @@ class TestingRunContext(Shell):
         If the command is not targeted at a motor, the motor item of the
         tuple will be None
         """
-        match = re.match(r'(?:(?P<motor>[\w*!^]+)\s*->\s*)?(?P<cmd>.*$)', command)
+        match = re.match(r'(?:(?P<motor>[\w*!^]+)\s*->\s*)?(?P<cmd>.*$)',
+            command.format(**self.vars))
         return (match.groupdict()['motor'], match.groupdict()['cmd'])
 
     def execute(self, command, capture=False):
@@ -525,6 +526,20 @@ class TestingRunContext(Shell):
             return self.error("Incorrect usage", "See 'help let'")
         name, expression = line.split('=', 2)
         self.vars[name.strip()] = self.eval(expression)
+
+    def do_defined(self, line):
+        """
+        Used in an if condition to determine if a variable has be set by
+        either a 'read' statement or a 'let' statement.
+
+        Usage:
+
+        if [defined varname]: do something
+        """
+        name = line.strip()
+        if len(name) == 0:
+            return self.error("Incorrect usage", "See 'help defined'")
+        self.out(name in self.vars)
 
     def do_debug(self, state):
         """

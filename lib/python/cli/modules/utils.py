@@ -104,3 +104,22 @@ class UtilityCommands(Mixin):
             default = True if parts.pop(0).upper() in ('YES', 'Y') else False
 
         self.out(self.confirm(prompt, default))
+
+    def do_let(self, line):
+        """
+        Create or modify a variable in the local environment. Any valid python
+        literal is valid -- strings, numbers, etc.
+
+        Usage:
+
+        let port_prefix = "/dev/ttyM"
+        """
+        if not '=' in line:
+            return self.error("Incorrect usage", "See 'help let'")
+        name, expression = line.split('=', 2)
+        try:
+            import ast
+            self.context['env'][name.strip()] = ast.literal_eval(expression)
+        except Exception as ex:
+            return self.error("{0}: Invalid Python literal"
+                .format(expression))
