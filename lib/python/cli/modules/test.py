@@ -51,7 +51,7 @@ class TestingCommands(Mixin):
             return self.error("{0}: Test not yet created")
 
         test = TestingRunContext(test=self.context['tests'][name],
-                context=self.context)
+                context=self.context.copy())
         test.run()
 
         if test.state == test.Status.ABORTED:
