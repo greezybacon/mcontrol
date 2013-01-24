@@ -45,4 +45,4 @@ class TraceCommands(Mixin):
 
     def init_trace(self):
         if 'trace' not in self:
-            self['trace'] = Trace()
+            self['trace'] = Trace(level=50)
