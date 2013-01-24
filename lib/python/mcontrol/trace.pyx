@@ -36,14 +36,23 @@ cdef class Trace(object):
             self.id = mcTraceSubscribe(level, 0, <trace_callback_t>pyTraceCallback)
         trace_instances[self.id] = self
 
-    def __dealloc__(self):
+    def __init__(self, level=40):
+        # the __del__ MUST be called at exit time because the GIL cannot be
+        # safely aquired if the Python runtime is aborting (due to an
+        # exception for instance)
+        import atexit
+        atexit.register(self.__del__)
+
+    def __del__(self):
         if self.id:
-            del trace_instances[self.id]
+            if self.id in trace_instances:
+                del trace_instances[self.id]
             if not Library.is_in_process():
                 mcTraceUnsubscribeRemote(ANY_MOTOR, self.id)
                 mcUnsubscribe(ANY_MOTOR, self.event_id)
             else:
                 mcTraceUnsubscribe(self.id)
+            self.id = 0
 
     def add(self, channel, level=20):
         cdef String buf = bufferFromString(channel)
