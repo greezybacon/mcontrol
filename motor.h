@@ -139,8 +139,14 @@ struct operating_profile {
 
     bool        stop_if_stalled; // Halt immediately if stalled
     bool        maintain_position; // Autocorrect position if changes
-    int         auto_off_delay; // Turn coils off automatically after this
-                                // many milliseconds. -1 to disable.
+
+    // Use the device's encoder. This setting may be auto-enabled by other
+    // requested features that would require an encoder to be enabled
+    bool        use_encoder;    
+
+    // Turn coils off automatically after this many milliseconds.
+    // < 0 to disable
+    int         auto_off_delay; 
 };
 
 ////////////// COMMANDS /////////////////////////
@@ -153,6 +159,7 @@ enum motor_query_type {
     MCDISABLED,         // Unit coils are offline
     MCINPUT,            // Query value of unit input -- specify number
     MCOUTPUT,           // Query value of unit ouput -- specity number
+    MCBUSY,             // Device is executing microcode
 
     // Individual items from motion profile
     MCPROFILE,          // Set and retrieve hardware profiles
@@ -163,7 +170,9 @@ enum motor_query_type {
     MCDEADBAND,
     MCRUNCURRENT,
     MCHOLDCURRENT,
-    MCSLIPMAX
+    MCSLIPMAX,
+
+    MCOPPROFILE,        // Set and retrieve operational profile
 
     // NOTE: Drivers may specify additional query types. Refer to individual
     // driver headers for specific query types supported by each respective
@@ -192,9 +201,10 @@ enum stop_type {
 // Types used by the home driver entry
 enum home_type {
     MCHOMEDEF = 1,  // Use microcode-preferred homing method
-    MCHOMESTOP,     // Home to hard stop in the positive direction
+    MCHOMESTOP,     // Home to hard stop
     MCHOMEMID,      // Home to midpoint (if supported)
-    MCHOMEEND,      // Home to endpoint
+    MCHOMENEAR,     // Home to near-side of home switch
+    MCHOMEFAR,      // Home to far-side of home switch
 };
 enum home_direction {
     MCHOMERIGHT = 1, // Home in the positive direction
