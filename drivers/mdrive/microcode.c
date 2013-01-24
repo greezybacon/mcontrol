@@ -3,6 +3,7 @@
 #include "config.h"
 #include "serial.h"
 
+#include <ctype.h>
 #include <errno.h>
 #include <stdio.h>
 
@@ -37,11 +38,26 @@ mdrive_microcode_load(Driver * self, const char * filename) {
         return EIO;
 
     // Read data from the input file
-    char ch, buffer[64], *pBuffer;
+    char ch, buffer[64], *bol, *eol;
     bool skipchar = false;
+
+    // Handle errors (like 28 -- ECLOBBER) here
+    int tries;
+    struct mdrive_response result;
+    opts.result = &result;
+
+    // Config vars not to be reset at [S]ave time
+    struct mdrive_config_flags preserve = {0};
+
+    // Keep track of entry- and exit from program mode
+    bool programming = false;
+
+    // Exit status
+    int status = 0;
+
     do {
         // Reset the buffer position (for file reads)
-        pBuffer = buffer;
+        eol = buffer;
         // New line, don't skip anything until an apostrophe is found
         skipchar = false;
 
@@ -55,36 +71,96 @@ mdrive_microcode_load(Driver * self, const char * filename) {
                 skipchar = true;
 
             if (!skipchar)
-                *pBuffer++ = ch;
+                *eol++ = ch;
         }
+        // Null-terminate
+        *eol = 0;
+
+        // Advance line past initial whitespace
+        bol = buffer;
+        while (bol < eol && isspace(*bol))
+            bol++;
 
         // Skip blank lines
-        if (pBuffer - buffer == 0)
+        if (*bol == 0)
             continue;
 
-        // Null-terminate the command buffer
-        *pBuffer = 0;
+        // Trim trailing whitespace
+        while (eol > bol && isspace(*(eol-1)))
+            eol--;
+
+        // Null-terminate the command buffer (again)
+        *eol = 0;
 
         // Don't send auto-save because it will save current communication
         // settings. Use mdrive_config_commit() instead
-        if (strncmp("S", buffer, 2) == 0)
+        if (strncmp("S", bol, 2) == 0)
             continue;
 
         // Write microcode to the device
         // XXX: Technically, the unit will send the address of the
         //      next-received command. A nice, extra check would be to make
         //      sure the response received can be processed as an integer
-        if (mdrive_communicate(axis, buffer, &opts) != RESPONSE_OK)
-            // XXX: Abandon programming mode first!
-            return EIO;
+        tries = 2;
+        while (tries--) {
+            result.code = 0;
+            if (mdrive_communicate(axis, bol, &opts) == RESPONSE_OK)
+                break;
+            else if (result.code == MDRIVE_ECLOBBER) {
+                // Variable/label already exists on the device
+                // See if the line starts with a 'VA ' declaration
+                if (strncmp("VA ", bol, 3) != 0)
+                    return MDRIVE_ECLOBBER;
+                // See if microcode has a default value set
+                else if (strchr(bol, '=') == NULL)
+                    // No default value set in microcode
+                    break;
+                // Send default value from microcode instead
+                else if (mdrive_communicate(axis, bol+3, &opts) == RESPONSE_OK)
+                    break;
+                else {
+                    status = EIO;
+                    goto safe_bail;
+                }
+            }
+            if (tries == 0) {
+                // XXX: Abandon programming mode first!
+                status = EIO;
+                goto safe_bail;
+            }
+        }
+        if (strncmp("EM", bol, 2) == 0)
+            preserve.echo = true;
+        else if (strncmp("CK", bol, 2) == 0)
+            preserve.checksum = true;
+        else if (strncmp("PG", bol, 2) == 0) {
+            // See if there is an address after the 'PG'
+            errno = 0;
+            int address = strtol(bol+2, NULL, 10);
+            if (errno == 0)
+                programming = address > 0;
+        }
 
     } while (ch != EOF);
 
-    // Commit the new microcode and settings to NVRAM
-    if (!mdrive_config_commit(axis))
-        return EIO;
+    if (programming)
+        // Bogus microcode -- it entered program mode but didn't exit.
+        // TODO: Come up with some nicely-worded error code to return
+        if (RESPONSE_OK == mdrive_send(axis, "PG"))
+            programming = false;
 
-    return 0;
+    // Commit the new microcode and settings to NVRAM
+    if (mdrive_config_commit(axis, &preserve)) 
+        goto exit;
+    else
+        status = EIO;
+
+safe_bail:
+    if (programming)
+        mdrive_send(axis, "PG");
+
+exit:
+    return status;
 }
 
 int

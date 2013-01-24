@@ -256,27 +256,6 @@ struct mdrive_address {
     char                address;
 };
 
-enum checksum_mode {
-    CK_OFF=0,
-    CK_ON,
-    CK_BUSY_NACK
-};
-typedef enum checksum_mode checksum_mode_t;
-
-enum echo_mode {
-    EM_ON=0,
-    EM_PROMPT,
-    EM_QUIET,
-    EM_DELAY
-};
-typedef enum echo_mode echo_mode_t;
-
-enum variable_persistence {
-    TEMPORAL,
-    PERSISTENT
-};
-typedef enum variable_persistence persistence_t;
-
 // Special reads with mcQuery{Integer,String}
 enum mdrive_read_variable {
     MDRIVE_SERIAL = 10000,
@@ -312,6 +291,7 @@ enum mdrive_read_variable {
 enum mdrive_error {
     MDRIVE_ENOVAR = 20,         // Set an unknown var
     MDRIVE_EINVAL = 21,         // Assigned a bad value
+    MDRIVE_ECLOBBER = 28,       // Label/Var already exists
     MDRIVE_ENOLABEL = 30,       // Call an unknown label
     MDRIVE_ENOTSUP = 37,        // Feature not in device
     MDRIVE_EOVERRUN = 63,

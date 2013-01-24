@@ -48,10 +48,14 @@ mdrive_config_rollback(mdrive_axis_t * device) {
  * (bool) - TRUE if commit was completed successfully and FALSE otherwise
  */
 bool
-mdrive_config_commit(mdrive_axis_t * device) {
-    // Place comm settings back to user-friendly ones before saving
-    mdrive_set_checksum(device, CK_OFF, false);
-    mdrive_set_echo(device, EM_ON, false);
+mdrive_config_commit(mdrive_axis_t * device,
+        struct mdrive_config_flags * preserve) {
+    // Place comm settings back to user-friendly ones before saving, unless
+    // requested not to
+    if (!preserve || !preserve->checksum)
+        mdrive_set_checksum(device, CK_OFF, false);
+    if (!preserve || !preserve->echo)
+        mdrive_set_echo(device, EM_ON, false);
 
     struct timespec timeout = { .tv_nsec = 750e6 };
     struct mdrive_send_opts options = {
@@ -148,7 +152,7 @@ mdrive_config_set_baudrate(mdrive_axis_t * axis, int speed) {
     if (!mdrive_set_variable(axis, "BD", selected->setting))
         return EIO;
 
-    if (!mdrive_config_commit(axis)) // Saves the configuration
+    if (!mdrive_config_commit(axis, NULL)) // Saves the configuration
         return EIO;
 
     // Reboot the unit for BD to take effect; however we won't be able to
@@ -197,7 +201,7 @@ mdrive_config_set_address(mdrive_axis_t * axis, char address) {
         axis->party_mode = true;
     }
 
-    if (!mdrive_config_commit(axis))
+    if (!mdrive_config_commit(axis, NULL))
         return -EIO;
 
     // Invalidate driver cache so that a request on the original connection
@@ -271,6 +275,8 @@ mdrive_config_inspect(mdrive_axis_t * axis, bool set) {
     }
 
     // Inspect ES setting (for E-stop)
+
+    // Inspect CE setting (for reset (CTRL+C)
 
     return 0;
 }

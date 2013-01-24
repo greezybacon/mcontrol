@@ -298,7 +298,7 @@ mdrive_name_poke(mdrive_axis_t * axis, struct motor_query * query,
     // on the newly-named axis
     struct mdrive_send_opts opts = { .waittime = &waittime };
     mdrive_communicate(&fake_axis, "CP N", &opts);
-    mdrive_config_commit(&fake_axis);
+    mdrive_config_commit(&fake_axis, NULL);
 
     // Invalidate the driver cache for this motor, because it changed names, so
     // a request for a motor by the connection string that previously arrived

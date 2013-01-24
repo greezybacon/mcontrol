@@ -949,6 +949,12 @@ process:
             // Error was handled in the classify_response routine (if there
             // was a response)
             break;
+        } else if (status == RESPONSE_ERROR && response->code) {
+            // Error was signaled by the device and the error code was
+            // retrieved and cleared. The transmission should not be retried
+            // unless the error was EOVERRUN, in which case status will be
+            // RETRY
+            break;
         } else {
             // Transmission will be retried due to unacceptable response
             // from the unit. Keep interesting statistics, though.
