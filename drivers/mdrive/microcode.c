@@ -192,10 +192,8 @@ mdrive_microcode_load(Driver * self, const char * filename) {
             // See if there is an address after the 'PG'
             errno = 0;
             int address = strtol(bol+2, NULL, 10);
-            if (errno == 0)
-                programming = address > 0;
+            programming = (errno == 0) && (address > 0);
         }
-
     } while (ch != EOF);
 
     if (programming)
