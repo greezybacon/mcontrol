@@ -178,8 +178,9 @@ mdrive_microcode_load(Driver * self, const char * filename) {
                 }
             }
             if (tries == 0) {
-                // XXX: Abandon programming mode first!
-                status = EIO;
+                // TODO: Trace the offending line
+                // Return actual MDrive error code if available
+                status = (result.code) ? result.code : EIO;
                 goto safe_bail;
             }
         }
