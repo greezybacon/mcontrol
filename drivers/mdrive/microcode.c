@@ -1,3 +1,10 @@
+/*
+ * microcode.c
+ *
+ * Includes routines needed to (re)load microcode onto devices as well as
+ * inspect installed microcode for microcode-assisted routines available on
+ * the unit.
+ */
 #include "mdrive.h"
 
 #include "config.h"
@@ -7,6 +14,51 @@
 #include <errno.h>
 #include <stdio.h>
 
+/**
+ * mdrive_microcode_load
+ * Driver-Entry: load_microcode
+ *
+ * Installs microcode from the given file onto the device specified.
+ * Basically, the commands from the MCode file are reliably sent to the
+ * device.
+ *
+ * Variables, if already in existance on the motor, cannot be cleared by the
+ * CP command. Therefore, to alleviate a hard reset of the motor, variable
+ * replacement is auto-sensed by this routine, and if a variable being
+ * defined already exists on the device, the default value specified in the
+ * new microcode is assigned as the default of the already-existing
+ * variable.
+ *
+ * Caveats:
+ * CP is executed prior to microcode loading. Any microcode previously on
+ * the device will be cleared. This approach will also make split microcode
+ * files impossible, because microcode is cleared for every call to this
+ * routine.
+ *
+ * No validation is performed on the file-to-be-loaded. Error code raised by
+ * the unit will be returned if the file contains bad or unsupported
+ * microcode.
+ *
+ * Whitespace and comments are stripped from the microcode file and are not
+ * sent to the unit. This routine is intented to install production code.
+ *
+ * This routine will take a while. IP, CP, and S are all issued to install
+ * the microcode, and comm settings are re-inspected/reset after the ending
+ * mdrive_config_commit() call.
+ *
+ * Side-Effects:
+ * Regardless of exit condition, device should be cleared from program mode.
+ *
+ * Parameters:
+ * self - (Driver *) driver instance data
+ * filename - (const char *) microcode file to load
+ *
+ * Returns:
+ * (int) 0 upon success, ER_BAD_FILE if the specified filename could not
+ * possibly be a microcode text file, EIO if unable to communicate with the
+ * device, MDRIVE_ECLOBBER if unable to install a label or variable defined
+ * in the microcode file.
+ */
 int
 mdrive_microcode_load(Driver * self, const char * filename) {
     mdrive_device_t * device = self->internal;
@@ -97,10 +149,10 @@ mdrive_microcode_load(Driver * self, const char * filename) {
         if (strncmp("S", bol, 2) == 0)
             continue;
 
+        // XXX: Check line length. Anything over 64 chars will not be
+        //      accepted by the unit
+
         // Write microcode to the device
-        // XXX: Technically, the unit will send the address of the
-        //      next-received command. A nice, extra check would be to make
-        //      sure the response received can be processed as an integer
         tries = 2;
         while (tries--) {
             result.code = 0;
@@ -163,6 +215,21 @@ exit:
     return status;
 }
 
+/**
+ * mdrive_microcode_inspect
+ *
+ * Inspects the microcode loaded on the motor to sense the types of features
+ * supporting microcode-assistance (for homing, moving, extra data
+ * retrieval, etc.), and what the names of those labels and variables are.
+ *
+ * Parameters:
+ * device - (mdrive_device_t *) device to inspect firmware information
+ *
+ * Returns:
+ * (int) 0 upon success, EIO if unable to communicate with the device,
+ * ENOTSUP if the microcode on the device doesn't support any extended
+ * features of this driver.
+ */
 int
 mdrive_microcode_inspect(mdrive_device_t * device) {
     mdrive_response_t resp;
