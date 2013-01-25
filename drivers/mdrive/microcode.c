@@ -161,8 +161,10 @@ mdrive_microcode_load(Driver * self, const char * filename) {
             else if (result.code == MDRIVE_ECLOBBER) {
                 // Variable/label already exists on the device
                 // See if the line starts with a 'VA ' declaration
-                if (strncmp("VA ", bol, 3) != 0)
-                    return MDRIVE_ECLOBBER;
+                if (strncmp("VA ", bol, 3) != 0) {
+                    status = MDRIVE_ECLOBBER;
+                    goto safe_bail;
+                }
                 // See if microcode has a default value set
                 else if (strchr(bol, '=') == NULL)
                     // No default value set in microcode
