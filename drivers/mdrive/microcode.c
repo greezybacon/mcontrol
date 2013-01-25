@@ -115,7 +115,7 @@ mdrive_microcode_load(Driver * self, const char * filename) {
 
         while (true) {
             ch = getc(file);
-            if (ch == '\n' || ch == EOF)
+            if (ch == '\n' || ch == '\r' || ch == EOF)
                 break;
 
             // Skip comments (apostrophe to end of line)
