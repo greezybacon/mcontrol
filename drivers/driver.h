@@ -22,10 +22,13 @@ struct motor_query {
     } arg;
     union {
         long long   number;             // As a number
-        char        string[32];         // As a string
+        struct {
+            unsigned short  size;
+            char            buffer[32];
+        } string;                       // As a string
         Profile *   profile;            // Peek/Poke an entire profile
         OpProfile * operating_profile;  // Peek/Poke operational profile
-    };
+    } value;
 };
 
 typedef struct motor_driver_data Driver;

@@ -91,18 +91,19 @@ mdrive_read_variable(Driver * self, struct motor_query * query) {
             if (mdrive_get_integer(motor, q->variable, &intval))
                 return EIO;
             if (q->type == 9)
-                query->number = mdrive_steps_to_microrevs(motor, intval);
+                query->value.number = mdrive_steps_to_microrevs(motor, intval);
             else
-                query->number = intval;
+                query->value.number = intval;
             break;
         case 2:
-            return mdrive_get_string(motor, q->variable,
-                query->string, sizeof query->string);
+            query->value.string.size = mdrive_get_string(motor, q->variable,
+                query->value.string.buffer, sizeof query->value.string.buffer);
+            return (query->value.string.size > 0) ? 0 : EIO;
         case 3:
             snprintf(variable, sizeof variable, q->variable, query->arg.number);
             if (mdrive_get_integer(motor, variable, &intval))
                 return EIO;
-            query->number = intval;
+            query->value.number = intval;
             break;
         case 5:
             if (q->read)
@@ -143,7 +144,7 @@ mdrive_write_simple(mdrive_device_t * device, struct motor_query * query,
         struct query_variable * q) {
 
     char cmd[16], variable[16];
-    int value = query->number;
+    int value = query->value.number;
     switch (q->type & 0x0f) {
         case 9:
             // Convert first, then fall through to set integer
@@ -155,12 +156,13 @@ mdrive_write_simple(mdrive_device_t * device, struct motor_query * query,
             snprintf(cmd, sizeof cmd, "%s=%d", q->variable, value);
             break;
         case 2:
-            snprintf(cmd, sizeof cmd, "%s=%s", q->variable, query->string);
+            snprintf(cmd, sizeof cmd, "%s=%s", q->variable,
+                query->value.string.buffer);
             break;
         case 3:
             // XXX: for MCOUTPUT, ensure the unit supports the output given
             snprintf(variable, sizeof variable, q->variable, query->arg.number);
-            snprintf(cmd, sizeof cmd, "%s=%d", variable, query->number);
+            snprintf(cmd, sizeof cmd, "%s=%lld", variable, query->value.number);
             break;
         default:
             return ENOTSUP;
@@ -178,7 +180,7 @@ mdrive_address_poke(mdrive_device_t * device, struct motor_query * query,
     if (device == NULL)
         return EINVAL;
 
-    return mdrive_config_set_address(device, *query->string);
+    return mdrive_config_set_address(device, *query->value.string.buffer);
 }
 
 static int
@@ -195,7 +197,7 @@ mdrive_bd_peek(mdrive_device_t * device, struct motor_query * query,
         // Speed is not corrent -- unknown?
         return EIO;
 
-    query->number = s->human;
+    query->value.number = s->human;
     return 0;
 }
 
@@ -206,7 +208,7 @@ mdrive_bd_poke(mdrive_device_t * device, struct motor_query * query,
         return EINVAL;
 
     // TODO: Invalidate driver cache since the speed of this device has changed
-    return mdrive_config_set_baudrate(device, query->number);
+    return mdrive_config_set_baudrate(device, query->value.number);
 }
 
 static int
@@ -214,7 +216,7 @@ mdrive_checksum_poke(mdrive_device_t * device, struct motor_query * query,
         struct query_variable * q) {
     if (device == NULL)
         return EINVAL;
-    return mdrive_set_checksum(device, query->number, false);
+    return mdrive_set_checksum(device, query->value.number, false);
 }
 
 static int
@@ -266,7 +268,7 @@ mdrive_name_poke(mdrive_device_t * device, struct motor_query * query,
     for (char *** section = sections; *section; section++) {
         for (char ** line = *section; *line; line++) {
             snprintf(buffer, sizeof buffer, *line,
-                query->arg.string, (unsigned int)query->string[0]);
+                query->arg.string, (unsigned int)query->value.string.buffer[0]);
             mdrive_send(device, buffer);
         }
         // Wait just a second
@@ -280,7 +282,7 @@ mdrive_name_poke(mdrive_device_t * device, struct motor_query * query,
     // as the global one for further naming. To communicate with the renamed
     // device, a separate connection will be required.
     mdrive_device_t fake_device = *device;
-    fake_device.address = query->string[0];
+    fake_device.address = query->value.string.buffer[0];
     fake_device.party_mode = true;
 
     // Activate party mode and enable command acceptance detection on the
@@ -315,11 +317,14 @@ mdrive_sn_peek(mdrive_device_t * device, struct motor_query * query,
         return EINVAL;
 
     if (*device->serial_number == 0)
-        mdrive_get_string(device, q->variable, device->serial_number,
-            sizeof device->serial_number);
+        if (1 > mdrive_get_string(device, q->variable, device->serial_number,
+                sizeof device->serial_number))
+            return EIO;
 
-    return snprintf(query->string, sizeof query->string, "%s",
-        device->serial_number);
+    query->value.string.size = snprintf(
+        query->value.string.buffer, sizeof query->value.string.buffer,
+        "%s", device->serial_number);
+    return 0;
 }
 
 static int
@@ -329,11 +334,14 @@ mdrive_pn_peek(mdrive_device_t * device, struct motor_query * query,
         return EINVAL;
 
     if (*device->part_number == 0)
-        mdrive_get_string(device, q->variable, device->part_number,
-            sizeof device->part_number);
+        if (1 > mdrive_get_string(device, q->variable, device->part_number,
+                sizeof device->part_number))
+            return EIO;
 
-    return snprintf(query->string, sizeof query->string, "%s",
-        device->part_number);
+    query->value.string.size = snprintf(
+        query->value.string.buffer, sizeof query->value.string.buffer,
+        "%s", device->part_number);
+    return 0;
 }
 
 static int
@@ -343,11 +351,13 @@ mdrive_vr_peek(mdrive_device_t * device, struct motor_query * query,
         return EINVAL;
 
     if (*device->firmware_version == 0)
-        mdrive_get_string(device, q->variable, device->firmware_version,
-            sizeof device->firmware_version);
+        if (1 > mdrive_get_string(device, q->variable,
+                device->firmware_version, sizeof device->firmware_version))
+            return EIO;
 
-    return snprintf(query->string, sizeof query->string, "%s",
-        device->firmware_version);
+    query->value.string.size = snprintf(
+        query->value.string.buffer, sizeof query->value.string.buffer,
+        "%s", device->firmware_version);
 }
 
 static int
@@ -356,7 +366,7 @@ mdrive_ee_poke(mdrive_device_t * device, struct motor_query * query,
     if (device == NULL)
         return EINVAL;
 
-    if (device->encoder == query->number)
+    if (device->encoder == query->value.number)
         return 0;
 
     int status = mdrive_write_simple(device, query, q);
@@ -366,7 +376,7 @@ mdrive_ee_poke(mdrive_device_t * device, struct motor_query * query,
     // Reload motion configuration from the unit
     device->loaded.encoder = false;
     device->loaded.profile = false;
-    device->encoder = query->number;
+    device->encoder = query->value.number;
     return 0;
 }
 
@@ -380,25 +390,25 @@ mdrive_profile_peek(mdrive_device_t * device, struct motor_query * query,
 
     switch (query->query) {
         case MCACCEL:
-            query->number = device->profile.accel.value;
+            query->value.number = device->profile.accel.value;
             break;
         case MCDECEL:
-            query->number = device->profile.decel.value;
+            query->value.number = device->profile.decel.value;
             break;
         case MCVINITIAL:
-            query->number = device->profile.vstart.value;
+            query->value.number = device->profile.vstart.value;
             break;
         case MCVMAX:
-            query->number = device->profile.vmax.value;
+            query->value.number = device->profile.vmax.value;
             break;
         case MCRUNCURRENT:
-            query->number = device->profile.current_run;
+            query->value.number = device->profile.current_run;
             break;
         case MCHOLDCURRENT:
-            query->number = device->profile.current_hold;
+            query->value.number = device->profile.current_hold;
             break;
         case MCSLIPMAX:
-            query->number = device->profile.slip_max.value;
+            query->value.number = device->profile.slip_max.value;
             break;
         default:
             return EINVAL;
@@ -412,7 +422,7 @@ mdrive_ex_poke(mdrive_device_t * device, struct motor_query * query,
         struct query_variable * q) {
 
     char buffer[64];
-    snprintf(buffer, sizeof buffer, "EX %2.2s", query->string);
+    snprintf(buffer, sizeof buffer, "EX %2.2s", query->value.string.buffer);
 
     return mdrive_send(device, buffer);
 }
@@ -425,7 +435,7 @@ mdrive_var_peek(mdrive_device_t * device, struct motor_query * query,
     if (mdrive_get_integer(device, query->arg.string, &value))
         return EIO;
 
-    query->number = value;
+    query->value.number = value;
     return 0;
 }
 
@@ -434,7 +444,7 @@ mdrive_var_poke(mdrive_device_t * device, struct motor_query * query,
         struct query_variable * q) {
 
     char buffer[64];
-    snprintf(buffer, sizeof buffer, "%2.2s=%lld", query->string,
+    snprintf(buffer, sizeof buffer, "%2.2s=%lld", query->value.string.buffer,
         query->arg.number);
 
     if (mdrive_send(device, buffer))
@@ -507,16 +517,16 @@ mdrive_io_poke(mdrive_device_t * device, struct motor_query * query,
     switch (query->query) {
         case MDRIVE_IO_TYPE:
             if (port == 5) {
-                switch (query->number) {
+                switch (query->value.number) {
                     case IO_ANALOG_VOLTAGE:
                     case IO_ANALOG_CURRENT:
-                        io.type = query->number;
+                        io.type = query->value.number;
                         break;
                     default:
                         return EINVAL;
                 }
             } else {
-                switch (query->number) {
+                switch (query->value.number) {
                     case IO_OUTPUT:
                     case IO_MOVING:
                     case IO_FAULT:
@@ -535,7 +545,7 @@ mdrive_io_poke(mdrive_device_t * device, struct motor_query * query,
                     case IO_JOG_POS:
                     case IO_JOG_NEG:
                     case IO_RESET:
-                        io.type = query->number;
+                        io.type = query->value.number;
                         break;
                     default:
                         return EINVAL;
@@ -544,17 +554,17 @@ mdrive_io_poke(mdrive_device_t * device, struct motor_query * query,
             break;
 
         case MDRIVE_IO_PARM1:
-            if (query->number == 5)
-                io.wide_range = (bool) query->number;
+            if (query->value.number == 5)
+                io.wide_range = (bool) query->value.number;
             else
-                io.active_high = (bool) query->number;
+                io.active_high = (bool) query->value.number;
             break;
 
         case MDRIVE_IO_PARM2:
-            if (query->number == 5)
+            if (query->value.number == 5)
                 return EINVAL;
             else
-                io.source = (bool) query->number;
+                io.source = (bool) query->value.number;
             break;
 
         default:
@@ -586,9 +596,11 @@ mdrive_fd_poke(mdrive_device_t * device, struct motor_query * query,
     if (device == NULL)
         return EINVAL;
 
+    struct timespec shortwait = { .tv_nsec = 20e6 };
     struct mdrive_send_opts options = {
         .expect_err = true,
-        .tries = 1
+        .tries = 1,
+        .waittime = &shortwait
     };
     mdrive_communicate(device, "", &options);
 

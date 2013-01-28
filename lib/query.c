@@ -29,10 +29,10 @@ PROXYIMPL (mcQueryInteger, motor_query_t query, OUT int value) {
     switch (args->query) {
         case MCPOSITION:
         case MCVELOCITY:
-            mcMicroRevsToDistance(m, q.number, &args->value);
+            mcMicroRevsToDistance(m, q.value.number, &args->value);
             break;
         default:
-            args->value = q.number;
+            args->value = q.value.number;
     }
 
     RETURN(0);
@@ -57,10 +57,11 @@ PROXYIMPL(mcQueryIntegerUnits, int, motor_query_t query, OUT int value,
     switch (args->query) {
         case MCPOSITION:
         case MCVELOCITY:
-            mcMicroRevsToDistanceUnits(m, q.number, &args->value, args->units);
+            mcMicroRevsToDistanceUnits(m, q.value.number, &args->value,
+                args->units);
             break;
         default:
-            args->value = q.number;
+            args->value = q.value.number;
     }
 
     RETURN(0);
@@ -84,7 +85,7 @@ PROXYIMPL (mcQueryIntegerWithStringItem, motor_query_t query, OUT int value,
     if (status)
         RETURN(status);
 
-    args->value = q.number;
+    args->value = q.value.number;
     RETURN(0);
 }
 
@@ -108,7 +109,7 @@ PROXYIMPL (mcQueryIntegerWithIntegerItem, motor_query_t query, OUT int value,
     if (status)
         RETURN(status);
 
-    args->value = q.number;
+    args->value = q.value.number;
     RETURN(0);
 }
 
@@ -130,10 +131,10 @@ PROXYIMPL (mcQueryFloat, motor_query_t query, OUT double value) {
     switch (args->query) {
         case MCPOSITION:
         case MCVELOCITY:
-            mcMicroRevsToDistanceF(m, q.number, &args->value);
+            mcMicroRevsToDistanceF(m, q.value.number, &args->value);
             break;
         default:
-            args->value = q.number;
+            args->value = q.value.number;
     }
 
     RETURN(0);
@@ -158,10 +159,11 @@ PROXYIMPL(mcQueryFloatUnits, int, motor_query_t query, OUT int value,
     switch (args->query) {
         case MCPOSITION:
         case MCVELOCITY:
-            mcMicroRevsToDistanceUnitsF(m, q.number, &args->value, args->units);
+            mcMicroRevsToDistanceUnitsF(m, q.value.number, &args->value,
+                args->units);
             break;
         default:
-            args->value = q.number;
+            args->value = q.value.number;
     }
 
     RETURN(0);
@@ -184,7 +186,8 @@ PROXYIMPL (mcQueryString, motor_query_t query, OUT String value) {
     if (size > 0)
         // Use min of status an sizeof args->value.buffer
         args->value.size = snprintf(args->value.buffer,
-            sizeof args->value.buffer, "%s", q.string);
+            sizeof args->value.buffer,
+            "%s", q.value.string.buffer);
 
     RETURN(0);
 }
@@ -200,7 +203,8 @@ PROXYIMPL (mcPokeString, motor_query_t query, String value) {
         RETURN( ENOTSUP );
 
     struct motor_query q = { .query = args->query };
-    snprintf(q.string, sizeof q.string, "%s", args->value.buffer);
+    snprintf(q.value.string.buffer, sizeof q.value.string.buffer,
+        "%s", args->value.buffer);
 
     RETURN( m->driver->class->write(m->driver, &q) );
 }
@@ -222,10 +226,10 @@ PROXYIMPL (mcPokeInteger, motor_query_t query, int value) {
     // TODO: Convert POKE codes with units such as MCPOSITION
     switch (args->query) {
         case MCPOSITION:
-            mcDistanceToMicroRevs(m, args->value, &q.number);
+            mcDistanceToMicroRevs(m, args->value, &q.value.number);
             break;
         default:
-            q.number = args->value;
+            q.value.number = args->value;
     }
 
     RETURN( m->driver->class->write(m->driver, &q) );
@@ -249,10 +253,11 @@ PROXYIMPL (mcPokeIntegerUnits, motor_query_t query, int value,
     // TODO: Convert POKE codes with units such as MCPOSITION
     switch (args->query) {
         case MCPOSITION:
-            mcDistanceUnitsToMicroRevs(m, args->value, args->units, &q.number);
+            mcDistanceUnitsToMicroRevs(m, args->value, args->units,
+                &q.value.number);
             break;
         default:
-            q.number = args->value;
+            q.value.number = args->value;
     }
 
     RETURN( m->driver->class->write(m->driver, &q) );
@@ -274,7 +279,7 @@ PROXYIMPL (mcPokeIntegerWithStringItem, motor_query_t query, int value,
     };
     snprintf(q.arg.string, sizeof q.arg.string, "%s", args->item.buffer);
 
-    q.number = args->value;
+    q.value.number = args->value;
 
     RETURN( m->driver->class->write(m->driver, &q) );
 }
@@ -294,7 +299,7 @@ PROXYIMPL (mcPokeIntegerWithIntegerItem, motor_query_t query, int value,
         .query = args->query,
         .arg.number = args->item,
     };
-    q.number = args->value;
+    q.value.number = args->value;
 
     RETURN( m->driver->class->write(m->driver, &q) );
 }
@@ -314,7 +319,8 @@ PROXYIMPL (mcPokeStringWithStringItem, motor_query_t query, String value,
         .query = args->query
     };
     snprintf(q.arg.string, sizeof q.arg.string, "%s", args->item.buffer);
-    snprintf(q.string, sizeof q.string, "%s", args->value.buffer);
+    snprintf(q.value.string.buffer, sizeof q.value.string.buffer,
+        "%s", args->value.buffer);
 
     RETURN( m->driver->class->write(m->driver, &q) );
 }
