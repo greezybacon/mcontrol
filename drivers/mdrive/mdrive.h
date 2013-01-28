@@ -291,6 +291,7 @@ enum mdrive_read_variable {
 enum mdrive_error {
     MDRIVE_ENOVAR = 20,         // Set an unknown var
     MDRIVE_EINVAL = 21,         // Assigned a bad value
+    MDRIVE_EWHAT = 24,          // Illegal data entered (not understand)
     MDRIVE_ECLOBBER = 28,       // Label/Var already exists
     MDRIVE_ENOLABEL = 30,       // Call an unknown label
     MDRIVE_ENOTSUP = 37,        // Feature not in device

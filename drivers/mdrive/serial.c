@@ -273,7 +273,8 @@ mdrive_classify_response(mdrive_device_t * device, mdrive_response_t * response)
 
         if (response->code) {
             mdrive_signal_error_event(device, response->code);
-            if (response->code == MDRIVE_EOVERRUN)
+            if (response->code == MDRIVE_EOVERRUN
+                    || response->code == MDRIVE_EWHAT)
                 return RESPONSE_RETRY;
             // Stall errors don't indicate bad data; retry is not necessary
             else if (response->code == MDRIVE_ESTALL)
