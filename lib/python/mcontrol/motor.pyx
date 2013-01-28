@@ -30,6 +30,7 @@ conversions = {
     k.INCH:         (1000, k.MILLI_INCH),
     k.METER:        (1000, k.MILLI_METER),
     'g':            (1000, k.MILLI_G),
+    'rev':          (1000, k.MILLI_ROTATION),
 
     # Raw measure of motor spindle rate
     'rpm':          (1000000 / 60., k.MICRO_REVS),
@@ -44,36 +45,6 @@ def scale_up(value, units):
 
 class NoDaemonException(Exception): pass
 class CommFailure(Exception): pass
-
-cdef extern from "lib/client.h" nogil:
-    enum mcCallMode:
-        MC_CALL_IN_PROCESS
-        MC_CALL_CROSS_PROCESS
-
-cdef class Library:
-    @classmethod
-    def run_in_process(cls):
-        # Set call mode to in-process (not out-of-process)
-        mcClientCallModeSet(MC_CALL_IN_PROCESS)
-
-    @classmethod
-    def run_out_of_process(cls):
-        mcClientCallModeSet(MC_CALL_CROSS_PROCESS)
-
-    @classmethod
-    def is_in_process(cls):
-        return mcClientCallModeGet() == MC_CALL_IN_PROCESS
-
-    @classmethod
-    def load_driver(cls, name):
-        import os
-        if not os.path.exists(name):
-            raise ValueError("{0}: Driver library does not exist"
-                .format(name))
-        name = name.encode('latin-1')
-        cdef char * cstring = <char *>name
-        with nogil:
-            mcDriverLoad(cstring)
 
 cdef class Motor:
 

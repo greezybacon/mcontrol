@@ -24,7 +24,7 @@ int main(int argc, char * argv[]) {
     //mcDriverLoad("mdrive.so");
 
     signal(SIGINT, cleanup);
-    signal(SIGKILL, cleanup);
+    signal(SIGHUP, cleanup);
 
     mcMessageBoxOpenDaemon();
 
