@@ -61,6 +61,12 @@ PROXYIMPL(mcProfileSet, Profile profile) {
         m->profile.slip_max.value = T;
         m->profile.slip_max.units = MICRO_REVS;
     }
+    if (m->profile.accuracy.units != MICRO_REVS) {
+        mcDistanceUnitsToMicroRevs(m, m->profile.accuracy.value,
+            m->profile.accuracy.units, &T);
+        m->profile.accuracy.value = T;
+        m->profile.accuracy.units = MICRO_REVS;
+    }
 
     RETURN(0);
 }
@@ -132,7 +138,7 @@ PROXYIMPL(mcProfileGetDeadband, Profile profile, unit_type_t units,
     if (m == NULL)
         RETURN( EINVAL );
 
-    mcMicroRevsToDistanceUnits(m, m->profile.deadband.value, &args->value,
+    mcMicroRevsToDistanceUnits(m, m->profile.accuracy.value, &args->value,
         args->units);
 
     RETURN(0);

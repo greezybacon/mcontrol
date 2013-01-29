@@ -12,7 +12,7 @@ cdef extern from "motor.h":
         measurement decel
         measurement vmax
         measurement vstart
-        measurement deadband
+        measurement accuracy
         unsigned char current_run
         unsigned char current_hold
         measurement slip_max
@@ -136,6 +136,16 @@ cdef class MotorProfile(object):
             value, units = self._get_value_units(value)
             self._profile.slip_max.value = value
             self._profile.slip_max.units = units or self.motor.units
+
+    property accuracy:
+        def __get__(self):
+            return (self._profile.accuracy.value,
+                    self._profile.accuracy.units)
+
+        def __set__(self, value):
+            value, units = self._get_value_units(value)
+            self._profile.accuracy.value = value
+            self._profile.accuracy.units = units or self.motor.units
 
     property hold_current:
         def __get__(self):
