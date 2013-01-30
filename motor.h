@@ -64,7 +64,9 @@ struct event_info {
 };
 
 enum motion_increment {
-    DEFAULT_UNITS=1,
+    DEFAULT_UNITS = 1,
+    // Raw units (no conversion necessary)
+    MICRO_REVS,
 
     MILLI_INCH,
     INCH,
@@ -82,7 +84,7 @@ enum motion_increment {
     MILLI_DEGREE_SEC = MILLI_DEGREE,
 
     // Acceleration types
-    MILLI_G,
+    MILLI_G = 20,
     INCH_SEC2 = INCH,
     MILLI_INCH_SEC2 = MILLI_INCH,
     METER_SEC2 = METER,
@@ -90,9 +92,6 @@ enum motion_increment {
     MILLI_ROTATION_SEC2 = MILLI_ROTATION,
     MILLI_RADIAN_SEC2 = MILLI_RADIAN,
     MILLI_DEGREE_SEC2 = MILLI_DEGREE,
-
-    // Raw units (no conversion necessary)
-    MICRO_REVS,
 };
 typedef enum motion_increment unit_type_t;
 

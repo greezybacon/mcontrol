@@ -74,18 +74,14 @@ cdef class MotorProfile(object):
         raise_status(status, "Unable to set motor profile")
 
     def _get_value_units(self, value):
-        units = None
         if type(value) is tuple:
             if len(value) != 2:
                 raise ValueError("Two item tuple required: "
                     "(val, units)")
-            value, units = value
-
-            if type(units) is not int:
-                if units not in all_units:
-                    raise ValueError("Unsupported units")
-                units = all_units[units]
-        return value, units
+            value, units = self.motor._get_value_and_units(*value)
+        else:
+            value, units = self.motor._get_value_and_units(value)
+        return int(value), units
 
     property accel:
         def __get__(self):
@@ -152,14 +148,14 @@ cdef class MotorProfile(object):
             return self._profile.current_hold
 
         def __set__(self, value):
-            self._profile.current_hold = value
+            self._profile.current_hold = int(value)
 
     property run_current:
         def __get__(self):
             return self._profile.current_run
 
         def __set__(self, value):
-            self._profile.current_run = value
+            self._profile.current_run = int(value)
 
     property hardware:
         """
