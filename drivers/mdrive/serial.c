@@ -575,7 +575,8 @@ mdrive_async_read(void * arg) {
 
             // If the message was acked, wait for the rest of the message to
             // roll in.
-            if (response->ack || response->nack || response->processed) {
+            if ((response->length == 0 && (response->ack || response->nack))
+                    || response->processed) {
                 response->buffer[response->length] = 0;
 
                 if (response->event) {

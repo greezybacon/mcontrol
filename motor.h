@@ -107,7 +107,7 @@ struct motion_profile {
     struct measurement  decel;      // mrev/s2
     struct measurement  vmax;       // Max velocity (mrev/s)
     struct measurement  vstart;     // Initial velocity
-    struct measurement  deadband;   // Microrevs of accuracy for target of a move command
+    struct measurement  accuracy;   // Microrevs of accuracy for target of a move command
 
     // Properties honored by stepper motor units
     unsigned char       current_run; // Motor run current (%) XXX: Should this be in mA?

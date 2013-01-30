@@ -26,11 +26,11 @@ mdrive_lazyload_profile(mdrive_device_t * device) {
     if (device->loaded.profile)
         return 0;
     
-    int A, D, VM, VI, SF, RC, HC, P;
-    const char * vars[] = { "A", "D", "VM", "VI", "SF", "RC", "HC", "P" };
-    int * vals[] = { &A, &D, &VM, &VI, &SF, &RC, &HC, &P };
+    int A, D, VM, VI, SF, RC, HC, DB, P;
+    const char * vars[] = { "A", "D", "VM", "VI", "SF", "RC", "HC", "DB", "P" };
+    int * vals[] = { &A, &D, &VM, &VI, &SF, &RC, &HC, &DB, &P };
 
-    if (mdrive_get_integers(device, vars, vals, 8))
+    if (mdrive_get_integers(device, vars, vals, 9))
         return EIO;
 
     // Convert from steps to microrevs
@@ -52,6 +52,10 @@ mdrive_lazyload_profile(mdrive_device_t * device) {
     };
     device->profile.slip_max = (struct measurement) {
         .value = mdrive_steps_to_microrevs(device, SF),
+        .units = MICRO_REVS
+    };
+    device->profile.accuracy = (struct measurement) {
+        .value = mdrive_steps_to_microrevs(device, DB),
         .units = MICRO_REVS
     };
 
@@ -160,6 +164,29 @@ mdrive_profile_slipmax(mdrive_device_t * device, long long slipmax) {
 }
 
 int
+mdrive_profile_accuracy(mdrive_device_t * device, long long accuracy) {
+    mdrive_lazyload_profile(device);
+
+    if (device->profile.accuracy.value == accuracy)
+        return 0;
+
+    mdrive_lazyload_motion_config(device);
+    if (!device->encoder)
+        // Device will only honor stall factor (DB) in encoder mode
+        return ENOTSUP;
+
+    if (accuracy < 1)
+        return EINVAL;
+
+    if (!mdrive_set_variable(device, "DB",
+            mdrive_microrevs_to_steps(device, accuracy)))
+        return EIO;
+
+    device->profile.accuracy.value = accuracy;
+    return 0;
+}
+
+int
 mdrive_profile_irun(mdrive_device_t * device, int irun) {
     mdrive_lazyload_profile(device);
 
@@ -202,6 +229,7 @@ mdrive_set_profile(mdrive_device_t * device, struct motion_profile * profile) {
     mdrive_profile_vmax(device, profile->vmax.value);
     mdrive_profile_vstart(device, profile->vstart.value);
     mdrive_profile_slipmax(device, profile->slip_max.value);
+    mdrive_profile_accuracy(device, profile->accuracy.value);
     mdrive_profile_irun(device, profile->current_run);
     mdrive_profile_ihold(device, profile->current_hold);
 
