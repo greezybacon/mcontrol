@@ -182,8 +182,8 @@ PROXYIMPL (mcQueryString, motor_query_t query, OUT String value) {
     int size;
     struct motor_query q = { .query = args->query };
 
-    size = m->driver->class->read(m->driver, &q);
-    if (size > 0)
+    m->driver->class->read(m->driver, &q);
+    if (q.value.string.size > 0)
         // Use min of status an sizeof args->value.buffer
         args->value.size = snprintf(args->value.buffer,
             sizeof args->value.buffer,
@@ -203,7 +203,8 @@ PROXYIMPL (mcPokeString, motor_query_t query, String value) {
         RETURN( ENOTSUP );
 
     struct motor_query q = { .query = args->query };
-    snprintf(q.value.string.buffer, sizeof q.value.string.buffer,
+    q.value.string.size = snprintf(q.value.string.buffer,
+        sizeof q.value.string.buffer,
         "%s", args->value.buffer);
 
     RETURN( m->driver->class->write(m->driver, &q) );
@@ -319,7 +320,8 @@ PROXYIMPL (mcPokeStringWithStringItem, motor_query_t query, String value,
         .query = args->query
     };
     snprintf(q.arg.string, sizeof q.arg.string, "%s", args->item.buffer);
-    snprintf(q.value.string.buffer, sizeof q.value.string.buffer,
+    q.value.string.size = snprintf(q.value.string.buffer,
+        sizeof q.value.string.buffer,
         "%s", args->value.buffer);
 
     RETURN( m->driver->class->write(m->driver, &q) );
