@@ -863,7 +863,7 @@ wait_longer:
                 // XXX: response if existing is not classified and status is
                 //      left at default value of 0 (RESPONSE_OK)
                 status = RESPONSE_TIMEOUT;
-                goto process;
+                goto resend;
             }
         }
 

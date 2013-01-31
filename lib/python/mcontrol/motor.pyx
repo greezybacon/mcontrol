@@ -96,7 +96,7 @@ cdef class Motor:
             value = int(value)
         if type(units) is not int:
             if units not in all_units:
-                raise ValueError("Unknown units given")
+                raise ValueError("{0}: Unknown units given".format(units))
             units = all_units[units]
 
         return value, units

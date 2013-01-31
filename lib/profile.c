@@ -31,39 +31,52 @@ PROXYIMPL(mcProfileSet, Profile profile) {
     // Convert any embedded units in the profile to standard units of micro
     // revolutions
     long long T;
-    if (m->profile.accel.units != MICRO_REVS) {
-        mcDistanceUnitsToMicroRevs(m, m->profile.accel.value,
+    int status;
+    if (m->profile.accel.value && m->profile.accel.units != MICRO_REVS) {
+        status = mcDistanceUnitsToMicroRevs(m, m->profile.accel.value,
             m->profile.accel.units, &T);
+        if (status)
+            RETURN(status);
         m->profile.accel.value = T;
         m->profile.accel.units = MICRO_REVS;
     }
-    if (m->profile.decel.units != MICRO_REVS) {
-        mcDistanceUnitsToMicroRevs(m, m->profile.decel.value,
+    if (m->profile.decel.value && m->profile.decel.units != MICRO_REVS) {
+        status = mcDistanceUnitsToMicroRevs(m, m->profile.decel.value,
             m->profile.decel.units, &T);
+        if (status)
+            RETURN(status);
         m->profile.decel.value = T;
         m->profile.decel.units = MICRO_REVS;
     }
-    if (m->profile.vmax.units != MICRO_REVS) {
-        mcDistanceUnitsToMicroRevs(m, m->profile.vmax.value,
+    if (m->profile.vmax.value && m->profile.vmax.units != MICRO_REVS) {
+        status = mcDistanceUnitsToMicroRevs(m, m->profile.vmax.value,
             m->profile.vmax.units, &T);
+        if (status)
+            RETURN(status);
         m->profile.vmax.value = T;
         m->profile.vmax.units = MICRO_REVS;
     }
-    if (m->profile.vstart.units != MICRO_REVS) {
-        mcDistanceUnitsToMicroRevs(m, m->profile.vstart.value,
+    if (m->profile.vstart.value && m->profile.vstart.units != MICRO_REVS) {
+        status = mcDistanceUnitsToMicroRevs(m, m->profile.vstart.value,
             m->profile.vstart.units, &T);
+        if (status)
+            RETURN(status);
         m->profile.vstart.value = T;
         m->profile.vstart.units = MICRO_REVS;
     }
-    if (m->profile.slip_max.units != MICRO_REVS) {
-        mcDistanceUnitsToMicroRevs(m, m->profile.slip_max.value,
+    if (m->profile.slip_max.value && m->profile.slip_max.units != MICRO_REVS) {
+        status = mcDistanceUnitsToMicroRevs(m, m->profile.slip_max.value,
             m->profile.slip_max.units, &T);
+        if (status)
+            RETURN(status);
         m->profile.slip_max.value = T;
         m->profile.slip_max.units = MICRO_REVS;
     }
-    if (m->profile.accuracy.units != MICRO_REVS) {
-        mcDistanceUnitsToMicroRevs(m, m->profile.accuracy.value,
+    if (m->profile.accuracy.value && m->profile.accuracy.units != MICRO_REVS) {
+        status = mcDistanceUnitsToMicroRevs(m, m->profile.accuracy.value,
             m->profile.accuracy.units, &T);
+        if (status)
+            RETURN(status);
         m->profile.accuracy.value = T;
         m->profile.accuracy.units = MICRO_REVS;
     }
