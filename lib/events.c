@@ -55,7 +55,8 @@ mcSubscribeWithData(motor_t motor, event_t event, int * reg_id,
     *reg_id = e->id;
 
     // Async receive events
-    mcAsyncReceive();
+    if (mcClientCallModeGet() == MC_CALL_CROSS_PROCESS)
+        mcAsyncReceive();
 
     if (motor != -1)
         // Server side registration
