@@ -411,9 +411,12 @@ mdrive_process_response(char * buffer, mdrive_response_t * response,
                         response->length--;
                     }
                 } else if (response->length) {
-                    if (*(bufc-1) == '\n') {
+                    if (*(bufc-1) == '\n' || *(bufc-1) == '\x13') {
                         // Checksum was before ACK/NACK -- echo mode
-                        // enabled.  Drop the received buffer.
+                        // enabled.  Drop the received buffer. Also, on some
+                        // motors, the CR sent in the magic firmware lines
+                        // is somehow translated to \x13 (hex 13 rather than
+                        // decimal 13) on the (echo'd) response
                         target = response->buffer;
                         response->length = 0;
                         response->echo = true;
@@ -427,6 +430,10 @@ mdrive_process_response(char * buffer, mdrive_response_t * response,
                 // Error code follows
                 response->in_error = true;
                 response->error = true;
+                // in EM=0, the prompt can carry over from the previous
+                // response
+                if (response->length == 0)
+                    break;
                 break;
             case '>':
                 // in EM=0, the prompt can carry over from the previous
@@ -521,7 +528,7 @@ mdrive_async_read(void * arg) {
     // Wait time for a single char at the device speed
     // XXX: dev->speed is allowed to be changed on the fly
     struct timespec now,
-        onechartime = { .tv_nsec = mdrive_xmit_time(dev, 4) };
+        onechartime = { .tv_nsec = mdrive_xmit_time(dev, 2) };
 
     int length;
     char buffer[512];
