@@ -11,7 +11,7 @@
 
 int
 mdrive_firmware_write(mdrive_device_t * device, const char * filename) {
-    static const struct timespec wait = { .tv_nsec = 500e6 }; // 500ms
+    static const struct timespec wait = { .tv_sec = 1 };
 
     mcTraceF(10, MDRIVE_CHANNEL, "Loading firmware from: %s", filename);
     
