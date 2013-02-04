@@ -65,6 +65,7 @@ mcMessageBoxOpen(void) {
         // Make sure mcGoodBye is called at program exit
         struct sigaction action = { .sa_handler = mcRudeGoodBye };
         sigaction(SIGTERM, &action, NULL);
+        sigaction(SIGQUIT, &action, NULL);
         sigaction(SIGHUP, &action, NULL);
     }
     return (_inbox > 0) ? 0 : -1;
@@ -102,11 +103,12 @@ mcMessageSend(motor_t motor, int type,
         const struct timespec * timeout) {
     int status;
 
-    if (_outbox == 0)
+    if (_outbox == 0) {
         _outbox = mq_open(DAEMON_QUEUE_NAME, O_WRONLY);
         if (_outbox <= 0)
             return -errno;
-        
+    }
+
     request_message_t message;
     status = construct_request(motor, &message,
         type, payload, payload_size);

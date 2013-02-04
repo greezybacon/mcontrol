@@ -27,10 +27,13 @@ abbreviations = {
 }
 
 conversions = {
+    'inch':         (1000, k.MILLI_INCH),
     k.INCH:         (1000, k.MILLI_INCH),
+    'm':            (1000, k.MILLI_METER),
     k.METER:        (1000, k.MILLI_METER),
     'g':            (1000, k.MILLI_G),
     'rev':          (1000, k.MILLI_ROTATION),
+    'deg':          (1000, k.MILLI_DEGREE),
 
     # Raw measure of motor spindle rate
     'rpm':          (1000000 / 60., k.MICRO_REVS),
