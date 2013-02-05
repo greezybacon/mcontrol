@@ -297,7 +297,8 @@ enum mdrive_error {
     MDRIVE_ENOTSUP = 37,        // Feature not in device
     MDRIVE_EOVERRUN = 63,
     MDRIVE_ETEMP = 71,
-    MDRIVE_ESTALL = 86
+    MDRIVE_ESTALL = 86,
+    MDRIVE_EPRECISION = 92,     // Failed to move to requested position (DB)
 };
 
 // Tracing channel (source) names

@@ -712,6 +712,83 @@ mdrive_write_buffer(mdrive_device_t * device, const char * buffer, int length) {
 }
 
 /**
+ * mdrive_receive_response
+ *
+ * Await the receipt of a response from the receive thread. This routine
+ * applies proper locking of the rx queue and automatically combines
+ * responses if called multiple times with the same response pointer.
+ *
+ * Parameters:
+ * device - (mdrive_device_t *) device to receive on
+ * timeout - (const struct timespec *) deadline to receive response by
+ * response - (mdrive_response_t **) pointer to a pointer to receive the
+ *      response from the unit. Double pointer is used differenciate between
+ *      the pointer value in the local stack frame and the caller's stack
+ *      frame
+ *
+ * Returns:
+ * (int) 0 upon success, ETIMEDOUT if no response was received by the
+ * deadline.
+ */
+int
+mdrive_receive_response(mdrive_device_t * device,
+        const struct timespec * timeout, mdrive_response_t ** response) {
+
+    int status = 0, onechartime = mdrive_xmit_time(device->comm, 1);
+    mdrive_response_t * local_response;
+    struct timespec now;
+
+    pthread_mutex_lock(&device->comm->rxlock);
+
+    while (!queue_length(&device->comm->queue)) {
+        if (ETIMEDOUT == pthread_cond_timedwait(&device->comm->has_data,
+                &device->comm->rxlock, timeout)) {
+            status = ETIMEDOUT;
+            break;
+        }
+    }
+
+    if (status != ETIMEDOUT) {
+        local_response = queue_pop(&device->comm->queue);
+
+        mcTraceF(40, MDRIVE_CHANNEL_RX,
+            "Received: (%s%s%s%s%s%s:%d) %d:%s",
+            local_response->ack ? "A" : "",
+            local_response->nack ? "N" : "",
+            local_response->checksum_good ? "C" : "",
+            local_response->echo ? "E" : "",
+            (local_response->prompt || local_response->crlf) ? ">" : "",
+            local_response->error ? "?" : "",
+            local_response->code,
+            local_response->length,
+            local_response->buffer);
+
+        if (local_response->ack) device->stats.acks++;
+        if (local_response->nack) device->stats.nacks++;
+
+        if (*response) {
+            mdrive_combine_response(*response, local_response);
+            free(local_response);
+        } else {
+            *response = local_response;
+            // Record latency of the first response. Average over 32 xmits
+            clock_gettime(CLOCK_REALTIME, &now);
+            device->stats.latency =
+                  ((31 * device->stats.latency) >> 5)
+                + ((
+                       // Don't consider receive time in latency
+                       nsecDiff(&now, &device->comm->lasttx)
+                     - local_response->received * onechartime
+                  ) >> 5);
+        }
+    }
+
+    pthread_mutex_unlock(&device->comm->rxlock);
+
+    return status;
+}
+
+/**
  * mdrive_communicate
  *
  * Send a message to the device and wait for the response. If unable to
@@ -822,6 +899,11 @@ mdrive_communicate(mdrive_device_t * device, const char * command,
     // Use prescribed number of tries or the default
     i = (options->tries) ? options->tries : 1 + MAX_RETRIES;
     while (i--) {
+        // Clear the previous response on retries
+        if (response) {
+            free(response);
+            response = NULL;
+        }
 
         // Store in current stack frame for distinction against recursive
         // calls to mdrive_communicate...(). txid is incremented for every
@@ -831,7 +913,7 @@ mdrive_communicate(mdrive_device_t * device, const char * command,
 
         if (mdrive_write_buffer(device, buffer, length)) {
             status = RESPONSE_IOERROR;
-            goto finish;
+            break;
         }
 
         clock_gettime(CLOCK_REALTIME, &now);
@@ -843,14 +925,9 @@ mdrive_communicate(mdrive_device_t * device, const char * command,
         if (!device->checksum && options->expect_data)
             tsAdd(&timeout, &more_waittime, &timeout);
 
-wait_longer:
-        pthread_mutex_lock(&device->comm->rxlock);
-
-        while (!queue_length(&device->comm->queue)) {
-            if (ETIMEDOUT == pthread_cond_timedwait(&device->comm->has_data,
-                    &device->comm->rxlock, &timeout)) {
-
-                pthread_mutex_unlock(&device->comm->rxlock);
+        do {
+            if (mdrive_receive_response(device, &timeout, &response)) {
+                // Timed out
                 if ((device->echo == EM_QUIET || device->address == '*')
                         && !options->expect_data) {
                     // No response from unit. If the unit is EM=2
@@ -861,133 +938,90 @@ wait_longer:
                     // Globally addressed devices will usually not respond
                     // to commands
                     status = RESPONSE_OK;
-                    goto finish;
+                } else {
+                    // Non-responsive unit
+                    device->stats.timeouts++;
+                    mcTraceF(30, MDRIVE_CHANNEL_RX, "Timed out: %d", device->echo);
+                    // XXX: response if existing is not classified and status is
+                    //      left at default value of 0 (RESPONSE_OK)
+                    status = RESPONSE_TIMEOUT;
                 }
-
-                // Non-responsive unit
-                device->stats.timeouts++;
-                mcTraceF(30, MDRIVE_CHANNEL_RX, "Timed out: %d", device->echo);
-                // XXX: response if existing is not classified and status is
-                //      left at default value of 0 (RESPONSE_OK)
-                status = RESPONSE_TIMEOUT;
-                goto process;
             }
+            // Response received / combined into response
+            // Detect early ACK, data to follow later
+            else if (options->expect_data && !response->length && 
+                    (response->ack | response->nack | response->crlf)) {
+                // A response was expected but not received -- wait longer.
+                // Add the additional wait time to the timeout and wait
+                // longer.  However, if the unit indicated an error already,
+                // then we're finished.
+                if (response->code)
+                    break;
+                mcTrace(30, MDRIVE_CHANNEL_RX, "Waiting longer ...");
+                clock_gettime(CLOCK_REALTIME, &now);
+                tsAdd(&timeout, &more_waittime, &now);
+                continue;
+            }
+            // Detect remote echo
+            else if (options->expect_data && device->echo == EM_ON
+                    && response->length) {
+                // In echo mode, then unit will send the request back in the
+                // response. On [swift OSes], the response will be closed
+                // after the echo is received, but before the real data is
+                // received.  Be careful not to consider the \r, \n, >, ? or
+                // checksum chars, as none of them will exist in the
+                // response buffer
+                if (strncmp(response->buffer, buffer, response->length) == 0) {
+                    // Clear the buffer and set the echo flag
+                    *response->buffer = 0;
+                    response->length = 0;
+                    response->echo = true;
+                    // Wait for the real response
+                    clock_gettime(CLOCK_REALTIME, &now);
+                    tsAdd(&timeout, &more_waittime, &now);
+                    continue;
+                }
+            }
+        // By default, don't retry receiving. Only retry if a 'continue'
+        // statement is reached
+        } while(false);
+
+        if (response && response->txid == txid) {
+            status = mdrive_classify_response(device, response);
+
+            if (status == RESPONSE_OK || options->expect_err) {
+                // Error was handled in the classify_response routine (if
+                // there was a response)
+                break;
+            } else if (status == RESPONSE_ERROR && response->code) {
+                // Error was signaled by the device and the error code was
+                // retrieved and cleared. The transmission should not be
+                // retried unless the error was EOVERRUN, in which case
+                // status will be RETRY
+                break;
+            } else {
+                // Transmission will be retried due to unacceptable response
+                // from the unit. Keep interesting statistics, though.
+                if (status == RESPONSE_RETRY)
+                    device->stats.overflows++;
+                else if (status == RESPONSE_BAD_CHECKSUM)
+                    device->stats.bad_checksums++;
+                else if (status == RESPONSE_UNKNOWN)
+                    mcTrace(20, MDRIVE_CHANNEL_RX, "UNKNOWN response received");
+                // Wait and retry the transmission
+            }
+
+            device->stats.rx++;
+            device->stats.rxbytes += response->received;
         }
-
-        // Combine previously-received response
-        if (response) {
-            mdrive_response_t * response2 = queue_pop(&device->comm->queue);
-            mdrive_combine_response(response, response2);
-            free(response2);
-        } else {
-            response = queue_pop(&device->comm->queue);
-            // Record latency of the first response. Average over 32 xmits
-            clock_gettime(CLOCK_REALTIME, &now);
-            device->stats.latency = 
-                  ((31 * device->stats.latency) >> 5)
-                + ((
-                       // Don't consider receive time in latency
-                       nsecDiff(&now, &device->comm->lasttx)
-                     - response->received * onechartime
-                  ) >> 5);
-        }
-
-        pthread_mutex_unlock(&device->comm->rxlock);
-
-process:
-        if (!response)
-            goto resend;
-
-        mcTraceF(40, MDRIVE_CHANNEL_RX,
-            "Received: (%s%s%s%s%s%s:%d) %d:%s",
-                response->ack ? "A" : "",
-                response->nack ? "N" : "",
-                response->checksum_good ? "C" : "",
-                response->echo ? "E" : "",
-                (response->prompt || response->crlf) ? ">" : "",
-                response->error ? "?" : "",
-                response->code,
-                response->length,
-                response->buffer);
-
-        if (response->txid != txid) {
+        else if (response) {
             // Response is not for the transaction expected
             mcTraceF(10, MDRIVE_CHANNEL, "Invalid TXID received: %d / %d",
                 txid, response->txid);
-            goto resend;
-        }
-
-        if (options->expect_data && !response->length && 
-                (response->ack | response->nack | response->crlf)) {
-            // A response was expected but not received -- wait longer. Add
-            // the additional wait time to the timeout and wait longer.
-            // However, if the unit indicated an error already, then we're
-            // finished.
-            if (response->code)
-                break;
-            else if (status != RESPONSE_TIMEOUT) {
-                mcTrace(30, MDRIVE_CHANNEL_RX, "Waiting longer ...");
-                tsAdd(&timeout, &more_waittime, &timeout);
-                goto wait_longer;
-            }
-        }
-        // Detect remote echo
-        else if (options->expect_data && device->echo == EM_ON
-                && response->length) {
-            // In echo mode, then unit will send the request back in the
-            // response. On [swift OSes], the response will be closed after
-            // the echo is received, but before the real data is received.
-            // Be careful not to consider the \r, \n, >, ? or checksum
-            // chars, as none of them will exist in the response buffer
-            if (strncmp(response->buffer, buffer, response->length) == 0) {
-                // Clear the buffer and set the echo flag
-                *response->buffer = 0;
-                response->length = 0;
-                response->echo = true;
-                tsAdd(&timeout, &more_waittime, &timeout);
-                goto wait_longer;
-            }
-        }
-            
-        if (response->ack) device->stats.acks++;
-        if (response->nack) device->stats.nacks++;
-
-        status = mdrive_classify_response(device, response);
-        
-        if (status == RESPONSE_OK || options->expect_err) {
-            // Error was handled in the classify_response routine (if there
-            // was a response)
-            break;
-        } else if (status == RESPONSE_ERROR && response->code) {
-            // Error was signaled by the device and the error code was
-            // retrieved and cleared. The transmission should not be retried
-            // unless the error was EOVERRUN, in which case status will be
-            // RETRY
-            break;
-        } else {
-            // Transmission will be retried due to unacceptable response
-            // from the unit. Keep interesting statistics, though.
-            if (status == RESPONSE_RETRY)
-                device->stats.overflows++;
-            else if (status == RESPONSE_BAD_CHECKSUM)
-                device->stats.bad_checksums++;
-            else if (status == RESPONSE_UNKNOWN)
-                mcTrace(20, MDRIVE_CHANNEL_RX, "UNKNOWN response received");
-            // Wait and retry the transmission
-        }
-resend:
-        // Clear previous response if retrying
-        if (response) {
-            device->stats.rx++;
-            device->stats.rxbytes += response->received;
-
-            free(response);
-            response = NULL;
         }
         device->stats.resends++;
     } // end while (i--)
 
-finish:
     if (response) {
         device->stats.rx++;
         device->stats.rxbytes += response->received;
