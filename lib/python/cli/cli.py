@@ -39,8 +39,15 @@ Version 0.1-beta
             self.context.update(context)
         if options and options.standalone:
             self.do_standalone('')
-        for x in self.initializers:
-            x(self)
+        # Only run initializers for very first instanciation
+        if type(self) is Shell:
+            for x in self.initializers:
+                if hasattr(x, 'im_func'):
+                    # Python2
+                    x.im_func(self)
+                else:
+                    # Python3
+                    x(self)
         if scripts:
             for s in scripts:
                 self.cmdqueue = open(s, 'rt').readlines()

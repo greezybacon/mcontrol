@@ -2,6 +2,8 @@ from mcontrol import Trace
 
 from . import Mixin, initializer
 
+import os.path
+
 class TraceCommands(Mixin):
 
     def do_trace(self, line):
@@ -21,7 +23,10 @@ class TraceCommands(Mixin):
         trace show
         trace add <channel> [level]
         trace remove <channel>
-        trace tee <file>|off
+        trace tee <file>|off [only]
+
+        Trace Levels:
+        crash, error, warn, info, debug, data
         """
         words = line.split()
         if len(words) < 1:
@@ -34,7 +39,6 @@ class TraceCommands(Mixin):
         return getattr(self, 'trace_'+subcommand)(words)
 
     def trace_add(self, line):
-        self.init_trace()
         for channel in line:
             self['trace'].add(channel)
 
@@ -43,6 +47,38 @@ class TraceCommands(Mixin):
         for channel in self['trace'].enum():
             self.out(channel)
 
+    def trace_tee(self, line):
+        """
+        Tee trace to a file. Use 'off' to cancel trace to file, 'only' to trace
+        to tee file only
+        """
+        if 'only' in line:
+            line.remove('only')
+            self['trace-local'] = False
+        filename = ' '.join(line)
+        if filename.lower() == 'off':
+            self['trace-tee'].close()
+            self['trace-tee'] = False
+            self['trace-local'] = True
+        elif not os.path.exists(os.path.dirname(filename)):
+            self.error("Folder for tee file does not exist")
+        else:
+            self['trace-tee'] = open(filename, 'wt')
+
+    @initializer
     def init_trace(self):
-        if 'trace' not in self:
-            self['trace'] = Trace(level=50)
+        self['trace'] = TeeableTrace(level=50)
+        # XXX: HACK
+        self['trace'].shell = self
+        self['trace-local'] = True
+        self['trace-tee'] = False
+
+class TeeableTrace(Trace):
+    def __getitem__(self, name):
+        return self.shell[name]
+
+    def emit(self, level, channel, text):
+        if self['trace-tee']:
+            self['trace-tee'].write("{0}: {1}\n".format(channel, text))
+        if self['trace-local']:
+            self.shell.status('%(WHITE){0}: {1}%(NORMAL)'.format(channel, text))

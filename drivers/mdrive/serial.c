@@ -430,10 +430,6 @@ mdrive_process_response(char * buffer, mdrive_response_t * response,
                 // Error code follows
                 response->in_error = true;
                 response->error = true;
-                // in EM=0, the prompt can carry over from the previous
-                // response
-                if (response->length == 0)
-                    break;
                 break;
             case '>':
                 // in EM=0, the prompt can carry over from the previous
