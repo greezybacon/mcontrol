@@ -299,11 +299,11 @@ class MotorContext(Shell):
         information about the motor's motion details if the profile and
         scale have been setup (see set scale)
         """
-        term.output("%(BOLD)%(WHITE)  Serial: %(NORMAL){0}".format(
+        term.output("%(BOLD)  Serial: %(NORMAL){0}".format(
             self.motor.serial), self.context['stdout'])
-        term.output("%(BOLD)%(WHITE)   Model: %(NORMAL){0}".format(
+        term.output("%(BOLD)   Model: %(NORMAL){0}".format(
             self.motor.part), self.context['stdout'])
-        term.output("%(BOLD)%(WHITE)Firmware: %(NORMAL){0}".format(
+        term.output("%(BOLD)Firmware: %(NORMAL){0}".format(
             self.motor.firmware), self.context['stdout'])
 
     def do_profile(self, info):
