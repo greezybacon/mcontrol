@@ -921,66 +921,61 @@ mdrive_communicate(mdrive_device_t * device, const char * command,
         if (!device->checksum && options->expect_data)
             tsAdd(&timeout, &more_waittime, &timeout);
 
-        do {
-            if (mdrive_receive_response(device, &timeout, &response)) {
-                // Timed out
-                if ((device->echo == EM_QUIET || device->address == '*')
-                        && !options->expect_data) {
-                    // No response from unit. If the unit is EM=2
-                    // (EM_QUIET), this is likely just a command with no
-                    // response, which indicates success -- even if checksum
-                    // is enabled
-                    //
-                    // Globally addressed devices will usually not respond
-                    // to commands
-                    status = RESPONSE_OK;
-                } else {
-                    // Non-responsive unit
-                    device->stats.timeouts++;
-                    mcTraceF(30, MDRIVE_CHANNEL_RX, "Timed out: %d", device->echo);
-                    // XXX: response if existing is not classified and status is
-                    //      left at default value of 0 (RESPONSE_OK)
-                    status = RESPONSE_TIMEOUT;
-                }
+receive:
+        if (mdrive_receive_response(device, &timeout, &response)) {
+            // Timed out
+            if ((device->echo == EM_QUIET || device->address == '*')
+                    && !options->expect_data) {
+                // No response from unit. If the unit is EM=2 (EM_QUIET),
+                // this is likely just a command with no response, which
+                // indicates success -- even if checksum is enabled
+                //
+                // Globally addressed devices will usually not respond to
+                // commands
+                status = RESPONSE_OK;
+            } else {
+                // Non-responsive unit
+                device->stats.timeouts++;
+                mcTraceF(30, MDRIVE_CHANNEL_RX, "Timed out: %d", device->echo);
+                // XXX: response if existing is not classified and status is
+                //      left at default value of 0 (RESPONSE_OK)
+                status = RESPONSE_TIMEOUT;
             }
-            // Response received / combined into response
-            // Detect early ACK, data to follow later
-            else if (options->expect_data && !response->length && 
-                    (response->ack | response->nack | response->crlf)) {
-                // A response was expected but not received -- wait longer.
-                // Add the additional wait time to the timeout and wait
-                // longer.  However, if the unit indicated an error already,
-                // then we're finished.
-                if (response->code)
-                    break;
+        }
+        // Response received / combined into response
+        // Detect early ACK, data to follow later
+        else if (options->expect_data && !response->length &&
+                (response->ack | response->nack | response->crlf)) {
+            // A response was expected but not received -- wait longer.  Add
+            // the additional wait time to the timeout and wait longer.
+            // However, if the unit indicated an error already, then we're
+            // finished.
+            if (!response->code) {
                 mcTrace(30, MDRIVE_CHANNEL_RX, "Waiting longer ...");
                 clock_gettime(CLOCK_REALTIME, &now);
                 tsAdd(&timeout, &more_waittime, &now);
-                continue;
+                goto receive;
             }
-            // Detect remote echo
-            else if (options->expect_data && device->echo == EM_ON
-                    && response->length) {
-                // In echo mode, then unit will send the request back in the
-                // response. On [swift OSes], the response will be closed
-                // after the echo is received, but before the real data is
-                // received.  Be careful not to consider the \r, \n, >, ? or
-                // checksum chars, as none of them will exist in the
-                // response buffer
-                if (strncmp(response->buffer, buffer, response->length) == 0) {
-                    // Clear the buffer and set the echo flag
-                    *response->buffer = 0;
-                    response->length = 0;
-                    response->echo = true;
-                    // Wait for the real response
-                    clock_gettime(CLOCK_REALTIME, &now);
-                    tsAdd(&timeout, &more_waittime, &now);
-                    continue;
-                }
+        }
+        // Detect remote echo
+        else if (options->expect_data && device->echo == EM_ON
+                && response->length) {
+            // In echo mode, then unit will send the request back in the
+            // response. On [swift OSes], the response will be closed after
+            // the echo is received, but before the real data is received.
+            // Be careful not to consider the \r, \n, >, ? or checksum
+            // chars, as none of them will exist in the response buffer
+            if (strncmp(response->buffer, buffer, response->length) == 0) {
+                // Clear the buffer and set the echo flag
+                *response->buffer = 0;
+                response->length = 0;
+                response->echo = true;
+                // Wait for the real response
+                clock_gettime(CLOCK_REALTIME, &now);
+                tsAdd(&timeout, &more_waittime, &now);
+                goto receive;
             }
-        // By default, don't retry receiving. Only retry if a 'continue'
-        // statement is reached
-        } while(false);
+        }
 
         if (response && response->txid == txid) {
             status = mdrive_classify_response(device, response);
