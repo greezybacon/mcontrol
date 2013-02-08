@@ -1,0 +1,16 @@
+# vim: set filetype=conf
+
+[cli]
+standalone = 1
+history = 1000
+
+[paths]
+microcode = /opt/dosis/mcontrol-cli/microcode/dosis-1.7
+firmware = /opt/dosis/mcontrol-cli/firmware
+
+[motors]
+# Place shortcuts to motor connection strings here, for instance
+# b = mdrive:///dev/ttyM2@115200:b
+#
+# And define a prefix usuable by default
+prefix = mdrive:///dev/tty

@@ -1,5 +1,5 @@
-__all__ = ['connect', 'naming', 'microcode', 'standalone', 'test', 'trace',
-           'utils', 'Mixin']
+__all__ = ['connect', 'naming', 'microcode', 'startup', 'standalone',
+           'test', 'trace', 'utils', 'Mixin']
 
 class Mixin(object): pass
 
@@ -12,6 +12,17 @@ def initializer(func):
     return func
 
 initializer.ignore = True
+
+def destructor(func):
+    """
+    Specifies a function that should be run when the main CLI environment is
+    shut down -- that is, when the CLI is exiting back to the operating
+    system
+    """
+    func.destructor = True
+    return func
+
+destructor.ignore = True
 
 def trim(docstring):
     if not docstring:

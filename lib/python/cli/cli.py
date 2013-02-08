@@ -5,7 +5,9 @@ from lib import term
 
 import cmd
 import inspect
+import os.path
 import re
+import readline
 import sys
 
 class Shell(cmd.Cmd, object):
@@ -32,6 +34,7 @@ Version 0.1-beta
         'ctrl-c-abort': False,
     }
     initializers = []
+    destructors = []
 
     def __init__(self, context=None, scripts=None, options=None):
         cmd.Cmd.__init__(self)
@@ -51,6 +54,16 @@ Version 0.1-beta
         if scripts:
             for s in scripts:
                 self.cmdqueue = open(s, 'rt').readlines()
+
+    def run_destructors(self):
+        if type(self) is Shell:
+            for x in self.destructors:
+                if hasattr(x, 'im_func'):
+                    # Python2
+                    x.im_func(self)
+                else:
+                    # Python3
+                    x(self)
 
     def __getitem__(self, what):
         return self.context[what]
@@ -106,6 +119,8 @@ Version 0.1-beta
                 method.__doc__ = trim(method.__doc__)
             if hasattr(method, 'initializer'):
                 cls.initializers.append(method)
+            if hasattr(method, 'destructor'):
+                cls.destructors.append(method)
 
     def out(self, what):
         where = self.context['stdout']
@@ -134,6 +149,14 @@ Version 0.1-beta
         # Drop comments
         line = re.sub(r'#.*$', '', line)
 
+        if line not in ("EOF","") and len(self.cmdqueue) == 0:
+            # XXX: not self.cmdqueue will still record the last queued
+            #      command
+            readline.add_history(line)
+
+        # Expand home folder
+        line = os.path.expanduser(line)
+
         # Substitute {var} expressions
         return line.format(**self['env'])
 
@@ -158,8 +181,9 @@ Version 0.1-beta
                 shell = shell.afterlife
                 shell.afterlife = None
             else:
-                self.halt_all_motors()
                 break
+        self.halt_all_motors()
+        self.run_destructors()
 
     def halt_all_motors(self):
         for name, context in self['motors'].items():
