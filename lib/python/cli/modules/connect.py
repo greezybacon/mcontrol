@@ -34,6 +34,10 @@ class MotorConnect(Mixin):
         Usage: connect mdrive:///dev/port0[@speed][:name] [recover]
 
         """
+        # Allow shortcuts to be defined in the settings file
+        shortcuts = self.get_settings('motors')
+        if line in shortcuts:
+            line = shortcuts[line]
         parts = line.split()
         recovery = False
         if 'recover' in parts:
@@ -64,6 +68,19 @@ class MotorConnect(Mixin):
 
             self.context['motors'][address] = MotorContext(self,
                 motor, name=address)
+
+    def complete_connect(self, text, line, start, end):
+        """
+        Allow completion by the 'motors/prefix' setting or shortcuts defined
+        in the settings file
+        """
+        shortcuts = self.get_settings('motors')
+        prefix = shortcuts.pop('prefix', '')
+        if text in shortcuts:
+            if shortcuts[text] not in line:
+                return [shortcuts[text]]
+        return [x for x in [prefix] + shortcuts.keys()
+            if x.startswith(text)]
 
     def do_switch(self, name):
         """
