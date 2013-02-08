@@ -841,7 +841,7 @@ mdrive_communicate(mdrive_device_t * device, const char * command,
     // additional wait time (requires checksum mode and responds == true)
     int onechartime = mdrive_xmit_time(device->comm, 1);
     struct timespec now, timeout, first_waittime = { .tv_sec = 0 },
-        more_waittime = { .tv_nsec = (int)15e6 + onechartime * 62 };
+        more_waittime = { .tv_nsec = (int)25e6 + onechartime * 62 };
 
     if (device->party_mode)
         // NOTE: Dec the buffer size to save room for the checksum byte
@@ -871,8 +871,8 @@ mdrive_communicate(mdrive_device_t * device, const char * command,
     if (options->waittime)
         first_waittime = *options->waittime;
     else
-        // Allow for a 40ms deviation in latency
-        first_waittime.tv_nsec = device->stats.latency + (int)40e6;
+        // Allow for a 30ms deviation in latency
+        first_waittime.tv_nsec = device->stats.latency + (int)30e6;
 
     // The [txlock] is really more of a transaction lock, so it should be
     // held the entire time communicating to the device or waiting or
