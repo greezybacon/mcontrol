@@ -74,6 +74,11 @@ class TraceCommands(Mixin):
         self['trace-tee'] = False
 
 class TeeableTrace(Trace):
+    def __del__(self):
+        super(TeeableTrace, self).__del__()
+        if self['trace-tee']:
+            self['trace-tee'].close()
+
     def __getitem__(self, name):
         return self.shell[name]
 
