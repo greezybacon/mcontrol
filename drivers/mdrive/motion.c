@@ -58,11 +58,13 @@ mdrive_move(Driver * self, motion_instruction_t * command) {
             return ENOTSUP;
     }
 
+    int status = mdrive_drive_enable(device);
+    if (status)
+        return status;
 
     device->movement = move_info;
     clock_gettime(CLOCK_REALTIME, &device->movement.start);
 
-    int status;
     if (device->microcode.features.move) {
         status = mdrive_move_assisted(device, command, steps);
         if (status)
@@ -508,18 +510,38 @@ mdrive_async_complete_cancel(mdrive_device_t * device) {
 }
 
 int
+mdrive_drive_enable(mdrive_device_t * device) {
+    if (!device)
+        return EINVAL;
+    else if (!device->drive_enabled && !mdrive_set_variable(device, "DE", 1))
+        return EIO;
+    return 0;
+}
+
+int
+mdrive_drive_disable(mdrive_device_t * device) {
+    if (!device)
+        return EINVAL;
+    else if (device->drive_enabled && !mdrive_set_variable(device, "DE", 0))
+        return EIO;
+    return 0;
+}
+
+int
 mdrive_lazyload_motion_config(mdrive_device_t * device) {
     if (!device->loaded.encoder) {
         // Fetch microstep and encoder settings
-        const char * vars[] = { "MS", "EE" };
-        int * vals[] = { &device->steps_per_rev, &device->encoder };
-        if (0 != mdrive_get_integers(device, vars, vals, 2))
+        const char * vars[] = { "MS", "EE", "DE" };
+        int * vals[] = { &device->steps_per_rev, &device->encoder,
+            &device->drive_enabled };
+        if (0 != mdrive_get_integers(device, vars, vals, 3))
             return EIO;
  
         // TODO: Check if different part numbers have varying steps per
         //       revolution
         device->steps_per_rev *= 200;
         device->loaded.encoder = true;
+        device->loaded.enabled = true;
     }
     return 0;
 }
