@@ -111,7 +111,7 @@ class MotorContext(Shell):
         floating point number is given, the value will be converted to a
         smaller unit automagically
         """
-	return self.motor._get_value_and_units(float(value), units)
+        return self.motor._get_value_and_units(float(value), units)
 
     def do_move(self, where):
         self.last_move_event = None
