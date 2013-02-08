@@ -16,12 +16,26 @@ cdef void pyTraceEventCallback(event_info_t * info) with gil:
         info.data.trace.level,
         info.data.trace.channel, text.decode('latin-1'))
 
+cdef extern from "signal.h":
+    int kill(int, int)
+    enum:
+        SIGINT
+
+cdef extern from "stdlib.h":
+    int getpid()
+
 trace_instances = {}
 cdef void pyTraceCallback(int id, int level, int channel,
         char * buffer) with gil:
     PyEval_InitThreads()
     if id in trace_instances:
-        trace_instances[id].emit(level, channel, buffer.decode('latin-1'))
+        try:
+            trace_instances[id].emit(level, channel, buffer.decode('latin-1'))
+        except KeyboardInterrupt:
+            kill(getpid(), SIGINT);
+        except UnicodeError:
+            # Unable to decode the string (don't know why, though)
+            pass
 
 cdef class Trace(object):
     cdef int id
