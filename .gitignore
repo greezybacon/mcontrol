@@ -16,3 +16,6 @@ lib/dispatch.h
 
 # RPM build folder
 .rpmbuild
+
+# Compiled microcode
+drivers/mdrive/microcode/build
