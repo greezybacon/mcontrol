@@ -14,9 +14,12 @@ class MicrocodeMixin(Mixin):
         inserted.
         """
         if not os.path.exists(what):
-            self.error('{0}: File does not exist'.format(what))
-        else:
-            what = os.path.abspath(what)
+            # Apply default path from settings file
+            installed = self['settings']['paths:microcode'] + '/' + what
+            if not os.path.exists(installed):
+                return self.error('{0}: File does not exist'.format(what))
+            what = installed
+        what = os.path.abspath(what)
         self.motor.load_microcode(what)
 
     def complete_load_microcode(self, text, line, start, end):
@@ -33,9 +36,11 @@ class MicrocodeMixin(Mixin):
         factory reset on the motor and will clear any microcode and settings
         previously saved in the motor.
         """
-
         if not os.path.exists(what):
-            self.error('{0}: File does not exist'.format(what))
-        else:
-            what = os.path.abspath(what)
+            # Apply default path from settings file
+            installed = self['settings']['paths:firmware'] + '/' + what
+            if not os.path.exists(installed):
+                return self.error('{0}: File does not exist'.format(what))
+            what = installed
+        what = os.path.abspath(what)
         self.motor.load_firmware(what)
