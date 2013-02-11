@@ -40,8 +40,8 @@ class Name(object):
     def __repr__(self):
         return self.__unicode__()
     def __unicode__(self):
-        return "{0}: {1}: {2}".format(
-            type(self).__name__, self.name, self.defined)
+        return "{0}: {1}: {2} @ {3}".format(
+            type(self).__name__, self.name, self.defined, self.line)
 
 class Label(Name):
     def __init__(self, name):
@@ -147,8 +147,8 @@ class Compiler(object):
                 else:
                     val = val[name]
         except KeyError:
-            raise CompileError('{0}: Undefined config variable'
-                .format(var))
+            warn("{0}: Undefined config variable".format(var), Warning)
+            val = "${0}".format(var)
         return val
 
     @ast_dispatcher(memoize=True)
@@ -175,6 +175,15 @@ class Compiler(object):
             self.visit(w)
         items = self.POP_BLOCK()
         name = items.pop(0)
+        if name in grammar.label_args:
+            # This command receives a label (not a variable) as an argument
+            for i in items:
+                try:
+                    l = self.FIND_LABEL(i, force_convert=True)
+                    l.calls += 1
+                except KeyError:
+                    # Not a label
+                    pass
         lhs = self.FIND_VAR(name)
         lhs.assignments += 1
 
@@ -225,6 +234,10 @@ class Compiler(object):
             # Undeclared variable -- warning will be issued later if not
             # defined before the end of the microcode
             pass
+        except CompileError:
+            # If variable is used as a label, or visa-versa, emit the actual
+            # error somewhere else
+            pass
 
         expr = ' '.join(B)
         # Attempt to reduce the expression
@@ -262,13 +275,13 @@ class Compiler(object):
             self.names[node.what] = Name(node.what, node.__name__.line)
         self.PUSH(node.what)
 
-    def FIND_LABEL(self, name):
+    def FIND_LABEL(self, name, force_convert=False):
         name = self.names[name]
-        if type(name) is Name:
+        if type(name) is Name or force_convert:
             self.names[name.name] = name = Label.fromName(name)
         elif type(name) is not Label:
             raise CompileError('{0} used as a label'.format(
-                name.name))
+                name))
         return name
 
     def FIND_VAR(self, name):
