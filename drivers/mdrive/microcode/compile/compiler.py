@@ -91,6 +91,8 @@ class Compiler(object):
         self.names = {}
         self.depth = 0
         self.current_frame = self.stack[-1]
+        self.defaults = []
+        self.current_label = None
 
     def PUSH(self, what):
         self.current_frame.append(what)
@@ -186,7 +188,6 @@ class Compiler(object):
                     pass
         lhs = self.FIND_VAR(name)
         lhs.assignments += 1
-
         if name in grammar.read_only:
             raise CompileError("Assignment to read-only internal variable {0}"
                 .format(name))
@@ -194,6 +195,12 @@ class Compiler(object):
             raise CompileError("{0}: Assignment to internal command"
                 .format(name))
 
+        # TODO: Keep track of defaults / assignments within labeled blocks.
+        #       Defaults should be emitted separately, and commonly, before
+        #       the first label is defined
+        #if self.current_label is None:
+        #    self.defaults.append(lhs)
+        #    lhs.default = ", ".join(items)
         operator = '= ' if name not in grammar.commands else ''
         self.PUSH("{0} {1}{2}".format(name, operator, ", ".join(items)))
 
@@ -253,7 +260,7 @@ class Compiler(object):
     @visit.when('label')
     def visit(self, node):
         self.visit(node.what[0])
-        l = self.FIND_LABEL(node.what[0].what)
+        self.current_label = l = self.FIND_LABEL(node.what[0].what)
         self.label = l.name
         if l.defined:
             raise CompileError("Label '{0}' redefined, from {1}"
