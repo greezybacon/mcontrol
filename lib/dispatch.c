@@ -9,6 +9,13 @@
 
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
+
+static int
+LookupByMessageType(const void * c1, const void * c2) {
+    return ((struct dispatch_table *)c1)->type
+        - ((struct dispatch_table *)c2)->type;
+}
 
 /**
  * mcDispatchProxyMessage
@@ -29,24 +36,16 @@
  */
 int
 mcDispatchProxyMessage(request_message_t * message) {
-    // TYPE__LAST is the id of the last item + 1, TYPE__FIRST is the id of
-    // the first item - 1. Therefore the number of items is LAST - FIRST - 1
-    int imin = 0, imax = TYPE__LAST - TYPE__FIRST - 1, imid;
-    struct dispatch_table * e = table;
-
     assert(message != NULL);
 
-    while (imax >= imin) {
-        // Estimate midpoint of the list
-        imid = ((imax - imin) >> 1) + imin;
-        assert(imid < imax);
+    // TYPE__LAST is the id of the last item + 1, TYPE__FIRST is the id of
+    // the first item - 1. Therefore the number of items is LAST - FIRST - 1
+    struct dispatch_table key = { .type = message->type },
+        * e = bsearch(
+            &key, table, TYPE__LAST - TYPE__FIRST - 1,
+            sizeof(struct dispatch_table), LookupByMessageType);
 
-        if ((e+imid)->type < message->type)
-            imin = imid + 1;
-        else
-            imax = imid;
-    }
-    if (imax == imin && e->type == message->type) {
+    if (e) {
         e->callable(message);
         return 0;
     }
