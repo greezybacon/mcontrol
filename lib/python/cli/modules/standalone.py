@@ -26,9 +26,10 @@ class StandaloneCommands(Mixin):
         else:
             Library.run_in_process()
             import os
+            path = self['settings']['paths:drivers'] \
+                or os.path.dirname(__file__) + "/../../../../drivers"
             # Load all the motor drivers -- this would be nice to make a
             # separate cli command. XXX: Adjust this to the final resting
             # place of the drivers
-            Library.load_driver(os.path.dirname(__file__)
-                + "/../../../../drivers/mdrive.so")
+            Library.load_driver(path + "/mdrive.so")
 
