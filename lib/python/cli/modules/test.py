@@ -8,7 +8,7 @@ from __future__ import print_function
 
 from . import Mixin, trim
 
-from cli import Shell
+from .. import Shell
 
 import cmd
 

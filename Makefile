@@ -37,7 +37,7 @@ install: install-dirs
 
 rpm:
 	mkdir -p ${TMPDIR}/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
-	git archive feature/rpm . -o ${TMPDIR}/SOURCES/mcontrol-source.tar \
+	git archive HEAD . -o ${TMPDIR}/SOURCES/mcontrol-source.tar \
 		--prefix=mcontrol-1.0/
 	cp mcontrol.spec ${TMPDIR}/SPECS
 	rpmbuild --define "_topdir ${TMPDIR}" \

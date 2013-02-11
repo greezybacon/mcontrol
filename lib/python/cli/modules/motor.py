@@ -1,9 +1,9 @@
-from cli import Shell
+from .. import Shell
 
 from mcontrol import all_units, Profile, Event, Motor
 from mcontrol import NoDaemonException
 
-from lib import term
+from ..lib import term
 
 import math
 import time

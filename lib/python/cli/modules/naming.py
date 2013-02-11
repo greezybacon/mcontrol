@@ -14,8 +14,8 @@ from mcontrol import MdriveMotor
 
 from . import Mixin, trim
 
-from cli import Shell
-from lib import term
+from .. import Shell
+from ..lib import term
 
 import os.path
 import re
