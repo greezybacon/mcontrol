@@ -36,10 +36,10 @@ install: install-dirs
 	$(MAKE) BIN_DIR="$(BIN_DIR)" -C lib/python install
 
 rpm:
-	rpmbuild --define "_topdir %(pwd)" \
-	--define "_builddir /tmp" \
-	--define "_rpmdir %{_topdir}" \
-	--define "_srcrpmdir %{_topdir}" \
-	--define "_specdir %{_topdir}" \
-	--define "_sourcedir %{_topdir}" \
-	-ba mcontrol.spec
+	mkdir -p ${TMPDIR}/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
+	git archive feature/rpm . -o ${TMPDIR}/SOURCES/mcontrol-source.tar \
+		--prefix=mcontrol-1.0/
+	cp mcontrol.spec ${TMPDIR}/SPECS
+	rpmbuild --define "_topdir ${TMPDIR}" \
+		-ba ${TMPDIR}/SPECS/mcontrol.spec
+	find ${TMPDIR}/RPMS/ -type f -name "*.rpm" -exec mv {} . \;

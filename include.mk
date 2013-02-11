@@ -23,6 +23,7 @@ INSTALL_DIR = ${INSTALL} -d ${INSTALL_FLAGS} ${DIR_PERMS}
 
 SUDO = 
 
+TMPDIR = $(shell pwd)/.rpmbuild
 BIN_DIR = $(INSTALL_ROOT)/bin
 LIB_DIR = $(INSTALL_ROOT)/lib
 OPT_DIR = $(DESTDIR)/opt/dosis/mcontrol

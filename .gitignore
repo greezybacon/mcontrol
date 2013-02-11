@@ -13,3 +13,6 @@ lib/python/mcontrol/*.c
 lib/client.c
 lib/client.h
 lib/dispatch.h
+
+# RPM build folder
+.rpmbuild
