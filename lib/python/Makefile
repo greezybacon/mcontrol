@@ -10,4 +10,4 @@ clean:
 	$(RM) mcontrol/mcontrol.c
 
 install:
-	python setup.py install
+	python setup.py install --prefix $(DESTDIR)/ --install-scripts $(BIN_DIR)/

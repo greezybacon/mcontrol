@@ -1,7 +1,6 @@
 CC=gcc
 CFLAGS=--std=gnu99 -Wall -fPIC -D_GNU_SOURCE -pedantic -O2
 LDFLAGS=-lrt -ldl -lpthread
-DEBUG=1
 
 SOURCES=motor.c message.c driver.c query.c dispatch.c client.c locks.c \
 	motion.c events.c profile.c trace.c firmware.c callback.c
