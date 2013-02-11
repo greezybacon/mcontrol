@@ -16,6 +16,9 @@ class Parser(object):
     def __init__(self, environ=None):
         self.r = []
         self.env = environ or {}
+        if 'DEBUG' in self.env and self.env['DEBUG']:
+            import pyPEG
+            pyPEG.print_trace = True
 
     def parse(self, *files):
         sys.argv[1:] = files
@@ -33,6 +36,16 @@ class Parser(object):
         for line in self.r:
             if line.startswith('VA') == declarations:
                 where.write(line + '\n')
+
+    def has_program_entry(self):
+        """
+        Returns true if the parsed microcode has a line with 'PG XX'
+        somewhere in it
+        """
+        if 'PG' in self.compiler.names:
+            return self.compiler.names['PG'].assignments > 0
+        else:
+            return False
 
 class pragma_dispatcher(overloaded):
 
@@ -59,6 +72,8 @@ class Preparser(object):
         self.skip = [False]             # If at this level code is ignored
         self.matched = [False]          # If at this level an if (x) was true
         self.environ = environ or {}
+        if not 'modules' in self.environ:
+            self.environ['modules'] = ""
 
     def eval(self, condition):
         return eval(condition, self.library, self.environ)
@@ -160,7 +175,7 @@ class Preparser(object):
         self.environ['modules'] += ' ' + filename
 
         import os.path
-        dir = os.path.dirname(node.__name__.line[1])
+        dir = os.path.dirname(node.__name__.line[1]) or '.'
         filename = dir + '/' + filename
 
         self.tree.extend(Parser(self.environ).parse(filename))

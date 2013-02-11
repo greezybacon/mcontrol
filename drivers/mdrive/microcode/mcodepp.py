@@ -4,7 +4,7 @@ from compile import parse
 
 import sys
 
-p = parse.Parser(environ={'DEBUG': True})
+p = parse.Parser(environ={'DEBUG': False})
 
 p.parse(*sys.argv[1:])
 p.compile()
@@ -13,10 +13,12 @@ p.compile()
 p.compose(sys.stdout, declarations=True)
 
 # Enter programming mode
-print("PG 50")
+if not p.has_program_entry():
+    print("PG 100")
 
 # Send microcode
 p.compose(sys.stdout, declarations=False)
 
 # Exit
-print("PG")
+if not p.has_program_entry():
+    print("PG")
