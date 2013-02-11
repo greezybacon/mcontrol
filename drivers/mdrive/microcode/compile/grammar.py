@@ -2,18 +2,21 @@ from .pyPEG import keyword, ignore
 import re
 
 # Bare -- commands that (can) take no arguments
-bare = {'E', 'S', 'H', 'RT'}
+bare = {'E', 'S', 'H', 'PG', 'RT'}
 # Commands -- called in the form of COMMAND <space> ARG, ARG
 commands = {'CL', 'DC', 'IC', 'H', 'HM', 'MA', 'MR', 'OE', 'PR', 'SL', 'TI',
-    'BR'}
+    'BR', 'PG'}
 # Read-only -- assignment is not allowed
 read_only = {'BY', 'DN', 'EF', 'I1', 'I2', 'I3', 'I4', 'I5', 'I6', 'IF',
     'IH', 'IL', 'IN', 'IT', 'MV', 'PC', 'PN', 'SN', 'V', 'VC', 'VR'}
 # Read-write -- assignment in the form of VAR = VAL, VAL2
-read_write = {'A', 'C1', 'C2', 'CM', 'CR', 'D', 'D1', 'D2', 'D3', 'D4',
-    'D5', 'DB', 'DE', 'EE', 'ES', 'ER', 'FC', 'FM', 'HC', 'HT', 'JE', 'LM',
-    'MS', 'MT', 'NE', 'P', 'PM', 'R1', 'R2', 'R3', 'R4', 'RC', 'S1', 'S2',
-    'S3', 'S4', 'S5', 'SF', 'SM', 'ST', 'TE', 'VI', 'VM'}
+read_write = {'A', 'C1', 'C2', 'CE', 'CK', 'CM', 'CR', 'D', 'D1', 'D2',
+    'D3', 'D4', 'D5', 'DB', 'DE', 'DG', 'EE', 'EM', 'ES', 'ER', 'FC', 'FM',
+    'HC', 'HT', 'JE', 'LK', 'LM', 'MS', 'MT', 'NE', 'OT', 'OL', 'P', 'PM',
+    'QD', 'R1', 'R2', 'R3', 'R4', 'RC', 'S1', 'S2', 'S3', 'S4', 'S5', 'SF',
+    'SM', 'ST', 'TE', 'VI', 'VM'}
+# Label-args commands take a label as an argument
+label_args = {'OE', 'TI'}
 
 internal = commands | bare | read_only | read_write
 assignable = commands | read_write
@@ -44,11 +47,11 @@ def math():         return re.compile(r"[+*/&|^-]")
 def statement():    return [call, branch, return_, label,
                             declaration, assignment, command], 0, comment, _newline
 
-def _ws1():         return ignore('[ \t]+')
-def _ws():          return ignore('[ \t]*')
-def _newline():     return ignore('\n|\r\n')
+def _ws1():         return ignore(r'[ \t]+')
+def _ws():          return ignore(r'[ \t]*')
+def _newline():     return _ws, ignore('\n|\r\n')
 
 def pragma():       return ignore("#"), _ws, re.compile(".*$", re.M), _newline
 
-def language():     return -2, (_ws, [pragma, statement,
-                            (comment, _newline), _newline])
+def language():     return -2, (_ws, [(comment, _newline), pragma, statement,
+                                _newline])
