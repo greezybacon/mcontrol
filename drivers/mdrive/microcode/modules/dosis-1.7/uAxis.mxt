@@ -178,7 +178,7 @@ LB G4
 	H 1
 	R2=C1/25
 	R3=R2-C2
-	PR "    Position - ", P "	Error - ",R3
+	PR "    Position - ", P, "	Error - ",R3
 	BR G4, MV<>0
 	PR "	End Position - ", P
 	RT
