@@ -25,7 +25,7 @@ MT=0
 A=20480
 D=40000
 VI=200
-VM=20480
+VM=15360
 
 'IO
 OL 0
@@ -45,18 +45,18 @@ VA B0=100000        	'Deceleration
 VA V0=4096           	'V Max
 VA W0=200            	'V Initial
 VA F0=1200           	'Following Error (SF)
-VA X0=50            	'Rotor Stall
+' VA X0=50            	'Rotor Stall
 VA Z0=5           	'Dead Band
 VA J0=100             	'Run Current
 VA K0=100		'Hold Current
 
 'Move Profiles (MOTION 1) (normal)
-VA A1=20480        	'Acceleration
+VA A1=10240        	'Acceleration
 VA B1=40000        	'Deceleration
-VA V1=20480          	'V Max
+VA V1=15360          	'V Max
 VA W1=200            	'V Initial
 VA F1=1200            	'Following Error (SF)
-VA X1=20           	'Rotor Stall
+' VA X1=20           	'Rotor Stall
 VA Z1=5            	'Dead Band
 VA J1=100        	'Run Currente
 VA K1=50		'Hold Current
@@ -79,10 +79,15 @@ LB AA
 	PR "\$Revision: 1.27 $"
 	E
 
+' Include the 'TB' routine to trust the brake and release the coils (DE=0)
+#include "../brake.mxt"
 
 
 LB M1
   CL P0
+  ' Clear previous trip on time (8), if any
+  TE = TE & !8
+  DE = 1
   ' if we are not in home do routine
   BR M2, I1<>1
   ' if we are in home more off
@@ -101,6 +106,9 @@ LB M2
 LB G1
 ' R1 holds attempt count
 	HC 100
+  ' Clear previous trip on time (8), if any
+  TE = TE & !8
+  DE = 1
 	R1 0
 	PD = 0
 	PZ = P
@@ -153,15 +161,15 @@ LB G4
 ' Exit Success
 LB G8
   CL P1
-  HC 50
   PR "1"
+  BR TB
 E
 
 ' Exit Failure
 LB G9
   CL P1
-  HC 50
   PR "0"
+  BR TB
 E
 
 'ABS Function 
@@ -189,7 +197,6 @@ LB P0
  VM = V0
  VI = W0
  SF = F0
- X = X0
  DB = Z0
  RC = J0
  HC = K0
@@ -204,7 +211,6 @@ LB P1
  VM = V1
  VI = W1
  SF = F1
- X = X1
  DB = Z1
  RC = J1
  HC = K1
