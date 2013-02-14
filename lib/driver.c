@@ -260,7 +260,7 @@ Driver *
 mcEnumDriversNext(void ** enum_id) {
     Driver * retval;
 
-    if (enum_id == NULL)
+    if (enum_id == NULL || *enum_id == NULL)
         return NULL;
 
     // XXX: Make this safer
