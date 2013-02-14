@@ -162,14 +162,16 @@ LB G4
 LB G8
   CL P1
   PR "1"
-  BR TB
+  TT = 100, TB
+  TE = TE | 8
 E
 
 ' Exit Failure
 LB G9
   CL P1
   PR "0"
-  BR TB
+  TT = 100, TB
+  TE = TE | 8
 E
 
 'ABS Function 

@@ -9,8 +9,9 @@
 ' and a relative time trip is installed to catch the motor if it falls
 ' because of a brake failure.
 '
-' Motor coils are disable here after 50ms if the brake is though to be
-' operating properly.
+' This routine should not be called directly. Instead, schedule it to be
+' called after some reasonable amount of time with the TT instruction.
+' Anything over 50ms should be sufficient for the brake to engage.
 '
 ' Context:
 ' FB = Status of brake -- 0 is ok, >0 is failed
@@ -18,11 +19,6 @@
 '
 VA FB = 0     ' Failed Brake
 LB TB
-  ' Add the status of the brake failure to the return status, and write the
-  ' return status back to the Dosis software
-  R4 = R4 | FB
-  PR R4
-
   ' Cache value of Q1 for sensing a race in the WB routine. Q1 should only
   ' change when this routine is called
   R3 = Q1
@@ -33,17 +29,17 @@ LB TB
   ' if (FB == 0) {
 
     ' Disable motor coils after brake has time to engage
-    H 50
-    DE 0
+    DE = 0
 
     ' Trip after 20ms and check if the brake failed
-    TT 20, WB
+    TT = 20, WB
     ' Enable trip-on-time (8)
     TE = TE | 8
 
   ' }
   LB T1
-E
+' RT is required for trip routines
+RT            ' End of TB
 
 ''
 ' WB
@@ -76,12 +72,12 @@ LB WB
   R4 = P - Q1
 
   ' See if we fell over DB
-  BR W3, R4 <= DB
+  BR W3, R4 <= 50
 
   ' if (DE == 0 && FELL > DB) {
 
     ' Brake has failed!
-    FB = 2
+    FB = 1
 
     ' Enable the coils to halt the motor
     HC = 100
