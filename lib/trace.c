@@ -18,12 +18,12 @@
 // declared in the event_data.event structure.
 static const int MAX_TRACE_SIZE = 512;
 
-static const int MAX_TRACE_CHANNELS = sizeof(unsigned long long);
+static const int MAX_TRACE_CHANNELS = sizeof(unsigned long long) * 8;
 static struct trace_channel * trace_channels = NULL;
 static int trace_channel_count = 0;
 static int trace_channel_serial = 0;
 
-static const int MAX_SUBSCRIBERS = sizeof(unsigned long long);
+static const int MAX_SUBSCRIBERS = sizeof(unsigned long long) * 8;
 static struct trace_subscriber * subscribers = NULL;
 static int subscriber_count = 0;
 static int subscriber_serial = 0;
