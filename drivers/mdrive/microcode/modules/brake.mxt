@@ -58,7 +58,7 @@ RT            ' End of TB
 LB WB
   ' If the motor coils are enabled, there's no need to check for brake
   ' failure.
-  BR W3, DE = 1
+  BR W8, DE = 1
 
   ' Handle possible race where Q1 has been changed for a move, but this
   ' time trip routine was invoked before the G1 (Move) routine.
@@ -72,7 +72,7 @@ LB WB
   R4 = P - Q1
 
   ' See if we fell over DB
-  BR W3, R4 <= 50
+  BR W8, R4 <= 50
 
   ' if (DE == 0 && FELL > DB) {
 
@@ -112,7 +112,7 @@ LB WB
     ' Quit watching if the brake failed
     BR W4
   ' }
-  LB W3
+  LB W8
   ' else {
     ' Brake is holding, check again in 25ms (40Hz)
     TT = 25, WB
