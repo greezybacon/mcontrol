@@ -45,7 +45,6 @@ VA B0=100000        	'Deceleration
 VA V0=4096           	'V Max
 VA W0=200            	'V Initial
 VA F0=1200           	'Following Error (SF)
-' VA X0=50            	'Rotor Stall
 VA Z0=5           	'Dead Band
 VA J0=100             	'Run Current
 VA K0=100		'Hold Current
@@ -56,11 +55,29 @@ VA B1=40000        	'Deceleration
 VA V1=15360          	'V Max
 VA W1=200            	'V Initial
 VA F1=1200            	'Following Error (SF)
-' VA X1=20           	'Rotor Stall
 VA Z1=5            	'Dead Band
 VA J1=100        	'Run Currente
 VA K1=50		'Hold Current
 
+'Move Profiles (MOTION 2) (slow -- short distances)
+VA A2=10240        	'Acceleration
+VA B2=10240        	'Deceleration
+VA V2=15360          	'V Max
+VA W2=200            	'V Initial
+VA F2=1200            	'Following Error (SF)
+VA Z2=5            	'Dead Band
+VA J2=100        	'Run Currente
+VA K2=50		'Hold Current
+
+'Move Profiles (MOTION 3) (fast -- long, downward distances)
+VA A3=158141        	'Acceleration (0.3 g)
+VA B3=105428        	'Deceleration (0.2 g)
+VA V3=34133          	'V Max (1000rpm)
+VA W3=200            	'V Initial
+VA F3=1200            	'Following Error (SF)
+VA Z3=5            	'Dead Band
+VA J3=50        	'Run Currente
+VA K3=50		'Hold Current
 
 VA Q1
 VA PD = 0
@@ -101,20 +118,54 @@ LB M2
 	BR G8, ST<>1 	
 	BR G9
 
+''
+' SR
+' Select Profile
+'
+' Selects and loads a profile appropriate for the move scheduled in Q1.
+' These profiles will be used
+'
+'  Distance              | Selected profile
+' -----------------------+----------------------
+'  |dP| < 6144 (4.5")    | P2 (slow)
+'  dP > 6144             | P3 (fast-downward)
+'  dP < -6144            | P1 (normal, upward)
+'
+LB SR
+  ' Calculate the change in position. Positive is downward.
+  R4 = Q1 - P
+
+  ' Compute the absolute value of the distance, too
+  R3 = R4
+  BR S0, R3 > 0
+  ' if (R3 <= 0) {
+    R3 = R3 * -1
+  ' }
+  LB S0
+
+  CL P3, R4 > 6144
+  CL P1, R4 < -6144
+  CL P2, R3 <= 6144
+
+RT
 
 ' Programmed Move
 LB G1
 ' R1 holds attempt count
-	HC 100
   ' Clear previous trip on time (8), if any
   TE = TE & !8
   DE = 1
+
+  ' Use profile 1, 2, or 3 based on distance
+  CL SR
+ 
 	R1 0
 	PD = 0
 	PZ = P
 	BR G2
 	E
 LB G7
+	HC 100
 	H SP
 LB G2
 	ST 0
@@ -162,7 +213,7 @@ LB G4
 LB G8
   CL P1
   PR "1"
-  TT = 100, TB
+  TT = 2000, TB
   TE = TE | 8
 E
 
@@ -170,7 +221,7 @@ E
 LB G9
   CL P1
   PR "0"
-  TT = 100, TB
+  TT = 2000, TB
   TE = TE | 8
 E
 
@@ -194,31 +245,56 @@ E
 'CALL P0 	Set Motion Profile 0 (HOMING)
 '=========================================================================
 LB P0
- A = A0
- D = B0
- VM = V0
- VI = W0
- SF = F0
- DB = Z0
- RC = J0
- HC = K0
- RT
-E
+  A = A0
+  D = B0
+  VM = V0
+  VI = W0
+  SF = F0
+  DB = Z0
+  RC = J0
+  HC = K0
+RT
 '=========================================================================
 'CALL P1 	Set Motion Profile 1(running)
 '=========================================================================
 LB P1
- A = A1
- D = B1
- VM = V1
- VI = W1
- SF = F1
- DB = Z1
- RC = J1
- HC = K1
- RT
-E
+  A = A1
+  D = B1
+  VM = V1
+  VI = W1
+  SF = F1
+  DB = Z1
+  RC = J1
+  HC = K1
+RT
 
+'=========================================================================
+'CALL P2 	Set Motion Profile 2(short haul)
+'=========================================================================
+LB P2
+  A = A2
+  D = B2
+  VM = V2
+  VI = W2
+  SF = F2
+  DB = Z2
+  RC = J2
+  HC = K2
+RT
+
+'=========================================================================
+'CALL P3 	Set Motion Profile 3(long downward haul)
+'=========================================================================
+LB P3
+  A = A3
+  D = B3
+  VM = V3
+  VI = W3
+  SF = F3
+  DB = Z3
+  RC = J3
+  HC = K3
+RT
 
 
 PG
