@@ -15,6 +15,7 @@ static struct event_xref {
     enum event_name event_code;
 } event_xrefs[] = {
     { MDRIVE_ESTALL,    EV_MOTION },
+    { MDRIVE_EDEADBAND, EV_MOTION },
     { MDRIVE_ETEMP,     EV_OVERTEMP },
     { 200,              EV_MOTOR_RESET },
     { 0, 0 }
@@ -113,13 +114,19 @@ mdrive_signal_error_event(mdrive_device_t * device, int error) {
 
     // Update stats for interesting events
     switch (error) {
-        case MDRIVE_ESTALL:
+        case MDRIVE_ESTALL:     // 86
             device->stats.stalls++;
             data.motion.stalled = true;
             // Clear the stall flag on the device
             mdrive_send(device, "ST");
             // Device is no longer moving
             device->movement.moving = false;
+            break;
+        
+        case MDRIVE_EDEADBAND:  // 92
+            data.motion.failed = true;
+            // This occurs at the end of a move, so no cleanup is really
+            // necessary
             break;
 
         case MDRIVE_ETEMP:

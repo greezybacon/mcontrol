@@ -2,21 +2,21 @@ from .pyPEG import keyword, ignore
 import re
 
 # Bare -- commands that (can) take no arguments
-bare = {'E', 'S', 'H', 'PG', 'RT'}
+bare = set(['E', 'S', 'H', 'PG', 'RT'])
 # Commands -- called in the form of COMMAND <space> ARG, ARG
-commands = {'CL', 'DC', 'IC', 'H', 'HM', 'MA', 'MR', 'OE', 'PR', 'SL', 'TI',
-    'BR', 'PG'}
+commands = set(['CL', 'DC', 'IC', 'H', 'HM', 'MA', 'MR', 'OE', 'PR', 'SL', 'TI',
+    'BR', 'PG'])
 # Read-only -- assignment is not allowed
-read_only = {'BY', 'DN', 'EF', 'I1', 'I2', 'I3', 'I4', 'I5', 'I6', 'IF',
-    'IH', 'IL', 'IN', 'IT', 'MV', 'PC', 'PN', 'SN', 'V', 'VC', 'VR'}
+read_only = set(['BY', 'DN', 'EF', 'I1', 'I2', 'I3', 'I4', 'I5', 'I6', 'IF',
+    'IH', 'IL', 'IN', 'IT', 'MV', 'PC', 'PN', 'SN', 'V', 'VC', 'VR'])
 # Read-write -- assignment in the form of VAR = VAL, VAL2
-read_write = {'A', 'C1', 'C2', 'CE', 'CK', 'CM', 'CR', 'D', 'D1', 'D2',
+read_write = set(['A', 'C1', 'C2', 'CE', 'CK', 'CM', 'CR', 'D', 'D1', 'D2',
     'D3', 'D4', 'D5', 'DB', 'DE', 'DG', 'EE', 'EM', 'ES', 'ER', 'FC', 'FM',
     'HC', 'HT', 'JE', 'LK', 'LM', 'MS', 'MT', 'NE', 'OT', 'OL', 'P', 'PM',
     'QD', 'R1', 'R2', 'R3', 'R4', 'RC', 'S1', 'S2', 'S3', 'S4', 'S5', 'SF',
-    'SM', 'ST', 'TE', 'VI', 'VM'}
+    'SM', 'ST', 'TE', 'TR', 'TT', 'VI', 'VM'])
 # Label-args commands take a label as an argument
-label_args = {'OE', 'TI'}
+label_args = set(['OE', 'TI', 'TR', 'TT'])
 
 internal = commands | bare | read_only | read_write
 assignable = commands | read_write

@@ -296,8 +296,11 @@ enum mdrive_error {
     MDRIVE_ENOLABEL = 30,       // Call an unknown label
     MDRIVE_ENOTSUP = 37,        // Feature not in device
     MDRIVE_EOVERRUN = 63,
-    MDRIVE_ETEMP = 71,
-    MDRIVE_ESTALL = 86
+    MDRIVE_ETEMP = 71,          // High-temp warning
+    MDRIVE_EHOT = 72,           // Thermal shutdown
+    MDRIVE_ELITEMP = 75,        // Linear overtemperature error
+    MDRIVE_ESTALL = 86,
+    MDRIVE_EDEADBAND = 92       // Unable to position within DB
 };
 
 // Tracing channel (source) names
