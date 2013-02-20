@@ -93,7 +93,7 @@ LB WB
     ' mechanical drag)
     VI = 8000
     ' Keep up with gravity, and try not to fall too far
-    A = 474425      ' 0.9g
+    A = 368996      ' 0.7g
     D = 105428      ' 0.2g
     ST = 0
     SL 10542
@@ -105,7 +105,6 @@ LB WB
     H
 
     ' Wait for move to finish and reset the profile to defaults
-    CL P1
     MA Q1
     H
 
