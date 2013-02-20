@@ -193,7 +193,7 @@ struct mdrive_device_list {
     Profile             profile;        // Current profile represented on the device
     struct motion_details movement;     // Information of last movement
     int                 cb_complete;    // Callback ID for completion event
-    bool                drive_enabled;  // DE=0
+    int                 drive_enabled;  // DE=0
 
     event_callback_t    event_handlers[MAX_SUBSCRIPTIONS];
 
