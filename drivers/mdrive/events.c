@@ -17,6 +17,8 @@ static struct event_xref {
     { MDRIVE_ESTALL,    EV_MOTION },
     { MDRIVE_EDEADBAND, EV_MOTION },
     { MDRIVE_ETEMP,     EV_OVERTEMP },
+    { MDRIVE_ELITEMP,   EV_OVERTEMP },
+    { MDRIVE_EHOT,      EV_OVERTEMP },
     { 200,              EV_MOTOR_RESET },
     { 0, 0 }
 };
@@ -129,8 +131,24 @@ mdrive_signal_error_event(mdrive_device_t * device, int error) {
             // necessary
             break;
 
-        case MDRIVE_ETEMP:
+        case MDRIVE_ELITEMP:    // 75
+            // Linear over temperature
+            mcTraceF(10, MDRIVE_CHANNEL,
+                "WARNING: %c: Unit reports linear over temperature",
+                device->address);
+            // TODO: Perform some kind of compenstaion -- DE, stop, refuse
+            //       to move or something. EHOT should likely be emulated
+            break;
+        case MDRIVE_EHOT:       // 72
+            mcTraceF(1, MDRIVE_CHANNEL,
+                "CRITICAL: %c: Unit reports thermal shutdown",
+                device->address);
+            data.temp.shutdown = true;
+            // Continue onward to collect and signal actual temperature of
+            // the device
+        case MDRIVE_ETEMP:      // 71
             mdrive_get_integer(device, "IT", &temp);
+            data.temp.temperature = (float) temp;
             mcTraceF(10, MDRIVE_CHANNEL,
                 "WARNING: %c: Unit reports over temperature: %d",
                 device->address, temp);
@@ -164,6 +182,7 @@ mdrive_signal_event(mdrive_device_t * device, int code, union event_data * data)
 
     // TODO: Send "EV=0" to the unit to signal the receipt of the event
     // Update stats for interesting events
+    // XXX: Looks like this code isn't used
     switch (code) {
         case MDRIVE_RESET:
             device->stats.reboots++;

@@ -50,6 +50,15 @@ union event_data {                  // Data associated with the event
         long long   position;       // Current position (urevs), if known
     } motion;
 
+    // EV_OVERTEMP event payload
+    struct {
+        // Current temperature, scale is dependent on the motor
+        float       temperature;
+        // If set, indicates that the motor is now disabled and will fail to
+        // execute any further move commands
+        bool        shutdown;
+    } temp;
+
     struct {
         char    level;
         char    channel;
