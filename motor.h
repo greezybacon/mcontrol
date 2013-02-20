@@ -35,11 +35,13 @@ union event_data {                  // Data associated with the event
     long long   number;
     char        string[256];
 
+    // EV_MOTION event payload
     struct {
         bool        completed;      // Move finished normally
         bool        stalled;        // Move interrupted by stall
         bool        cancelled;      // Move replaced with another move
         bool        stopped;        // Stop was issued
+        bool        failed;         // Unable to arrive at dest
         bool        in_progress;    // Still moving (progress update)
         bool        pos_known;      // Position element is valid
         unsigned char tries;        // Number of tries if completed
