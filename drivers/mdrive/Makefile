@@ -28,3 +28,4 @@ $(LIBRARY): $(OBJECTS)
 .PHONY: clean
 clean:
 	$(RM) $(OBJECTS)
+	set -e; $(MAKE) -C microcode clean
