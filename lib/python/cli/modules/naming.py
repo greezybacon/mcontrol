@@ -168,7 +168,10 @@ class NamingContext(Shell):
             if len(parts) != 2:
                 return self.error("Incorrect usage", "See 'help force'")
             elif not os.path.exists(parts[1]):
-                return self.error("Firmware image not found")
+                # Apply default path from settings file
+                parts[1] = self['settings']['paths:firmware'] + '/' + parts[1]
+                if not os.path.exists(parts[1]):
+                    return self.error("Firmware image not found")
 
         self.status("Forcing {0} to {1}".format(option, parts))
         self.context['forced'][option] = parts
