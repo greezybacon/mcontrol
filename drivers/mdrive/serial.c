@@ -1186,16 +1186,16 @@ int
 mdrive_set_baudrate(mdrive_comm_device_t * channel, int speed) {
     const struct baud_rate * s;
 
+    // If device is operating at the requested speed already, just bail
+    if (channel->speed == speed)
+        return 0;
+
     for (s=baud_rates; s->human; s++)
         if (s->human == speed)
             break;
     if (s->human == 0)
         // Bad speed specified
         return ENOTSUP;
-
-    // If device is operating at the requested speed already, just bail
-    if (channel->speed == speed)
-        return 0;
 
     struct termios tty;
 
