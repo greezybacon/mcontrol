@@ -1111,9 +1111,8 @@ mdrive_disconnect(mdrive_device_t * device) {
     // tcsetattr(fd, TCSAFLUSH, &device->termios);
     close(channel->fd);
 
-    // XXX: Free items retrieved from the queue
-    while (queue_length(&channel->queue))
-        queue_pop(&channel->queue);
+    // Free items retrieved from the queue
+    queue_flush(&channel->queue);
 
     // Drop device from the list of port infos
     if (channel == all_port_infos) {
