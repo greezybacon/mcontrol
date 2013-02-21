@@ -4,24 +4,26 @@
 #include "message.h"
 #include "motor.h"
 
-PROXYDEF(mcMoveAbsolute, int, int distance);
-PROXYDEF(mcMoveAbsoluteUnits, int, int distance, unit_type_t units);
-PROXYDEF(mcMoveRelative, int, int distance);
-PROXYDEF(mcMoveRelativeUnits, int, int distance, unit_type_t units);
+PROXYSTUB(int, mcMoveAbsolute, MOTOR motor, int distance);
+PROXYSTUB(int, mcMoveAbsoluteUnits, MOTOR motor, int distance, unit_type_t units);
+PROXYSTUB(int, mcMoveRelative, MOTOR motor, int distance);
+PROXYSTUB(int, mcMoveRelativeUnits, MOTOR motor, int distance, unit_type_t units);
 
-PROXYDEF(mcSlew, int, int rate);
-PROXYDEF(mcSlewUnits, int, int rate, unit_type_t units);
+PROXYSTUB(int, mcSlew, MOTOR motor, int rate);
+PROXYSTUB(int, mcSlewUnits, MOTOR motor, int rate, unit_type_t units);
 
-IMPORTANT PROXYDEF(mcStop, int);
-IMPORTANT PROXYDEF(mcHalt, int);
-IMPORTANT PROXYDEF(mcEStop, int);
+IMPORTANT PROXYSTUB(int, mcStop, MOTOR motor);
+IMPORTANT PROXYSTUB(int, mcHalt, MOTOR motor);
+IMPORTANT PROXYSTUB(int, mcEStop, MOTOR motor);
 
 // XXX: What about profile (slew rate, etc)
-PROXYDEF(mcHome, int, enum home_type type, enum home_direction direction);
+PROXYSTUB(int, mcHome, MOTOR motor, enum home_type type, enum home_direction direction);
 
-PROXYDEF(mcUnitScaleSet, int, unit_type_t units, long long urevs);
-PROXYDEF(mcUnitScaleGet, int, OUT unit_type_t * units, OUT long long * urevs);
-PROXYDEF(mcUnitToMicroRevs, int, unit_type_t unit, OUT long long * urevs);
+PROXYSTUB(int, mcUnitScaleSet, MOTOR motor, unit_type_t units, long long urevs);
+PROXYSTUB(int, mcUnitScaleGet, MOTOR motor, OUT unit_type_t * units,
+    OUT long long * urevs);
+PROXYSTUB(int, mcUnitToMicroRevs, MOTOR motor, unit_type_t unit,
+    OUT long long * urevs);
 
 extern int mcDistanceToMicroRevs(Motor * motor, int distance,
     long long * urevs);

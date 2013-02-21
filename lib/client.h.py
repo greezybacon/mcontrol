@@ -1,8 +1,8 @@
 from __future__ import print_function
 
 import re
-proxy = re.compile(r'PROXYDEF\((?P<name>[^,)]+),'
-                   r'\s*(?P<ret>[^,)]+)'
+proxy = re.compile(r'(?P<flags>IMPORTANT|SLOW)? *PROXYSTUB\((?P<ret>[^,)]+),'
+                   r'\s*(?P<name>[^,)]+)'
                    r'(?P<args>(?:,[^,)]+)*)\);', re.M)
 
 proxies = {}
@@ -52,15 +52,10 @@ for doth in sys.argv:
     for stub in proxy.finditer(open(doth, 'rt').read()):
         items = stub.groupdict()
         args = items['args'].split(',')[1:]
-        items['motor_arg'] = "motor_t motor"
         if len(args):
             args = [x.replace('OUT ','') for x in args]
             args = [x.replace("*","") for x in args]
-            for x in args:
-                if 'MOTOR ' in x:
-                    # MOTOR argument is specified in the parameter list
-                    items['motor_arg'] = ""
-        if items['motor_arg'] == "" and len(args):
+        if len(args):
             # Drop leading ',' form args
             items['args'] = items['args'].strip()[1:]
         items['args_no_pointer'] = "\n    ".join(
@@ -72,12 +67,7 @@ for name in sorted(proxies):
     items = proxies[name]
     print("""
 struct _{name}_args {{
-    bool inproc;        // If the call is made in-process (server-server)
-    bool outofproc;     // If the call is made out-of-process (client-server)
     {ret} returned;
     {args_no_pointer}
 }};
-extern {ret} {name}({motor_arg}{args});
-extern {ret} {name}InProc({motor_arg}{args});
-extern {ret} {name}OutOfProc({motor_arg}{args});
 """.format(**items))

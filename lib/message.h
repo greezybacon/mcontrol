@@ -2,6 +2,7 @@
 #define MESSAGE_H
 
 #include "../motor.h"
+#include "motor.h"
 
 #include <unistd.h>
 #include <stdbool.h>
@@ -69,30 +70,76 @@ struct event_message {
 #define CONCATENATE1(arg1, arg2)  CONCATENATE2(arg1, arg2)
 #define CONCATENATE2(arg1, arg2)  arg1##arg2
 
+// For the proxy-stub model each function will have four pieces:
+//
+// <function>
+//      The function from the client's perspective. Will branch to the Stub
+//      or directly to the Impl method depending on the client's configured
+//      call-mode. For in-process clients, this will act as the stub method
+//      and will deal with OUT argument marshalling.
+// <function>Impl
+//      The actual function implementation -- defined in the .c file. The
+//      first argument to the Impl function will be a (struct call_context *)
+//      which will contain meta information about how the function was
+//      reached
+// <function>Stub
+//      The daemon-side of the proxy-stub model, which will trampoline to
+//      the Impl method, unpacking the client's args, and marshalling the
+//      OUT parameters and the return value back to the client
+// <function>Proxy
+//      The client-side of the proxy-stub model, which will use a POSIX
+//      message queue to marshall the arguments to the remote server daemon
+//
+// All but the actual implementation are automatically generated into the
+// client.c file by the client.c.py script
+#define PROXYSTUB(type, func, ...) \
+    extern type func(__VA_ARGS__); \
+    extern void func##Stub(request_message_t *); \
+    extern type func##Proxy(__VA_ARGS__); \
+    extern type func##Impl(struct call_context *, __VA_ARGS__)
+
 #define PROXYDEF(func, rettype, ...) \
-    extern void func##Impl(request_message_t * message)
+    extern void func##Impl(request_message_t *)
+
+#define CONTEXT (__context)
 
 #define PROXYIMPL(func, ...) \
-    void func##Impl(request_message_t * message)
+    func##Impl(struct call_context * __context, __VA_ARGS__)
+
+// Used to call from one function impl to another
+//#define CALL(func, ...) \
+//    func#Impl(CONTEXT, __VA_ARGS__)
 
 #define UNPACK_ARGS(func, local) \
     struct CONCATENATE(CONCATENATE(_,func),_args) \
         * local = (void *) message->payload, \
-        * __args = local; \
-    motor_t motor = message->motor_id
+        * __args = local
 
 #define RETURN(what) \
     do { \
         __args->returned = what; \
-        if (__args->outofproc) \
+        if (CONTEXT->outofproc) \
             mcMessageReply(message, __args, sizeof *__args); \
         return; \
     } while(0)
 
-#define MOTOR
+#define MOTOR motor_t
 #define OUT
 #define IMPORTANT
 #define SLOW
+
+struct call_context {
+    bool    inproc;
+    bool    outofproc;
+    int     caller_pid;
+    Motor * motor;
+};
+
+// A couple of #defines to make calling driver class functions nicer looking
+#define INVOKE(motor, func, ...) \
+    motor->driver->class->func(motor->driver, __VA_ARGS__)
+#define SUPPORTED(motor, func) \
+    (motor->driver->class->func != NULL)
 
 extern int
 mcMessageBoxOpen(void);

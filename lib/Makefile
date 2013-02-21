@@ -2,9 +2,9 @@ CC=gcc
 CFLAGS=--std=gnu99 -Wall -fPIC -D_GNU_SOURCE -pedantic -O2
 LDFLAGS=-lrt -ldl -lpthread
 
-SOURCES=motor.c message.c driver.c query.c dispatch.c client.c locks.c \
+SOURCES=connect.c message.c driver.c query.c dispatch.c client.c locks.c \
 	motion.c events.c profile.c trace.c firmware.c callback.c
-HEADERS=query.h locks.h motor.h motion.h events.h profile.h trace.h firmware.h
+HEADERS=query.h locks.h connect.h motion.h events.h profile.h trace.h firmware.h
 OBJECTS=$(SOURCES:.c=.o)
 LIBRARY=libmcontrol.so
 

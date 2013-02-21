@@ -1,10 +1,5 @@
-#include "../motor.h"
-#include "../drivers/driver.h"
-#include "message.h"
-#include "motor.h"
+#include "connect.h"
 #include "client.h"
-
-#include "driver.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -40,10 +35,8 @@ mcGarbageCollect(void) {
  *  Finds the requested motor and connects to its queue. It also creates a
  *  return traffic queue for responses.
  */
-PROXYIMPL(mcConnect, String connection, OUT MOTOR motor_t motor,
-        bool recovery) {
-    UNPACK_ARGS(mcConnect, args);
-
+int
+PROXYIMPL(mcConnect, String * connection, OUT MOTOR * motor, bool recovery) {
     if (motor_list == NULL)
         motor_list = calloc(MAX_ACTIVE_MOTOR_CONNECTIONS+1,
             sizeof *motor_list);
@@ -52,7 +45,7 @@ PROXYIMPL(mcConnect, String connection, OUT MOTOR motor_t motor,
     mcGarbageCollect();
 
     if (motor_conn_count == MAX_ACTIVE_MOTOR_CONNECTIONS)
-        RETURN(ER_TOO_MANY);
+        return ER_TOO_MANY;
 
     // Find first inactive motor connection entry
     struct backend_motor * m = motor_list;
@@ -61,24 +54,24 @@ PROXYIMPL(mcConnect, String connection, OUT MOTOR motor_t motor,
     // New motor connection
     // Configure server-side motor
     *m = (struct backend_motor) {
-        .client_pid = message->pid,
+        .client_pid = CONTEXT->caller_pid,
         .id = motor_uid++
     };
-    int status = mcDriverConnect(args->connection.buffer, &m->instance);
-    if (status != 0 && !args->recovery)
-        RETURN(status);
+    int status = mcDriverConnect(connection->buffer, &m->instance);
+    if (status != 0 && !recovery)
+        return status;
 
     if (m->instance == NULL)
         // Invalid connection string
-        RETURN(EINVAL);
+        return EINVAL;
 
     m->driver = m->instance->driver;
     m->active = true;
     motor_conn_count++;
 
-    args->motor = m->id;
+    *motor = m->id;
     
-    RETURN(0);
+    return 0;
 }
 
 /**
@@ -93,30 +86,23 @@ PROXYIMPL(mcConnect, String connection, OUT MOTOR motor_t motor,
  * Returns:
  * (int) - 0 upon success, EINVAL if called on invalid or unknown motor
  */
-PROXYIMPL(mcDisconnect) {
-    UNPACK_ARGS(mcDisconnect, args);
-
-    Motor * m = find_motor_by_id(motor, message->pid);
-
-    if (m == NULL)
-        RETURN( EINVAL );
-
-    mcDriverDisconnect(m->instance);
-    m->driver = NULL;
+int
+PROXYIMPL(mcDisconnect, MOTOR motor) {
+    mcDriverDisconnect(CONTEXT->motor->instance);
+    CONTEXT->motor->driver = NULL;
     // This motor won't work anymore
-    mcInactivate(m);
+    mcInactivate(CONTEXT->motor);
 
-    RETURN(0);
+    return 0;
 }
 
-PROXYIMPL(mcSearch, String driver, OUT String results) {
-    UNPACK_ARGS(mcSearch, args);
+int PROXYIMPL(mcSearch, String * driver, OUT String * results) {
 
-    DriverClass * class = mcDriverLookup(args->driver.buffer);
+    DriverClass * class = mcDriverLookup(driver->buffer);
     if (class == NULL)
-        RETURN( EINVAL );
+        return EINVAL;
 
-    RETURN( mcDriverSearch(class, args->results.buffer, args->results.size) );
+    return mcDriverSearch(class, results->buffer, results->size);
 }
 
 Motor *
