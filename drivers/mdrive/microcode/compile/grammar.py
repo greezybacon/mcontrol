@@ -14,9 +14,9 @@ read_write = set(['A', 'C1', 'C2', 'CE', 'CK', 'CM', 'CR', 'D', 'D1', 'D2',
     'D3', 'D4', 'D5', 'DB', 'DE', 'DG', 'EE', 'EM', 'ES', 'ER', 'FC', 'FM',
     'HC', 'HT', 'JE', 'LK', 'LM', 'MS', 'MT', 'NE', 'OT', 'OL', 'P', 'PM',
     'QD', 'R1', 'R2', 'R3', 'R4', 'RC', 'S1', 'S2', 'S3', 'S4', 'S5', 'SF',
-    'SM', 'ST', 'TE', 'TR', 'TT', 'VI', 'VM'])
+    'SM', 'ST', 'TE', 'TP', 'TR', 'TT', 'VI', 'VM'])
 # Label-args commands take a label as an argument
-label_args = set(['OE', 'TI', 'TR', 'TT'])
+label_args = set(['OE', 'TI', 'TP', 'TR', 'TT'])
 
 internal = commands | bare | read_only | read_write
 assignable = commands | read_write
