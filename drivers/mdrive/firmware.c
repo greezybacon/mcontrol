@@ -11,7 +11,7 @@
 
 int
 mdrive_firmware_write(mdrive_device_t * device, const char * filename) {
-    static const struct timespec wait = { .tv_sec = 1 };
+    static const struct timespec wait = { .tv_sec = 3 };
 
     mcTraceF(10, MDRIVE_CHANNEL, "Loading firmware from: %s", filename);
     
@@ -87,9 +87,6 @@ mdrive_firmware_write(mdrive_device_t * device, const char * filename) {
             mdrive_communicate(device, *magic, &options);
         } while (!result.ack);
     }
-
-    // The unit will respond after the ':e' before it is really ready
-    sleep(2);
 
     // Use default timeout algorithm when sending firmware lines
     options.waittime = NULL;
