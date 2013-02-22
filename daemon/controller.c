@@ -1,8 +1,10 @@
-#include "../drivers/driver.h"
-#include "../lib/message.h"
+#include "drivers/driver.h"
+#include "lib/message.h"
+#include "lib/trace.h"
 
 #include "controller.h"
 #include "scheduler.h"
+#include "trace.h"
 
 #include <stdbool.h>
 #include <mqueue.h>
@@ -57,7 +59,7 @@ receive_messages(bool async) {
     SchedulerConfigure();
 
     // TODO: (Re)register for asynchronous notification
-    printf("Open for business, waiting for messages\n");
+    mcTraceF(20, DAEMON_CHANNEL, "Open for business, waiting for messages");
 
     // Drain the inbox
     while (true) {
@@ -73,6 +75,8 @@ receive_messages(bool async) {
                     printf("Received error from mcMessageReceive\n");
             }
         }
+
+        mcTraceF(50, DAEMON_CHANNEL, "Received a message, type=%d", message.type);
 
         // TODO: Handle errors for the message receive
         if (GitRDone(&message))

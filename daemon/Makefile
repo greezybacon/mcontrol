@@ -1,8 +1,8 @@
 CC=gcc
-CFLAGS=--std=gnu99 -Wall -D_GNU_SOURCE -pedantic
+CFLAGS=--std=gnu99 -Wall -D_GNU_SOURCE -pedantic -I..
 LDFLAGS=-ldl -lrt -lrt -lpthread -lm
 
-SOURCES=main.c controller.c scheduler.c worker.c
+SOURCES=main.c controller.c scheduler.c trace.c worker.c
 OBJECTS=$(SOURCES:.c=.o)
 EXECUTABLE=mcontrol
 

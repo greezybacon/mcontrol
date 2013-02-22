@@ -47,6 +47,8 @@ mcTraceUnlock(void) {
     pthread_mutex_unlock(&trace_lock);
 }
 
+int LIB_CHANNEL;
+
 /**
  * mcTraceSubscribersLookup
  *
@@ -233,6 +235,7 @@ mcTraceSystemInit(void) {
     // subscription
     // Keep an extra as end-of-list sentinel
     subscribers = calloc(MAX_SUBSCRIBERS+1, sizeof *subscribers);
+    LIB_CHANNEL = mcTraceChannelInit(LIB_CHANNEL_NAME);
 }
 
 int
