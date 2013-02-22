@@ -1,5 +1,5 @@
-#ifndef MOTOR_H
-#define MOTOR_H
+#ifndef LIBMOTOR_H
+#define LIBMOTOR_H
 
 #include "../motor.h"
 #include "driver.h"

@@ -31,15 +31,9 @@ mcDriverLock(Driver * driver, int for_motor_id, lock_mode_t mode) {
  * Requests the motor to be locked for the other, given motor. If the motor
  * to be locked is currently moving, it will continue unless estop is set.
  */
-PROXYIMPL (mcMotorLock, int for_motor_id, lock_mode_t mode) {
-    UNPACK_ARGS(mcMotorLock, args);
-
-    Motor * m = find_motor_by_id(motor, message->pid);
-
-    if (m == NULL)
-        RETURN( EINVAL );
-    else
-        RETURN( mcDriverLock(m->driver, args->for_motor_id, args->mode) );
+int
+PROXYIMPL (mcMotorLock, MOTOR motor, int for_motor_id, lock_mode_t mode) {
+    return mcDriverLock(CONTEXT->motor->driver, for_motor_id, mode);
 }
 
 int
@@ -63,15 +57,9 @@ mcDriverUnlock(Driver * driver, int for_motor_id) {
     return ENOENT;
 }
 
-PROXYIMPL (mcMotorUnlock, int for_motor_id) {
-    UNPACK_ARGS(mcMotorUnlock, args);
-
-    Motor * m = find_motor_by_id(motor, message->pid);
-
-    if (m == NULL)
-        RETURN(EINVAL);
-
-    RETURN( mcDriverUnlock(m->driver, args->for_motor_id) );
+int
+PROXYIMPL (mcMotorUnlock, MOTOR motor, int for_motor_id) {
+    return mcDriverUnlock(CONTEXT->motor->driver, for_motor_id);
 }
 
 bool
@@ -79,13 +67,7 @@ mcDriverIsLocked(Driver * driver) {
     return *driver->locks != 0;
 }
 
-PROXYIMPL (mcMotorIsLocked) {
-    UNPACK_ARGS(mcMotorUnlock, args);
-
-    Motor * m = find_motor_by_id(motor, message->pid);
-
-    if (m == NULL)
-        RETURN(EINVAL);
-
-    RETURN( mcDriverIsLocked(m->driver) );
+bool
+PROXYIMPL (mcMotorIsLocked, MOTOR motor) {
+    return mcDriverIsLocked(CONTEXT->motor->driver);
 }

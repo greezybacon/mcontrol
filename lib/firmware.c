@@ -5,30 +5,20 @@
 
 #include <errno.h>
 
-PROXYIMPL(mcFirmwareLoad, String filename) {
-    UNPACK_ARGS(mcFirmwareLoad, args);
+int
+PROXYIMPL(mcFirmwareLoad, MOTOR motor, String * filename) {
 
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
+    if (!SUPPORTED(CONTEXT->motor, load_firmware))
+        return ENOTSUP;
 
-    if (m->driver->class->load_firmware == NULL)
-        RETURN( ENOTSUP );
-
-    RETURN( m->driver->class->load_firmware(m->driver,
-        args->filename.buffer) );
+    return INVOKE(CONTEXT->motor, load_firmware, filename->buffer);
 }
 
-PROXYIMPL(mcMicrocodeLoad, String filename) {
-    UNPACK_ARGS(mcMicrocodeLoad, args);
+int
+PROXYIMPL(mcMicrocodeLoad, MOTOR motor, String * filename) {
 
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
+    if (!SUPPORTED(CONTEXT->motor, load_microcode))
+        return ENOTSUP;
 
-    if (m->driver->class->load_microcode == NULL)
-        RETURN( ENOTSUP );
-
-    RETURN( m->driver->class->load_microcode(m->driver,
-        args->filename.buffer) );
+    return INVOKE(CONTEXT->motor, load_microcode, filename->buffer);
 }

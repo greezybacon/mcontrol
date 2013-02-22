@@ -45,7 +45,7 @@ cdef class Trace(object):
         if not Library.is_in_process():
             mcSubscribeWithData(ANY_MOTOR, EV_TRACE, &self.event_id,
                 pyTraceEventCallback, <void *>self)
-            self.id = mcTraceSubscribeRemote(ANY_MOTOR, level, 0)
+            self.id = mcTraceSubscribeRemote(level, 0)
         else:
             self.id = mcTraceSubscribe(level, 0, <trace_callback_t>pyTraceCallback)
         trace_instances[self.id] = self
@@ -62,7 +62,7 @@ cdef class Trace(object):
             if self.id in trace_instances:
                 del trace_instances[self.id]
             if not Library.is_in_process():
-                mcTraceUnsubscribeRemote(ANY_MOTOR, self.id)
+                mcTraceUnsubscribeRemote(self.id)
                 mcUnsubscribe(ANY_MOTOR, self.event_id)
             else:
                 mcTraceUnsubscribe(self.id)
@@ -70,13 +70,13 @@ cdef class Trace(object):
 
     def add(self, channel, level=20):
         cdef String buf = bufferFromString(channel)
-        status = mcTraceSubscribeAdd(ANY_MOTOR, self.id, &buf)
+        status = mcTraceSubscribeAdd(self.id, &buf)
         if status < 0:
             raise ValueError('{0}: No such channel'.format(channel))
 
     def remove(self, channel):
         cdef String buf = bufferFromString(channel)
-        mcTraceSubscribeRemove(ANY_MOTOR, self.id, &buf)
+        mcTraceSubscribeRemove(self.id, &buf)
 
     def emit(self, level, channel, text):
         print("{0}: {1}".format(channel, text))
@@ -84,7 +84,7 @@ cdef class Trace(object):
     @classmethod
     def enum(cls):
         cdef String buf
-        cdef int count = mcTraceChannelEnum(0, &buf)
+        cdef int count = mcTraceChannelEnum(&buf)
         cdef char * pos = buf.buffer
         channels = []
         for i in range(count):

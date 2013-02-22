@@ -33,5 +33,9 @@ extern int mcMicroRevsToDistance(Motor * motor, long long urevs,
     int * distance);
 extern int mcMicroRevsToDistanceUnits(Motor * motor, long long urevs,
     int * distance, unit_type_t units);
+extern int mcMicroRevsToDistanceF(Motor * motor, long long urevs,
+    double * distance);
+extern int mcMicroRevsToDistanceUnitsF(Motor * motor, long long urevs,
+    double * distance, unit_type_t units);
 
 #endif

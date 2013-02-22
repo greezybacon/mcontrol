@@ -3,20 +3,20 @@
 
 #include "message.h"
 
-PROXYDEF(mcProfileGet, int, OUT Profile * profile);
-PROXYDEF(mcProfileSet, int, Profile * profile);
+PROXYSTUB(int, mcProfileGet, MOTOR motor, OUT Profile * profile);
+PROXYSTUB(int, mcProfileSet, MOTOR motor, Profile * profile);
 
-PROXYDEF(mcProfileGetAccel, int, Profile * profile, unit_type_t units,
+PROXYSTUB(int, mcProfileGetAccel, MOTOR motor, Profile * profile, unit_type_t units,
     OUT int * value);
-PROXYDEF(mcProfileGetDecel, int, Profile * profile, unit_type_t units,
+PROXYSTUB(int, mcProfileGetDecel, MOTOR motor, Profile * profile, unit_type_t units,
     OUT int * value);
-PROXYDEF(mcProfileGetInitialV, int, Profile * profile, unit_type_t units,
+PROXYSTUB(int, mcProfileGetInitialV, MOTOR motor, Profile * profile, unit_type_t units,
     OUT int * value);
-PROXYDEF(mcProfileGetMaxV, int, Profile * profile, unit_type_t units,
+PROXYSTUB(int, mcProfileGetMaxV, MOTOR motor, Profile * profile, unit_type_t units,
     OUT int * value);
-PROXYDEF(mcProfileGetMaxSlip, int, Profile * profile, unit_type_t units,
+PROXYSTUB(int, mcProfileGetMaxSlip, MOTOR motor, Profile * profile, unit_type_t units,
     OUT int * value);
-PROXYDEF(mcProfileGetDeadband, int, Profile * profile, unit_type_t units,
+PROXYSTUB(int, mcProfileGetDeadband, MOTOR motor, Profile * profile, unit_type_t units,
     OUT int * value);
 
 #endif

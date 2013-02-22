@@ -1,26 +1,30 @@
 
-PROXYDEF(mcQueryInteger, int, motor_query_t query, OUT int * value);
-PROXYDEF(mcQueryIntegerUnits, int, motor_query_t query, OUT int * value,
-    unit_type_t units);
-PROXYDEF(mcQueryIntegerWithStringItem, int, motor_query_t query,
+PROXYSTUB(int, mcQueryInteger, MOTOR motor, motor_query_t query,
+    OUT int * value);
+PROXYSTUB(int, mcQueryIntegerUnits, MOTOR motor, motor_query_t query,
+    OUT int * value, unit_type_t units);
+PROXYSTUB(int, mcQueryIntegerWithStringItem, MOTOR motor, motor_query_t query,
     OUT int * value, String * item);
-PROXYDEF(mcQueryIntegerWithIntegerItem, int, motor_query_t query,
+PROXYSTUB(int, mcQueryIntegerWithIntegerItem, MOTOR motor, motor_query_t query,
     OUT int * value, int item);
 
 
-PROXYDEF(mcQueryFloat, int, motor_query_t query, OUT double * value);
-PROXYDEF(mcQueryFloatUnits, int, motor_query_t query, OUT double * value,
-    unit_type_t units);
+PROXYSTUB(int, mcQueryFloat, MOTOR motor, motor_query_t query,
+    OUT double * value);
+PROXYSTUB(int, mcQueryFloatUnits, MOTOR motor, motor_query_t query,
+    OUT double * value, unit_type_t units);
 
-PROXYDEF(mcQueryString, int, motor_query_t query, OUT String * value);
+PROXYSTUB(int, mcQueryString, MOTOR motor, motor_query_t query,
+    OUT String * value);
 
-PROXYDEF(mcPokeString, int, motor_query_t query, String * value);
-SLOW PROXYDEF(mcPokeStringWithStringItem, int, motor_query_t query,
-    String * value, String * item);
-SLOW PROXYDEF(mcPokeInteger, int, motor_query_t query, int value);
-PROXYDEF(mcPokeIntegerUnits, int, motor_query_t query, int value,
+PROXYSTUB(int, mcPokeString, MOTOR motor, motor_query_t query,
+    String * value);
+SLOW PROXYSTUB(int, mcPokeStringWithStringItem, MOTOR motor,
+    motor_query_t query, String * value, String * item);
+SLOW PROXYSTUB(int, mcPokeInteger, MOTOR motor, motor_query_t query, int value);
+PROXYSTUB(int, mcPokeIntegerUnits, MOTOR motor, motor_query_t query, int value,
     unit_type_t units);
-PROXYDEF(mcPokeIntegerWithStringItem, int, motor_query_t query, int value,
-    String * item);
-PROXYDEF(mcPokeIntegerWithIntegerItem, int, motor_query_t query, int value,
-    int item);
+PROXYSTUB(int, mcPokeIntegerWithStringItem, MOTOR motor, motor_query_t query,
+    int value, String * item);
+PROXYSTUB(int, mcPokeIntegerWithIntegerItem, MOTOR motor, motor_query_t query,
+    int value, int item);

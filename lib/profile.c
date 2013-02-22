@@ -7,36 +7,27 @@
 
 #include <errno.h>
 
-PROXYIMPL(mcProfileGet, OUT Profile profile) {
-    UNPACK_ARGS(mcProfileGet, args);
-
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
-
-    args->profile = m->profile;
-
-    RETURN(0);
+int
+PROXYIMPL(mcProfileGet, MOTOR motor, OUT Profile * profile) {
+    *profile = CONTEXT->motor->profile;
+    return 0;
 }
 
-PROXYIMPL(mcProfileSet, Profile profile) {
-    UNPACK_ARGS(mcProfileSet, args);
+int
+PROXYIMPL(mcProfileSet, MOTOR motor, Profile * profile) {
 
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
-
-    m->profile = args->profile;
+    CONTEXT->motor->profile = *profile;
 
     // Convert any embedded units in the profile to standard units of micro
     // revolutions
     long long T;
     int status;
+    Motor * m = CONTEXT->motor;
     if (m->profile.accel.value && m->profile.accel.units != MICRO_REVS) {
         status = mcDistanceUnitsToMicroRevs(m, m->profile.accel.value,
             m->profile.accel.units, &T);
         if (status)
-            RETURN(status);
+            return status;
         m->profile.accel.value = T;
         m->profile.accel.units = MICRO_REVS;
     }
@@ -44,7 +35,7 @@ PROXYIMPL(mcProfileSet, Profile profile) {
         status = mcDistanceUnitsToMicroRevs(m, m->profile.decel.value,
             m->profile.decel.units, &T);
         if (status)
-            RETURN(status);
+            return status;
         m->profile.decel.value = T;
         m->profile.decel.units = MICRO_REVS;
     }
@@ -52,7 +43,7 @@ PROXYIMPL(mcProfileSet, Profile profile) {
         status = mcDistanceUnitsToMicroRevs(m, m->profile.vmax.value,
             m->profile.vmax.units, &T);
         if (status)
-            RETURN(status);
+            return status;
         m->profile.vmax.value = T;
         m->profile.vmax.units = MICRO_REVS;
     }
@@ -60,7 +51,7 @@ PROXYIMPL(mcProfileSet, Profile profile) {
         status = mcDistanceUnitsToMicroRevs(m, m->profile.vstart.value,
             m->profile.vstart.units, &T);
         if (status)
-            RETURN(status);
+            return status;
         m->profile.vstart.value = T;
         m->profile.vstart.units = MICRO_REVS;
     }
@@ -68,7 +59,7 @@ PROXYIMPL(mcProfileSet, Profile profile) {
         status = mcDistanceUnitsToMicroRevs(m, m->profile.slip_max.value,
             m->profile.slip_max.units, &T);
         if (status)
-            RETURN(status);
+            return status;
         m->profile.slip_max.value = T;
         m->profile.slip_max.units = MICRO_REVS;
     }
@@ -76,97 +67,79 @@ PROXYIMPL(mcProfileSet, Profile profile) {
         status = mcDistanceUnitsToMicroRevs(m, m->profile.accuracy.value,
             m->profile.accuracy.units, &T);
         if (status)
-            RETURN(status);
+            return status;
         m->profile.accuracy.value = T;
         m->profile.accuracy.units = MICRO_REVS;
     }
 
-    RETURN(0);
+    return 0;
 }
 
 /*
  * profile.accel = (struct measurement) { .value = 200, .units = MILLI_G }
  */
-PROXYIMPL(mcProfileGetAccel, Profile profile, unit_type_t units,
-        OUT int value) {
-    UNPACK_ARGS(mcProfileGetAccel, args);
+int
+PROXYIMPL(mcProfileGetAccel, MOTOR motor, Profile * profile, unit_type_t units,
+        OUT int * value) {
 
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
+    mcMicroRevsToDistanceUnits(CONTEXT->motor,
+        CONTEXT->motor->profile.accel.value, value,
+        units);
 
-    mcMicroRevsToDistanceUnits(m, m->profile.accel.value, &args->value,
-        args->units);
-
-    RETURN(0);
+    return 0;
 }
 
-PROXYIMPL(mcProfileGetDecel, Profile profile, unit_type_t units,
-        OUT int value) {
-    UNPACK_ARGS(mcProfileGetDecel, args);
+int
+PROXYIMPL(mcProfileGetDecel, MOTOR motor, Profile * profile, unit_type_t units,
+        OUT int * value) {
 
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
+    mcMicroRevsToDistanceUnits(CONTEXT->motor,
+        CONTEXT->motor->profile.decel.value, value,
+        units);
 
-    mcMicroRevsToDistanceUnits(m, m->profile.decel.value, &args->value,
-        args->units);
-
-    RETURN(0);
+    return 0;
 }
 
-PROXYIMPL(mcProfileGetInitialV, Profile profile, unit_type_t units,
-        OUT int value) {
-    UNPACK_ARGS(mcProfileGetInitialV, args);
+int
+PROXYIMPL(mcProfileGetInitialV, MOTOR motor, Profile * profile, unit_type_t units,
+        OUT int * value) {
 
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
+    mcMicroRevsToDistanceUnits(CONTEXT->motor,
+        CONTEXT->motor->profile.vstart.value, value,
+        units);
 
-    mcMicroRevsToDistanceUnits(m, m->profile.vstart.value, &args->value,
-        args->units);
-
-    RETURN(0);
+    return 0;
 }
 
-PROXYIMPL(mcProfileGetMaxV, Profile profile, unit_type_t units,
-        OUT int value) {
-    UNPACK_ARGS(mcProfileGetMaxV, args);
+int
+PROXYIMPL(mcProfileGetMaxV, MOTOR motor, Profile * profile, unit_type_t units,
+        OUT int * value) {
 
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
+    mcMicroRevsToDistanceUnits(CONTEXT->motor,
+        CONTEXT->motor->profile.vmax.value, value,
+        units);
 
-    mcMicroRevsToDistanceUnits(m, m->profile.vmax.value, &args->value,
-        args->units);
-
-    RETURN(0);
+    return 0;
 }
 
-PROXYIMPL(mcProfileGetDeadband, Profile profile, unit_type_t units,
-        OUT int value) {
-    UNPACK_ARGS(mcProfileGetDeadband, args);
+int
+PROXYIMPL(mcProfileGetDeadband, MOTOR motor, Profile * profile, unit_type_t units,
+        OUT int * value) {
 
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
+    mcMicroRevsToDistanceUnits(CONTEXT->motor,
+        CONTEXT->motor->profile.accuracy.value, value,
+        units);
 
-    mcMicroRevsToDistanceUnits(m, m->profile.accuracy.value, &args->value,
-        args->units);
-
-    RETURN(0);
+    return 0;
 }
 
-PROXYIMPL(mcProfileGetMaxSlip, Profile profile, unit_type_t units,
-        OUT int value) {
-    UNPACK_ARGS(mcProfileGetMaxSlip, args);
+int
+PROXYIMPL(mcProfileGetMaxSlip, MOTOR motor, Profile * profile, unit_type_t units,
+        OUT int * value) {
 
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
+    mcMicroRevsToDistanceUnits(CONTEXT->motor,
+        CONTEXT->motor->profile.slip_max.value, value,
+        units);
 
-    mcMicroRevsToDistanceUnits(m, m->profile.slip_max.value, &args->value,
-        args->units);
-
-    RETURN(0);
+    return 0;
 }

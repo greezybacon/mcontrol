@@ -11,318 +11,270 @@
 #include <stdio.h>
 #include <errno.h>
 
-PROXYIMPL (mcQueryInteger, motor_query_t query, OUT int value) {
-    UNPACK_ARGS(mcQueryInteger, args);
+int
+PROXYIMPL (mcQueryInteger, MOTOR motor, motor_query_t query,
+        OUT int * value) {
 
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
+    if (!SUPPORTED(CONTEXT->motor, read))
+        return ENOTSUP;
 
-    if (m->driver->class->read == NULL)
-        RETURN( ENOTSUP );
+    struct motor_query q = { .query = query };
 
-    struct motor_query q = { .query = args->query };
-
-    m->driver->class->read(m->driver, &q);
+    INVOKE(CONTEXT->motor, read, &q);
 
     // Convert distance-based queries from microrevs
-    switch (args->query) {
+    switch (query) {
         case MCPOSITION:
         case MCVELOCITY:
-            mcMicroRevsToDistance(m, q.value.number, &args->value);
+            mcMicroRevsToDistance(CONTEXT->motor, q.value.number, value);
             break;
         default:
-            args->value = q.value.number;
+            *value = q.value.number;
     }
 
-    RETURN(0);
+    return 0;
 }
 
-PROXYIMPL(mcQueryIntegerUnits, int, motor_query_t query, OUT int value,
-        unit_type_t units) {
-    UNPACK_ARGS(mcQueryIntegerUnits, args);
+int
+PROXYIMPL(mcQueryIntegerUnits, MOTOR motor, motor_query_t query,
+        OUT int * value, unit_type_t units) {
 
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN(EINVAL);
+    if (!SUPPORTED(CONTEXT->motor, read))
+        return ENOTSUP;
 
-    if (m->driver->class->read == NULL)
-        RETURN( ENOTSUP );
+    struct motor_query q = { .query = query };
 
-    struct motor_query q = { .query = args->query };
-
-    m->driver->class->read(m->driver, &q);
-
-    // Convert distance-based queries from microrevs
-    switch (args->query) {
-        case MCPOSITION:
-        case MCVELOCITY:
-            mcMicroRevsToDistanceUnits(m, q.value.number, &args->value,
-                args->units);
-            break;
-        default:
-            args->value = q.value.number;
-    }
-
-    RETURN(0);
-}
-
-PROXYIMPL (mcQueryIntegerWithStringItem, motor_query_t query, OUT int value,
-        String item) {
-    UNPACK_ARGS(mcQueryIntegerWithStringItem, args);
-
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
-
-    if (m->driver->class->read == NULL)
-        RETURN( ENOTSUP );
-
-    struct motor_query q = { .query = args->query };
-    snprintf(q.arg.string, sizeof q.arg.string, "%s", args->item.buffer);
-
-    int status = m->driver->class->read(m->driver, &q);
+    int status = INVOKE(CONTEXT->motor, read, &q);
     if (status)
-        RETURN(status);
+        return status;
 
-    args->value = q.value.number;
-    RETURN(0);
+    // Convert distance-based queries from microrevs
+    switch (query) {
+        case MCPOSITION:
+        case MCVELOCITY:
+            mcMicroRevsToDistanceUnits(CONTEXT->motor, q.value.number,
+                value, units);
+            break;
+        default:
+            *value = q.value.number;
+    }
+
+    return 0;
 }
 
-PROXYIMPL (mcQueryIntegerWithIntegerItem, motor_query_t query, OUT int value,
-        int item) {
-    UNPACK_ARGS(mcQueryIntegerWithIntegerItem, args);
+int
+PROXYIMPL (mcQueryIntegerWithStringItem, MOTOR motor, motor_query_t query,
+        OUT int * value, String * item) {
 
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
+    if (!SUPPORTED(CONTEXT->motor, read))
+        return ENOTSUP;
 
-    if (m->driver->class->read == NULL)
-        RETURN( ENOTSUP );
+    struct motor_query q = { .query = query };
+    snprintf(q.arg.string, sizeof q.arg.string, "%s", item->buffer);
+
+    int status = INVOKE(CONTEXT->motor, read, &q);
+    if (status)
+        return status;
+
+    *value = q.value.number;
+    return 0;
+}
+
+int
+PROXYIMPL (mcQueryIntegerWithIntegerItem, MOTOR motor, motor_query_t query,
+        OUT int * value, int item) {
+
+    if (!SUPPORTED(CONTEXT->motor, read))
+        return ENOTSUP;
 
     struct motor_query q = {
-        .query = args->query,
-        .arg.number = args->item
+        .query = query,
+        .arg.number = item
     };
 
-    int status = m->driver->class->read(m->driver, &q);
+    int status = INVOKE(CONTEXT->motor, read, &q);
     if (status)
-        RETURN(status);
+        return status;
 
-    args->value = q.value.number;
-    RETURN(0);
+    *value = q.value.number;
+    return 0;
 }
 
-PROXYIMPL (mcQueryFloat, motor_query_t query, OUT double value) {
-    UNPACK_ARGS(mcQueryFloat, args);
+int
+PROXYIMPL (mcQueryFloat, MOTOR motor, motor_query_t query,
+        OUT double * value) {
 
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
+    if (!SUPPORTED(CONTEXT->motor, read))
+        return ENOTSUP;
 
-    if (m->driver->class->read == NULL)
-        RETURN( ENOTSUP );
+    struct motor_query q = { .query = query };
 
-    struct motor_query q = { .query = args->query };
-
-    m->driver->class->read(m->driver, &q);
+    int status = INVOKE(CONTEXT->motor, read, &q);
+    if (status)
+        return status;
 
     // Convert distance-based queries from microrevs
-    switch (args->query) {
+    switch (query) {
         case MCPOSITION:
         case MCVELOCITY:
-            mcMicroRevsToDistanceF(m, q.value.number, &args->value);
+            mcMicroRevsToDistanceF(CONTEXT->motor, q.value.number, value);
             break;
         default:
-            args->value = q.value.number;
+            *value = q.value.number;
     }
 
-    RETURN(0);
+    return 0;
 }
 
-PROXYIMPL(mcQueryFloatUnits, int, motor_query_t query, OUT int value,
-        unit_type_t units) {
-    UNPACK_ARGS(mcQueryFloatUnits, args);
+int
+PROXYIMPL(mcQueryFloatUnits, MOTOR motor, motor_query_t query,
+        OUT double * value, unit_type_t units) {
 
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN(EINVAL);
+    if (!SUPPORTED(CONTEXT->motor, read))
+        return ENOTSUP;
 
-    if (m->driver->class->read == NULL)
-        RETURN( ENOTSUP );
+    struct motor_query q = { .query = query };
 
-    struct motor_query q = { .query = args->query };
-
-    m->driver->class->read(m->driver, &q);
+    int status = INVOKE(CONTEXT->motor, read, &q);
+    if (status)
+        return status;
 
     // Convert distance-based queries from microrevs
-    switch (args->query) {
+    switch (query) {
         case MCPOSITION:
         case MCVELOCITY:
-            mcMicroRevsToDistanceUnitsF(m, q.value.number, &args->value,
-                args->units);
+            mcMicroRevsToDistanceUnitsF(CONTEXT->motor, q.value.number,
+                value, units);
             break;
         default:
-            args->value = q.value.number;
+            *value = q.value.number;
     }
 
-    RETURN(0);
+    return 0;
 }
 
-PROXYIMPL (mcQueryString, motor_query_t query, OUT String value) {
-    UNPACK_ARGS(mcQueryString, args);
+int
+PROXYIMPL (mcQueryString, MOTOR motor, motor_query_t query,
+        OUT String * value) {
 
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
+    if (!SUPPORTED(CONTEXT->motor, read))
+        return ENOTSUP;
 
-    if (m->driver->class->read == NULL)
-        RETURN( ENOTSUP );
+    struct motor_query q = { .query = query };
 
-    int size;
-    struct motor_query q = { .query = args->query };
+    int status = INVOKE(CONTEXT->motor, read, &q);
+    if (status)
+        return status;
 
-    m->driver->class->read(m->driver, &q);
     if (q.value.string.size > 0)
         // Use min of status an sizeof args->value.buffer
-        args->value.size = snprintf(args->value.buffer,
-            sizeof args->value.buffer,
+        value->size = snprintf(value->buffer,
+            sizeof value->buffer,
             "%s", q.value.string.buffer);
 
-    RETURN(0);
+    return 0;
 }
 
-PROXYIMPL (mcPokeString, motor_query_t query, String value) {
-    UNPACK_ARGS(mcPokeString, args);
+int
+PROXYIMPL (mcPokeString, MOTOR motor, motor_query_t query, String * value) {
 
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
+    if (!SUPPORTED(CONTEXT->motor, write))
+        return ENOTSUP;
 
-    if (m->driver->class->write == NULL)
-        RETURN( ENOTSUP );
+    struct motor_query q = { .query = query };
 
-    struct motor_query q = { .query = args->query };
     q.value.string.size = snprintf(q.value.string.buffer,
         sizeof q.value.string.buffer,
-        "%s", args->value.buffer);
+        "%s", value->buffer);
 
-    RETURN( m->driver->class->write(m->driver, &q) );
+    return INVOKE(CONTEXT->motor, write, &q);
 }
 
-PROXYIMPL (mcPokeInteger, motor_query_t query, int value) {
-    UNPACK_ARGS(mcPokeInteger, args);
+int
+PROXYIMPL (mcPokeInteger, MOTOR motor, motor_query_t query, int value) {
 
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
+    if (!SUPPORTED(CONTEXT->motor, write))
+        return ENOTSUP;
 
-    if (m->driver->class->write == NULL)
-        RETURN( ENOTSUP );
-
-    struct motor_query q = {
-        .query = args->query
-    };
+    struct motor_query q = { .query = query };
 
     // TODO: Convert POKE codes with units such as MCPOSITION
-    switch (args->query) {
+    switch (query) {
         case MCPOSITION:
-            mcDistanceToMicroRevs(m, args->value, &q.value.number);
+            mcDistanceToMicroRevs(CONTEXT->motor, value, &q.value.number);
             break;
         default:
-            q.value.number = args->value;
+            q.value.number = value;
     }
 
-    RETURN( m->driver->class->write(m->driver, &q) );
+    return INVOKE(CONTEXT->motor, write, &q);
 }
 
-PROXYIMPL (mcPokeIntegerUnits, motor_query_t query, int value,
-        unit_type_t units) {
-    UNPACK_ARGS(mcPokeIntegerUnits, args);
+int
+PROXYIMPL (mcPokeIntegerUnits, MOTOR motor, motor_query_t query,
+        int value, unit_type_t units) {
 
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
+    if (!SUPPORTED(CONTEXT->motor, write))
+        return ENOTSUP;
 
-    if (m->driver->class->write == NULL)
-        RETURN( ENOTSUP );
-
-    struct motor_query q = {
-        .query = args->query
-    };
+    struct motor_query q = { .query = query };
 
     // TODO: Convert POKE codes with units such as MCPOSITION
-    switch (args->query) {
+    switch (query) {
         case MCPOSITION:
-            mcDistanceUnitsToMicroRevs(m, args->value, args->units,
+            mcDistanceUnitsToMicroRevs(CONTEXT->motor, value, units,
                 &q.value.number);
             break;
         default:
-            q.value.number = args->value;
+            q.value.number = value;
     }
 
-    RETURN( m->driver->class->write(m->driver, &q) );
+    return INVOKE(CONTEXT->motor, write, &q);
 }
 
-PROXYIMPL (mcPokeIntegerWithStringItem, motor_query_t query, int value,
-        String item) {
-    UNPACK_ARGS(mcPokeIntegerWithStringItem, args);
+int
+PROXYIMPL (mcPokeIntegerWithStringItem, MOTOR motor, motor_query_t query,
+        int value, String * item) {
 
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
+    if (!SUPPORTED(CONTEXT->motor, write))
+        return ENOTSUP;
 
-    if (m->driver->class->write == NULL)
-        RETURN( ENOTSUP );
+    struct motor_query q = { .query = query };
+    snprintf(q.arg.string, sizeof q.arg.string, "%s", item->buffer);
 
-    struct motor_query q = {
-        .query = args->query
-    };
-    snprintf(q.arg.string, sizeof q.arg.string, "%s", args->item.buffer);
+    q.value.number = value;
 
-    q.value.number = args->value;
-
-    RETURN( m->driver->class->write(m->driver, &q) );
+    return INVOKE(CONTEXT->motor, write, &q);
 }
 
-PROXYIMPL (mcPokeIntegerWithIntegerItem, motor_query_t query, int value,
-        int item) {
-    UNPACK_ARGS(mcPokeIntegerWithIntegerItem, args);
+int
+PROXYIMPL (mcPokeIntegerWithIntegerItem, MOTOR motor, motor_query_t query,
+        int value, int item) {
 
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
-
-    if (m->driver->class->write == NULL)
-        RETURN( ENOTSUP );
+    if (!SUPPORTED(CONTEXT->motor, write))
+        return ENOTSUP;
 
     struct motor_query q = {
-        .query = args->query,
-        .arg.number = args->item,
+        .query = query,
+        .arg.number = item,
     };
-    q.value.number = args->value;
+    q.value.number = value;
 
-    RETURN( m->driver->class->write(m->driver, &q) );
+    return INVOKE(CONTEXT->motor, write, &q);
 }
 
-PROXYIMPL (mcPokeStringWithStringItem, motor_query_t query, String value,
-        String item) {
-    UNPACK_ARGS(mcPokeStringWithStringItem, args);
+int
+PROXYIMPL (mcPokeStringWithStringItem, MOTOR motor, motor_query_t query,
+        String * value, String * item) {
 
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
+    if (!SUPPORTED(CONTEXT->motor, write))
+        return ENOTSUP;
 
-    if (m->driver->class->write == NULL)
-        RETURN( ENOTSUP );
-
-    struct motor_query q = {
-        .query = args->query
-    };
-    snprintf(q.arg.string, sizeof q.arg.string, "%s", args->item.buffer);
+    struct motor_query q = { .query = query };
+    snprintf(q.arg.string, sizeof q.arg.string, "%s", item->buffer);
     q.value.string.size = snprintf(q.value.string.buffer,
         sizeof q.value.string.buffer,
-        "%s", args->value.buffer);
+        "%s", value->buffer);
 
-    RETURN( m->driver->class->write(m->driver, &q) );
+    return INVOKE(CONTEXT->motor, write, &q);
 }

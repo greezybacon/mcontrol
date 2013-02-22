@@ -334,75 +334,73 @@ mcTraceChannelLookup(const char * name) {
  * still need to subscribe to the EV_TRACE event and declare a callback
  * function or wait for the events to arrive in a threaded loop.
  */
+int
 PROXYIMPL(mcTraceSubscribeRemote, int level, unsigned long long mask) {
-    UNPACK_ARGS(mcTraceSubscribeRemote, args);
 
-    int id = mcTraceSubscribe(args->level, args->mask, NULL);
+    int id = mcTraceSubscribe(level, mask, NULL);
 
     if (id == -ER_TOO_MANY)
-        RETURN(-ER_TOO_MANY);
+        return -ER_TOO_MANY;
 
     // Find the id in the subscriber array
     struct trace_subscriber * s = subscribers;
     while (s->id && s->id != id) s++;
     
-    // XXX: Very magical
-    s->pid = message->pid;
+    s->pid = CONTEXT->caller_pid;
     s->channels = 0;
 
-    RETURN(id);
+    return id;
 }
 
+int
 PROXYIMPL(mcTraceUnsubscribeRemote, int id) {
-    UNPACK_ARGS(mcTraceUnsubscribeRemote, args);
-
-    RETURN(mcTraceUnsubscribe(args->id));
+    return mcTraceUnsubscribe(id);
 }
 
-PROXYIMPL(mcTraceSubscribeAdd, int id, String name) {
-    UNPACK_ARGS(mcTraceSubscribeAdd, args);
+int
+PROXYIMPL(mcTraceSubscribeAdd, int id, String * name) {
 
     // Find the id in the subscriber array
     struct trace_subscriber * s = subscribers;
-    while (s->id && s->id != args->id) s++;
+    while (s->id && s->id != id) s++;
 
-    int channel = mcTraceChannelLookup(args->name.buffer);
+    int channel = mcTraceChannelLookup(name->buffer);
     if (channel == -ENOENT)
-        RETURN(-ENOENT);
+        return -ENOENT;
 
     s->channels |= 1 << (channel - 1);
-    RETURN(0);
+    return 0;
 }
 
-PROXYIMPL(mcTraceSubscribeRemove, int id, String name) {
-    UNPACK_ARGS(mcTraceSubscribeRemove, args);
+int
+PROXYIMPL(mcTraceSubscribeRemove, int id, String * name) {
 
     // Find the id in the subscriber array
     struct trace_subscriber * s = subscribers;
-    while (s->id && s->id != args->id) s++;
+    while (s->id && s->id != id) s++;
 
-    int channel = mcTraceChannelLookup(args->name.buffer);
+    int channel = mcTraceChannelLookup(name->buffer);
     if (channel == -ENOENT)
-        RETURN(-ENOENT);
+        return -ENOENT;
 
     s->channels &= ~(1 << (channel - 1));
-    RETURN(0);
+    return 0;
 }
 
-PROXYIMPL(mcTraceChannelEnum, String channels) {
-    UNPACK_ARGS(mcTraceChannelEnum, args);
+int
+PROXYIMPL(mcTraceChannelEnum, String * channels) {
 
-    char * pos = args->channels.buffer, * start = pos;
+    char * pos = channels->buffer, * start = pos;
     int count = 0;
 
     struct trace_channel * c = trace_channels;
     while (c->id) {
-        pos += snprintf(pos, sizeof args->channels.buffer + start - pos, "%s",
+        pos += snprintf(pos, sizeof channels->buffer + start - pos, "%s",
             c->name) + 1;
         c++;
         count++;
     }
-    args->channels.size = pos - start;
+    channels->size = pos - start;
 
-    RETURN(count);
+    return count;
 }

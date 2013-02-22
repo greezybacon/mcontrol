@@ -107,8 +107,8 @@ struct event_message {
     func##Impl(struct call_context * __context, __VA_ARGS__)
 
 // Used to call from one function impl to another
-//#define CALL(func, ...) \
-//    func#Impl(CONTEXT, __VA_ARGS__)
+#define CALL(func, ...) \
+    func##Impl(CONTEXT, __VA_ARGS__)
 
 #define UNPACK_ARGS(func, local) \
     struct CONCATENATE(CONCATENATE(_,func),_args) \

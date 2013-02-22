@@ -14,8 +14,8 @@ extern int mcDriverLock(Driver * driver, int for_motor_id, lock_mode_t mode);
 extern int mcDriverUnlock(Driver * driver, int for_motor_id);
 extern bool mcDriverIsLocked(Driver * driver);
 
-PROXYDEF(mcMotorLock, int, int for_motor_id, lock_mode_t mode);
-PROXYDEF(mcMotorUnlock, int, int for_motor_id);
-PROXYDEF(mcMotorIsLocked, bool);
+PROXYSTUB(int, mcMotorLock, MOTOR motor, int for_motor_id, lock_mode_t mode);
+PROXYSTUB(int, mcMotorUnlock, MOTOR motor, int for_motor_id);
+PROXYSTUB(bool, mcMotorIsLocked, MOTOR motor);
 
 #endif

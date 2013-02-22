@@ -43,11 +43,11 @@ mcTraceSubscribe(int level, unsigned long long channel_mask,
 extern int
 mcTraceUnsubscribe(int id);
 
-PROXYDEF(mcTraceSubscribeRemote, int, int level, unsigned 
+PROXYSTUB(int, mcTraceSubscribeRemote, int level, unsigned 
     long long mask);
-PROXYDEF(mcTraceUnsubscribeRemote, int, int id);
-PROXYDEF(mcTraceSubscribeAdd, int, int id, String * name);
-PROXYDEF(mcTraceSubscribeRemove, int, int id, String * name);
-PROXYDEF(mcTraceChannelEnum, int, OUT String * channels);
+PROXYSTUB(int, mcTraceUnsubscribeRemote, int id);
+PROXYSTUB(int, mcTraceSubscribeAdd, int id, String * name);
+PROXYSTUB(int, mcTraceSubscribeRemove, int id, String * name);
+PROXYSTUB(int, mcTraceChannelEnum, OUT String * channels);
 
 #endif

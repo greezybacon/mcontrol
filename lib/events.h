@@ -21,8 +21,8 @@ struct client_callback {
     pthread_cond_t * wait;
 };
 
-PROXYDEF(mcEventRegister, int, int event);
-PROXYDEF(mcEventUnregister, int, int event);
+PROXYSTUB(int, mcEventRegister, MOTOR motor, int event);
+PROXYSTUB(int, mcEventUnregister, MOTOR motor, int event);
 
 extern int
 mcDispatchSignaledEvent(struct event_message * event);

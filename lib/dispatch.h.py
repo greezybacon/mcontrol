@@ -6,7 +6,8 @@ proxy = re.compile(r'(?P<flags>IMPORTANT|SLOW)? *PROXYSTUB\((?P<ret>[^,)]+),'
                    r'(?P<args>(?:,[^,)]+)*)\);', re.M)
 
 funcs = []
-for doth in sys.argv:
+for doth in sys.argv[1:]:
+    print('#include "{0}"'.format(doth))
     for stub in proxy.finditer(open(doth, 'rt').read()):
         items = stub.groupdict()
         funcs.append(items['name'])
