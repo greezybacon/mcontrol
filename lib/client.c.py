@@ -90,7 +90,7 @@ for doth in sys.argv:
         items['remote_args'] = remote_args
         items['unpacked_args'] = ",\n        ".join(
                 [".{0} = {1}{0}".format(x, "*" if x in pointers else "")
-                for x in arg_names if x != items['motor_arg_name']]) or "0"
+                for x in arg_names]) or "0"
 
         # Check pointer arguments for NULL
         items['null_pointer_checks'] = "\n    ".join(
@@ -266,6 +266,7 @@ class ProxyStubGenerator(object):
             if (call_mode == MC_CALL_CROSS_PROCESS)
                 return {s.name}Proxy({s.arg_names});
             else {{
+                {s.null_pointer_checks}
                 struct call_context context = {{
                     .inproc = true,
                     .caller_pid = getpid(),
