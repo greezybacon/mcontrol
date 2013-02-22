@@ -358,6 +358,7 @@ mdrive_vr_peek(mdrive_device_t * device, struct motor_query * query,
     query->value.string.size = snprintf(
         query->value.string.buffer, sizeof query->value.string.buffer,
         "%s", device->firmware_version);
+    return 0;
 }
 
 static int
