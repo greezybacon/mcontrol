@@ -49,11 +49,16 @@ mcTraceSubscribe(int level, unsigned long long channel_mask,
 extern int
 mcTraceUnsubscribe(int id);
 
+extern char *
+mcTraceChannelGetName(int id);
+
 PROXYSTUB(int, mcTraceSubscribeRemote, int level, unsigned 
     long long mask);
 PROXYSTUB(int, mcTraceUnsubscribeRemote, int id);
 PROXYSTUB(int, mcTraceSubscribeAdd, int id, String * name);
 PROXYSTUB(int, mcTraceSubscribeRemove, int id, String * name);
 PROXYSTUB(int, mcTraceChannelEnum, OUT String * channels);
+PROXYSTUB(int, mcTraceChannelLookupRemote, String * buffer, OUT int * id);
+PROXYSTUB(int, mcTraceChannelGetNameRemote, int id, OUT String * buffer);
 
 #endif
