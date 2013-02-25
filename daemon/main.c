@@ -23,14 +23,14 @@ trace_output(int id, int level, int channel, const char * buffer) {
 
 int main(int argc, char * argv[]) {
     DaemonTraceInit();
+    mcTraceSubscribe(50, ALL_CHANNELS, trace_output);
+
     mcDriverLoad("mdrive.so");
 
     signal(SIGINT, cleanup);
     signal(SIGHUP, cleanup);
 
     mcMessageBoxOpenDaemon();
-
-    mcTraceSubscribe(50, ALL_CHANNELS, trace_output);
 
     receive_messages(false);
     
