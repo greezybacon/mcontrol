@@ -56,6 +56,7 @@ cdef class Trace(object):
         # exception for instance)
         import atexit
         atexit.register(self.__del__)
+        self.channel_names = {}
 
     def __del__(self):
         if self.id:
@@ -70,9 +71,13 @@ cdef class Trace(object):
 
     def add(self, channel, level=20):
         cdef String buf = bufferFromString(channel)
+        cdef int id
         status = mcTraceSubscribeAdd(ANY_MOTOR, self.id, &buf)
         if status < 0:
             raise ValueError('{0}: No such channel'.format(channel))
+        elif channel not in self.channel_names.values():
+            mcTraceChannelLookupRemote(0, &buf, &id);
+            self.channel_names[id] = channel
 
     def remove(self, channel):
         cdef String buf = bufferFromString(channel)

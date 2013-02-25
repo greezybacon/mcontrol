@@ -88,6 +88,8 @@ class TeeableTrace(Trace):
 
     def emit(self, level, channel, text):
         if self['trace-tee']:
-            self['trace-tee'].write("{0}: {1}\n".format(channel, text))
+            self['trace-tee'].write("{0}: {1}\n".format(
+                self.channel_names[channel], text))
         if self['trace-local']:
-            self.shell.status('%(WHITE){0}: {1}%(NORMAL)'.format(channel, text))
+            self.shell.status('%(WHITE){0}: {1}%(NORMAL)'.format(
+                self.channel_names[channel], text))

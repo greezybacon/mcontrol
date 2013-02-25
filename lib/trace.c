@@ -328,6 +328,29 @@ mcTraceChannelLookup(const char * name) {
     return -ENOENT;
 }
 
+char *
+mcTraceChannelGetName(int id) {
+    // XXX: There is no ChannelUninit currently, so treat id's as sorted and
+    //      matched to the location in the trace_channel list
+
+    if (!trace_channels)
+        // Why did you come here?
+        return NULL;
+
+    if (id > trace_channel_serial)
+        // No such id
+        return NULL;
+
+    struct trace_channel * c = trace_channels + id;
+    while (c->id) {
+        if (c->id == id)
+            return c->name;
+        c++;
+    }
+
+    return NULL;
+}
+
 // Remote clients
 /**
  * mcTraceSubscribeRemote
@@ -408,4 +431,23 @@ PROXYIMPL(mcTraceChannelEnum, String channels) {
     args->channels.size = pos - start;
 
     RETURN(count);
+}
+
+PROXYIMPL(mcTraceChannelLookupRemote, String * buffer, OUT int * id) {
+    UNPACK_ARGS(mcTraceChannelLookupRemote, args);
+
+    args->id = mcTraceChannelLookup(args->buffer.buffer);
+    RETURN ((args->id > 0) ? 0 : -(args->id));
+}
+    
+
+PROXYIMPL(mcTraceChannelGetNameRemote, int id, OUT String * buffer) {
+    UNPACK_ARGS(mcTraceChannelGetNameRemote, args);
+
+    char * name = mcTraceChannelGetName(args->id);
+    if (name != NULL)
+        args->buffer.size = snprintf(args->buffer.buffer,
+            sizeof args->buffer.buffer, "%s", name);
+
+    RETURN ((args->buffer.size) ? 0 : ENOENT);
 }
