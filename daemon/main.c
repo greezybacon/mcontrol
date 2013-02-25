@@ -5,6 +5,7 @@
 #include "../lib/trace.h"
 
 #include "controller.h"
+#include "trace.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,6 +22,7 @@ trace_output(int id, int level, int channel, const char * buffer) {
 }
 
 int main(int argc, char * argv[]) {
+    DaemonTraceInit();
     mcDriverLoad("mdrive.so");
 
     signal(SIGINT, cleanup);

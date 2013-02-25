@@ -307,8 +307,10 @@ enum mdrive_error {
 #define CHANNEL "mdrive"
 #define CHANNEL_RX CHANNEL ".rx"
 #define CHANNEL_TX CHANNEL ".tx"
+#define CHANNEL_FW CHANNEL ".firmware"
 
-extern int MDRIVE_CHANNEL, MDRIVE_CHANNEL_TX, MDRIVE_CHANNEL_RX;
+extern int MDRIVE_CHANNEL, MDRIVE_CHANNEL_TX, MDRIVE_CHANNEL_RX,
+    MDRIVE_CHANNEL_FW;
 
 #define min(a,b) \
    ({ __typeof__ (a) _a = (a); \

@@ -14,7 +14,8 @@
 #include <regex.h>
 #include <errno.h>
 
-int MDRIVE_CHANNEL, MDRIVE_CHANNEL_TX, MDRIVE_CHANNEL_RX;
+int MDRIVE_CHANNEL, MDRIVE_CHANNEL_TX, MDRIVE_CHANNEL_RX,
+    MDRIVE_CHANNEL_FW;
 
 /**
  * mdrive_init -- (DriverClass::initialize)
@@ -204,4 +205,5 @@ _mdrive_driver_init(void) {
     MDRIVE_CHANNEL = mcTraceChannelInit(CHANNEL);
     MDRIVE_CHANNEL_RX = mcTraceChannelInit(CHANNEL_RX);
     MDRIVE_CHANNEL_TX = mcTraceChannelInit(CHANNEL_TX);
+    MDRIVE_CHANNEL_FW = mcTraceChannelInit(CHANNEL_FW);
 }

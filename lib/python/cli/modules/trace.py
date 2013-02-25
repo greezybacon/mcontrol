@@ -26,7 +26,7 @@ class TraceCommands(Mixin):
         trace tee <file>|off [only]
 
         Trace Levels:
-        crash, error, warn, info, debug, data
+        crash, error, warn, info, debug, data, any
         """
         words = line.split()
         if len(words) < 1:
@@ -41,6 +41,10 @@ class TraceCommands(Mixin):
     def trace_add(self, line):
         for channel in line:
             self['trace'].add(channel)
+
+    def complete_trace(self, text, line, start, end):
+        if ' add ' in line:
+            return [x for x in self['trace'].enum() if x.startswith(text)]
 
     def trace_list(self, line):
         self.init_trace()

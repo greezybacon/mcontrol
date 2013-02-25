@@ -26,6 +26,12 @@ struct trace_channel {
 
 #define ALL_CHANNELS -1
 
+extern int LIB_CHANNEL;
+#define LIB_CHANNEL_NAME "libmcontrol"
+
+extern int
+mcTraceChannelInit(const char * name);
+
 void
 mcTrace(int level, int channel, const char * buffer, int length);
 

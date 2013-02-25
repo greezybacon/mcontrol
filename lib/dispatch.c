@@ -2,6 +2,7 @@
 #include "../drivers/driver.h"
 
 #include "message.h"
+#include "trace.h"
 
 // Include the dispatch table generated in dispatch.h
 #define DISPATCH_INCLUDE_TABLE
@@ -46,10 +47,12 @@ mcDispatchProxyMessage(request_message_t * message) {
             sizeof(struct dispatch_table), LookupByMessageType);
 
     if (e) {
+        mcTraceF(40, LIB_CHANNEL, "Dispatching call to %s", e->name);
         e->callable(message);
         return 0;
     }
     // else
-    printf("Received unexpected request of type %d\n", message->type);
+    mcTraceF(10, LIB_CHANNEL, "Received unexpected request of type %d",
+        message->type);
     return -1;
 }

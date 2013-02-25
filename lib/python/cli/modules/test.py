@@ -248,7 +248,7 @@ class TestingRunContext(Shell):
         self.context['labels'] = []
         self.context['timers'] = {}
         self.stack = []
-        self.vars = self.context['env'].copy()
+        self.vars = self.context['env']
         self.debug = False
         self.state = self.Status.READY
 

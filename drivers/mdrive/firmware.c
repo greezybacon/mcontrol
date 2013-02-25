@@ -11,7 +11,7 @@
 
 int
 mdrive_firmware_write(mdrive_device_t * device, const char * filename) {
-    static const struct timespec wait = { .tv_sec = 1 };
+    static const struct timespec wait = { .tv_sec = 3 };
 
     mcTraceF(10, MDRIVE_CHANNEL, "Loading firmware from: %s", filename);
     
@@ -28,6 +28,7 @@ mdrive_firmware_write(mdrive_device_t * device, const char * filename) {
                 return errno;
         }
     }
+    mcTraceF(20, MDRIVE_CHANNEL_FW, "Entering firmware upgrade mode");
 
     // Put device in upgrade mode
     mdrive_send(device, "UG 2956102");
@@ -69,6 +70,7 @@ mdrive_firmware_write(mdrive_device_t * device, const char * filename) {
     // TODO: Split firmware load into two parts, the first will read the
     // unit information (VR, SN, etc) and send then back for user
     // confirmation. The second call will actually flash the firmware.
+    mcTraceF(30, MDRIVE_CHANNEL_FW, "Sending magic");
 
     // Send some magic numbers, the unit responds with
     // :v -- Firmware version, hex encoded (03000D for 3.013)
@@ -88,14 +90,11 @@ mdrive_firmware_write(mdrive_device_t * device, const char * filename) {
         } while (!result.ack);
     }
 
-    // The unit will respond after the ':e' before it is really ready
-    sleep(2);
-
     // Use default timeout algorithm when sending firmware lines
     options.waittime = NULL;
     // Read data from the input file
     char ch, buffer[64], *pBuffer;
-    int tries;
+    int tries, line=0;
     do {
         // Reset the buffer position (for file reads)
         pBuffer = buffer;
@@ -131,6 +130,10 @@ mdrive_firmware_write(mdrive_device_t * device, const char * filename) {
         *pBuffer++ = '\r';
         *pBuffer = 0;
 
+        // Increment the line counter
+        if (++line % 25 == 0)
+            mcTraceF(20, MDRIVE_CHANNEL_FW, "Burning block %d", line);
+
         // Retry the send until we get a clear ACK from the unit. Even
         // though the unit is not in checksum mode, it will respond with an
         // ACK or NACK char to indicate receipt of the record.
@@ -152,6 +155,8 @@ mdrive_firmware_write(mdrive_device_t * device, const char * filename) {
     } while (ch != EOF);
     fclose(file);
 
+    mcTraceF(30, MDRIVE_CHANNEL_FW, "Completed. Rebooting");
+
     // Restore error handling
     device->ignore_errors = false;
 
@@ -167,6 +172,8 @@ mdrive_firmware_write(mdrive_device_t * device, const char * filename) {
 
     if (device->upgrade_mode)
         return EIO;
+
+    mcTraceF(30, MDRIVE_CHANNEL_FW, "Firmware upgrade is successful");
 
     // Wait for the unit to settle
     sleep(1);

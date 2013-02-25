@@ -14,14 +14,14 @@ read_write = set(['A', 'C1', 'C2', 'CE', 'CK', 'CM', 'CR', 'D', 'D1', 'D2',
     'D3', 'D4', 'D5', 'DB', 'DE', 'DG', 'EE', 'EM', 'ES', 'ER', 'FC', 'FM',
     'HC', 'HT', 'JE', 'LK', 'LM', 'MS', 'MT', 'NE', 'OT', 'OL', 'P', 'PM',
     'QD', 'R1', 'R2', 'R3', 'R4', 'RC', 'S1', 'S2', 'S3', 'S4', 'S5', 'SF',
-    'SM', 'ST', 'TE', 'TR', 'TT', 'VI', 'VM'])
+    'SM', 'ST', 'TE', 'TP', 'TR', 'TT', 'VI', 'VM'])
 # Label-args commands take a label as an argument
-label_args = set(['OE', 'TI', 'TR', 'TT'])
+label_args = set(['OE', 'TI', 'TP', 'TR', 'TT'])
 
 internal = commands | bare | read_only | read_write
 assignable = commands | read_write
 
-def comment():      return re.compile("[ \t]*'.*$", re.M)
+def comment():      return re.compile("[ \t]*'.*$", re.M), _newline
 
 def declaration():  return keyword("VA"), _ws, name, \
                            0, (_ws, "=", _ws, expression)
@@ -44,8 +44,8 @@ def compare():      return re.compile(r"<>|<=|>=|<|>|=")
 def unary():        return re.compile(r"[!-]")
 def math():         return re.compile(r"[+*/&|^-]")
 
-def statement():    return [call, branch, return_, label,
-                            declaration, assignment, command], 0, comment, _newline
+def statement():    return [call, branch, return_, label, declaration,
+                            assignment, command], [comment, _newline]
 
 def _ws1():         return ignore(r'[ \t]+')
 def _ws():          return ignore(r'[ \t]*')
@@ -53,5 +53,4 @@ def _newline():     return _ws, ignore('\n|\r\n')
 
 def pragma():       return ignore("#"), _ws, re.compile(".*$", re.M), _newline
 
-def language():     return -2, (_ws, [(comment, _newline), pragma, statement,
-                                _newline])
+def language():     return -2, (_ws, [comment, pragma, statement, _newline])
