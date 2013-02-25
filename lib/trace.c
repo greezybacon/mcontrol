@@ -397,7 +397,7 @@ PROXYIMPL(mcTraceChannelEnum, String * channels) {
     int count = 0;
 
     struct trace_channel * c = trace_channels;
-    while (c->id) {
+    while (c && c->id) {
         pos += snprintf(pos, sizeof channels->buffer + start - pos, "%s",
             c->name) + 1;
         c++;
