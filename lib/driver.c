@@ -1,14 +1,16 @@
 #include "driver.h"
 
 #include "events.h"
+#include "trace.h"
 
+#include <dlfcn.h>
+#include <errno.h>
+#include <limits.h>
+#include <regex.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <errno.h>
 #include <unistd.h>
-#include <dlfcn.h>
-#include <regex.h>
 
 static struct driver_list * drivers = NULL;
 static struct driver_instance * motors = NULL;
@@ -249,6 +251,7 @@ find_driver_by_id(int id) {
     for (struct driver_instance * m = motors->head; m; m=m->next)
         if (m->driver->id == id)
             return m->driver;
+    return NULL;
 }
 
 void *
@@ -274,19 +277,15 @@ mcEnumDriversNext(void ** enum_id) {
 
 void
 mcDriverLoad(const char * path) {
-    char modulepath[256];
+    char modulepath[PATH_MAX];
 
-    if (path[0] != '/') {
-        char cwd[128];
-        getcwd(cwd, sizeof cwd);
-        snprintf(modulepath, sizeof modulepath, "%s/%s", cwd, path);
-    } else {
+    if (strchr(path, '/') == NULL)
+        snprintf(modulepath, sizeof modulepath, "./%s", path);
+    else
         snprintf(modulepath, sizeof modulepath, "%s", path);
-    }
 
     void * module = dlopen(modulepath, RTLD_NOW);
 
-    if (!module) {
+    if (!module)
         printf("Unable to load module: %s\n", dlerror());
-    }
 }
