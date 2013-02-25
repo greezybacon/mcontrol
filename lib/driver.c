@@ -35,11 +35,13 @@ mcDriverRegister(DriverClass * class) {
     }
 
     if (class == NULL || class->name == NULL) {
-        printf("Programming error: driver must specify .name\n");
+        mcTraceF(1, LIB_CHANNEL,
+            "Programming error: driver must specify .name");
         return;
     }
     
-    printf("Driver: %s, %s\n", class->description, class->revision);
+    mcTraceF(20, LIB_CHANNEL, "Registered driver: %s, %s",
+        class->description, class->revision);
 
     driver_info_t * current = drivers;
 
@@ -287,5 +289,6 @@ mcDriverLoad(const char * path) {
     void * module = dlopen(modulepath, RTLD_NOW);
 
     if (!module)
-        printf("Unable to load module: %s\n", dlerror());
+        mcTraceF(10, LIB_CHANNEL, "%s: Unable to load driver: %s",
+            path, dlerror());
 }

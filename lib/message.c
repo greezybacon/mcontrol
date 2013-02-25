@@ -3,6 +3,7 @@
 #include "message.h"
 
 #include "events.h"
+#include "trace.h"
 
 #include <time.h>
 #include <string.h>
@@ -60,7 +61,8 @@ mcMessageBoxOpen(void) {
     snprintf(buffer, sizeof buffer, CLIENT_QUEUE_FMT, getpid(), "wait");
     _inbox = mq_open(buffer, O_CREAT | O_EXCL, 0600, &_inbox_attr);
     if (_inbox == -1)
-        printf("Unable to open event queue: %d\n", errno);
+        mcTraceF(10, LIB_CHANNEL, "Unable to open event queue: %s",
+            strerror(errno));
     else {
         // Make sure mcGoodBye is called at program exit
         struct sigaction action = { .sa_handler = mcRudeGoodBye };
@@ -74,7 +76,12 @@ mcMessageBoxOpen(void) {
 int
 mcMessageBoxOpenDaemon(void) {
     _inbox = mq_open(DAEMON_QUEUE_NAME, O_CREAT, 0600, &_inbox_attr);
-    printf("Opened inbox %s at %d, %d\n", DAEMON_QUEUE_NAME, _inbox, errno);
+    if (_inbox == 0)
+        mcTraceF(10, LIB_CHANNEL, "Unable to open inbox: %s",
+            strerror(errno));
+    else
+        mcTraceF(30, LIB_CHANNEL, "Opened inbox %s", DAEMON_QUEUE_NAME);
+
     // XXX: Make sure inbox was successfully opened
     return (_inbox > 0) ? 0 : -1;
 }
@@ -227,7 +234,8 @@ mcMessageSendWait(motor_t motor, int type,
         pTimeout);
 
     if (msg_id < 0) {
-        printf("Unable to queue message: %d\n", msg_id);
+        mcTraceF(10, LIB_CHANNEL, "Unable to queue message: %s",
+            strerror(-msg_id));
         return msg_id;
     }
 
@@ -281,7 +289,8 @@ _on_mg_notify(int signal, siginfo_t * info, void * context) {
     // If msg was not an event, then it was unsolicited and will be
     // discarded here.
     if (msg.id != -1)
-        printf("Discarding unsolicted response: %d\n", msg.id);
+        mcTraceF(20, LIB_CHANNEL, "Discarding unsolicted response: %d",
+            msg.id);
 }
 
 /**
@@ -309,11 +318,13 @@ mcAsyncReceive(void) {
     sigemptyset(&config.sa_mask);
 
     if (0 != sigaction(SIGUSR2, &config, NULL))
-        printf("Could not register signal handler, %d\n", errno);
+        mcTraceF(10, LIB_CHANNEL, "Could not register signal handler: %s",
+            strerror(errno));
     if (0 == mq_notify(_inbox, &onevent))
         _async_registered = true;
     else
-        printf("Could not receive async, %d\n", errno);
+        mcTraceF(10, LIB_CHANNEL, "Could not receive async: %s",
+            strerror(errno));
 }
 
 int
