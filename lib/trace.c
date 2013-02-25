@@ -315,7 +315,7 @@ mcTraceChannelLookup(const char * name) {
     unsigned long hash = hashstring(name);
 
     struct trace_channel * c = trace_channels;
-    while (c->id) {
+    while (c && c->id) {
         if (c->active && c->hash == hash)
             if (strncmp(c->name, name, sizeof c->name) == 0)
                 return c->id;
