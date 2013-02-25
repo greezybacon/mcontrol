@@ -5,6 +5,38 @@ proxy = re.compile(r'(?P<flags>IMPORTANT|SLOW)? *PROXYSTUB\((?P<ret>[^,)]+),'
                    r'\s*(?P<name>[^,)]+)'
                    r'(?P<args>(?:,[^,)]+)*)\);', re.M)
 
+def indent(s, tabs):
+    lines = s.splitlines()
+    first = lines.pop(0)
+    return '\n'.join([first] + [
+        tabs * 4 * ' ' + line for line in lines])
+
+import sys
+def trim(docstring):
+    if not docstring:
+        return ''
+    # Convert tabs to spaces (following the normal Python rules)
+    # and split into a list of lines:
+    lines = docstring.expandtabs().splitlines()
+    # Determine minimum indentation (first line doesn't count):
+    indent = sys.maxint
+    for line in lines[1:]:
+        stripped = line.lstrip()
+        if stripped:
+            indent = min(indent, len(line) - len(stripped))
+    # Remove indentation (first line is special):
+    trimmed = [lines[0].strip()]
+    if indent < sys.maxint:
+        for line in lines[1:]:
+            trimmed.append(line[indent:].rstrip())
+    # Strip off trailing and leading blank lines:
+    while trimmed and not trimmed[-1]:
+        trimmed.pop()
+    while trimmed and not trimmed[0]:
+        trimmed.pop(0)
+    # Return a single string:
+    return '\n'.join(trimmed)
+
 proxies = {}
 
 def unpack_return(arg):
@@ -160,17 +192,6 @@ class ProxyStubGenerator(object):
         return ", ".join(args)
 
     @property
-    def server_args(self):
-        args = []
-        for arg in self.args:
-            parts = arg.split()
-            if 'MOTOR' in parts:
-                parts.remove('MOTOR')
-                parts.insert(-1, 'Motor *')
-            args.append(' '.join(parts))
-        return ", ".join(args)
-
-    @property
     def stub_call(self):
         args = []
         for arg in self.args:
@@ -182,19 +203,19 @@ class ProxyStubGenerator(object):
     @property
     def unpack_motor_inproc(self):
         if self.has_motor_arg:
-            return """
-            CONTEXT->motor = find_motor_by_id({s.motor_arg_name}, getpid());
+            return indent(trim("""
+            CONTEXT->motor = find_motor_by_id({s.motor_arg_name},
+                 CONTEXT->caller_pid);
             if (CONTEXT->motor == NULL)
                 return EINVAL;
-            """.format(s=self)
+            """).format(s=self), 2)
         else:
             return ""
     @property
     def impl_call(self):
         args = []
         for arg in self.args:
-            parts = arg.split()
-            args.append("{0}".format(parts[-1]))
+            args.append(arg.split()[-1])
         return ", ".join(args)
 
     @property
@@ -207,32 +228,32 @@ class ProxyStubGenerator(object):
     @property
     def unpack_motor(self):
         if self.has_motor_arg:
-            return """
+            return indent(trim("""
             CONTEXT->motor = find_motor_by_id(args->{s.motor_arg_name},
                 CONTEXT->caller_pid);
             if (CONTEXT->motor == NULL)
                 RETURN (EINVAL);
-            """.format(s=self)
+            """).format(s=self), 2)
         else:
             return ""
 
     @property
     def stub(self):
-        return """
+        return trim("""
         void {s.name}Stub(request_message_t * message) {{
             UNPACK_ARGS({s.name}, args);
             struct call_context context = {{
                 .outofproc = true,
                 .caller_pid = message->pid,
-            }}, * __context = &context;
+            }}, * CONTEXT = &context;
             {s.unpack_motor}
-            RETURN ({s.name}Impl(__context, {s.stub_call}));
+            RETURN ({s.name}Impl(CONTEXT, {s.stub_call}));
         }}
-        """.format(s=self)
+        """).format(s=self)
 
     @property
     def proxy(self):
-        return """
+        return trim("""
         {s.ret} {s.name}Proxy({s.client_args}) {{
             {s.null_pointer_checks}
             struct _{s.name}_args args = {{
@@ -257,11 +278,11 @@ class ProxyStubGenerator(object):
             {s.unpacked_rets}
             return payload->returned;
         }}
-        """.format(s=self)
+        """).format(s=self)
 
     @property
     def trampoline(self):
-        return """
+        return trim("""
         {s.ret} {s.name}({s.client_args}) {{
             if (call_mode == MC_CALL_CROSS_PROCESS)
                 return {s.name}Proxy({s.arg_names});
@@ -270,12 +291,12 @@ class ProxyStubGenerator(object):
                 struct call_context context = {{
                     .inproc = true,
                     .caller_pid = getpid(),
-                }}, * __context = &context;
+                }}, * CONTEXT = &context;
                 {s.unpack_motor_inproc}
-                return {s.name}Impl(__context, {s.impl_call});
+                return {s.name}Impl(CONTEXT, {s.impl_call});
             }}
         }}
-        """.format(s=self)
+        """).format(s=self)
 
 # Export function block for each proxy function
 for name in sorted(proxies):
