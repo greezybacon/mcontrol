@@ -21,7 +21,7 @@ trace_output(int id, int level, int channel, const char * buffer) {
 }
 
 int main(int argc, char * argv[]) {
-    //mcDriverLoad("mdrive.so");
+    mcDriverLoad("mdrive.so");
 
     signal(SIGINT, cleanup);
     signal(SIGHUP, cleanup);
