@@ -1,10 +1,11 @@
 #include "mdrive.h"
-#include "serial.h"
-
 #include "query.h"
-#include "motion.h"
+
 #include "config.h"
+#include "firmware.h"
+#include "motion.h"
 #include "profile.h"
+#include "serial.h"
 
 #include <stdio.h>
 #include <errno.h>
@@ -26,6 +27,7 @@ static POKE(mdrive_var_poke);
 static POKE(mdrive_ex_poke);
 static POKE(mdrive_io_poke);
 static POKE(mdrive_fd_poke);
+static PEEK(mdrive_ug_peek);
 
 static struct query_variable query_xref[] = {
     { 9, MCPOSITION,        "P",    NULL,   mdrive_write_simple },
@@ -61,6 +63,7 @@ static struct query_variable query_xref[] = {
     { 5, MDRIVE_BAUDRATE,   "BD",   mdrive_bd_peek, mdrive_bd_poke },
     { 1, MDRIVE_CHECKSUM,   "CK",   NULL,   mdrive_checksum_poke },
     { 1, MDRIVE_ECHO,       "EM",   NULL,   NULL },
+    { 5, MDRIVE_UG_MODE,    "UG",   mdrive_ug_peek, NULL },
 
     { 2, MDRIVE_ADDRESS,    "DN",   NULL,   mdrive_address_poke },
     { 6, MDRIVE_NAME,       NULL,   NULL,   mdrive_name_poke },
@@ -515,7 +518,7 @@ mdrive_io_poke(mdrive_device_t * device, struct motor_query * query,
     mdrive_lazyload_io(device);
     struct mdrive_io_config io = device->io[port-1];
 
-    switch (query->query) {
+    switch ((enum mdrive_read_variable)query->query) {
         case MDRIVE_IO_TYPE:
             if (port == 5) {
                 switch (query->value.number) {
@@ -617,4 +620,22 @@ mdrive_fd_poke(mdrive_device_t * device, struct motor_query * query,
     device->loaded.mask = 0;
 
     return 0;
+}
+
+static int
+mdrive_ug_peek(mdrive_device_t * device, struct motor_query * query,
+        struct query_variable * q) {
+
+    if (device == NULL)
+        return EINVAL;
+
+    char serial[16];
+
+    if (mdrive_check_ug_mode(device, serial, sizeof serial))
+        query->value.string.size = 0;
+    else
+        query->value.string.size = snprintf(query->value.string.buffer,
+            sizeof query->value.string.buffer, "%s", serial);
+
+    return query->value.string.size;
 }

@@ -271,6 +271,7 @@ enum mdrive_read_variable {
     MDRIVE_NAME,                // Name a unit by S/N
     MDRIVE_RESET,               // Reboot
     MDRIVE_HARD_RESET,          // Factory defaults
+    MDRIVE_UG_MODE,             // Currently PEEK only, in upgrade mode
 
     // Communication statistics
     MDRIVE_STATS_RX,

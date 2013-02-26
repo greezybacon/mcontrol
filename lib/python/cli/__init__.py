@@ -168,7 +168,6 @@ Version 0.1-beta
                 return False
             raise
         except Exception as e:
-            raise
             self.error("{0}: (Unhandled) {1}".format(
                 type(e).__name__, e))
             return True
