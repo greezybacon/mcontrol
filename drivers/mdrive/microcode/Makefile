@@ -1,4 +1,4 @@
-DIRS=modules/dosis-1.7
+DIRS=modules/dosis-1.x
 BUILDDIR=build
 
 .PHONY: all

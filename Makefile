@@ -21,7 +21,7 @@ install-dirs:
 	$(INSTALL) -d $(INSTALL_FLAGS) $(BIN_PERMS) $(TOOLS_DIR)
 	$(INSTALL) -d $(INSTALL_FLAGS) $(BIN_PERMS) $(DRIVER_DIR)
 	$(INSTALL) -d $(INSTALL_FLAGS) $(BIN_PERMS) $(MCODE_DIR)
-	$(INSTALL) -d $(INSTALL_FLAGS) $(BIN_PERMS) $(MCODE_DIR)/dosis-1.7
+	$(INSTALL) -d $(INSTALL_FLAGS) $(BIN_PERMS) $(MCODE_DIR)/dosis-1.x
 	$(INSTALL) -d $(INSTALL_FLAGS) $(BIN_PERMS) $(FIRMWARE_DIR)
 
 install: install-dirs
@@ -31,8 +31,8 @@ install: install-dirs
 	$(INSTALL) $(INSTALL_FLAGS) $(CONFIG_PERMS) \
 		drivers/mdrive/firmware/*.IMS $(FIRMWARE_DIR)
 	$(INSTALL) $(INSTALL_FLAGS) $(CONFIG_PERMS) \
-		drivers/mdrive/microcode/build/dosis-1.7/*.mxt \
-		$(MCODE_DIR)/dosis-1.7
+		drivers/mdrive/microcode/build/dosis-1.x/*.mxt \
+		$(MCODE_DIR)/dosis-1.x
 	$(MAKE) BIN_DIR="$(BIN_DIR)" -C lib/python install
 
 rpm:
