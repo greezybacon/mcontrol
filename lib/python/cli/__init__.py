@@ -19,7 +19,7 @@ class Shell(cmd.Cmd, object):
 [ | )(_.(_)[ ) | [  (_)|     (_.||
 
 Copyright (c) 2012 Manchac Technologies, LLC
-Version 0.1-1
+Version 0.2-1
 """[1:]
 
     afterlife = None

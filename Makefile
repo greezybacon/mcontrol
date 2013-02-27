@@ -37,7 +37,7 @@ install: install-dirs
 
 rpm:
 	mkdir -p ${TMPDIR}/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
-	git archive HEAD . --prefix=mcontrol-0.1/ \
+	git archive HEAD . --prefix=mcontrol-0.2/ \
 		> ${TMPDIR}/SOURCES/mcontrol-source.tar
 	cp mcontrol.spec ${TMPDIR}/SPECS
 	rpmbuild --define "_topdir ${TMPDIR}" \
