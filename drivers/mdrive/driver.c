@@ -174,10 +174,11 @@ mdrive_search(char * cxns, int size) {
     return count;
 }
 
+static
 DriverClass mdrive_driver = {
     .name = "mdrive",
     .description = "Schneider MDrive / MForce",
-    .revision = "A1",
+    .revision = "0.1-1",
 
     .initialize = mdrive_init,
     .destroy = mdrive_uninit,
