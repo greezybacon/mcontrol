@@ -531,10 +531,6 @@ mdrive_async_read(void * arg) {
     char * load = buffer, * process = buffer;
     int txid = 0;
 
-    fd_set fds;
-    FD_ZERO(&fds);
-    FD_SET(dev->fd, &fds);
-
     while (true) {
 
         // Try to read more than one char at a time
@@ -1243,7 +1239,7 @@ mdrive_set_baudrate(mdrive_comm_device_t * channel, int speed) {
     cfsetispeed(&tty, s->constant);
     cfsetospeed(&tty, s->constant);
 
-    int status = tcsetattr(channel->fd, TCSAFLUSH, &tty);
+    int status = tcsetattr(channel->fd, TCSADRAIN, &tty);
 
     if (status == 0)
         channel->speed = speed;
