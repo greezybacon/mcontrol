@@ -291,59 +291,32 @@ mcEventWaitForMessage(motor_t motor, event_t event) {
         // No registration found
         return EINVAL;
 
-    int status = 0;
+    int status = 0, size;
 
-    sigset_t mask;
-    sigemptyset(&mask);
-    sigaddset(&mask, SIGUSR2);
-    sigaddset(&mask, SIGINT);
-
-    // Block the delivery of the async signal to this process
-    pthread_sigmask(SIG_BLOCK, &mask, NULL);
-
-    siginfo_t info;
-    response_message_t msg;
+    response_message_t msg = {0};
     struct event_message * evt;
 
-    bool available;
-
     do {
-        // Await delivery of the event signal to this thread
-        sigwaitinfo(&mask, &info);
+        do {
+            msg.payload_size = 0;
+            size = mcResponseReceive2(&msg, false, NULL);
+            if (size == -EINTR)
+                goto finish;
+        } while (msg.payload_size == 0);
 
-        if (info.si_signo == SIGINT) {
-            status = EINTR;
-            break;
-        }
-        else if (info.si_code != SI_MESGQ)
-            continue;
-        else {
-            // Drain all events from the inbox
-            do {
-                if (mcIsMessageAvailable(&available))
-                    break;
-                else if (!available)
-                    break;
-                else if (1 > mcResponseReceive2(&msg, false, NULL))
-                    break;
-            } while (true);
-        } 
         evt = (void *) msg.payload;
         if (evt->motor == motor && evt->event == event)
             break;
     } while (true);
 
-    // Allow delivery of the async signal again
-    pthread_sigmask(SIG_UNBLOCK, &mask, NULL);
-
-    // Allow the process to be interrupted elsewhere
-    if (status == EINTR)
-        raise(SIGINT);
-
     // Mark event registration active (if not unsubscribed, which might make
     // reg be a registration for something else, now)
     if (reg->motor == motor && reg->event == event)
         reg->waiting = false;
+
+finish:
+    if (size == -EINTR)
+        raise(SIGINT);
 
     // Awaited event received
     return status;
