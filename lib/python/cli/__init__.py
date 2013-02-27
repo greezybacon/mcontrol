@@ -38,6 +38,7 @@ Version 0.2-1
 
     def __init__(self, context=None, scripts=None, options=None):
         cmd.Cmd.__init__(self)
+        self.context = self.__class__.context.copy()
         if context and type(context) is dict:
             self.context.update(context)
         if options and options.standalone:
