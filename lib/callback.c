@@ -53,6 +53,29 @@ _mcCallbackListPop(void) {
     }
 }
 
+/**
+ * _mcCallbackThread
+ *
+ * Thread function which will await for the callback list to be changed or
+ * wait for the absolute time specified in the first item in the list (the
+ * head) to be arrive.
+ *
+ * If the list has at least one item, and the current time is at or after
+ * the absolute time specified in the callback item, the callback function
+ * will be invoked. Thereafter, the process continues with the first
+ * paragraph.
+ *
+ * Context:
+ * callback_list_lock - (pthread_mutex_t) Lock to use when dropping items
+ *      off the list
+ * callback_list_changed - (pthread_cond_t) To be signaled when the list is
+ *      changed
+ * callbacks - (struct callback_list *) (Doubly-linked) List of active
+ *      callbacks
+ *
+ * Returns:
+ * Never. Bails only on exception. Call in a separate thread.
+ */
 static void *
 _mcCallbackThread(void *arg) {
     pthread_cond_init(&callback_list_changed, NULL);

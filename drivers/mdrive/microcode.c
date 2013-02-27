@@ -45,6 +45,10 @@
  * This routine will take a while. IP, CP, and S are all issued to install
  * the microcode, and comm settings are re-inspected/reset after the ending
  * mdrive_config_commit() call.
+ * 
+ * 'S' instructions in the microcode are ignored. mdrive_config_commit() is
+ * used internally after installing the entire microcode file to ensure
+ * communication settings are not accidently saved incorrectly.
  *
  * Side-Effects:
  * Regardless of exit condition, device should be cleared from program mode.
