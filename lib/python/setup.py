@@ -10,7 +10,7 @@ else:
 
 setup(
     name="mcontrol",
-    version="0.1",
+    version="0.1-1",
     packages=["mcontrol", "mcontrol.cli", "mcontrol.cli.modules",
         "mcontrol.cli.lib"],
     package_dir={
