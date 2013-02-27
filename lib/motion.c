@@ -75,72 +75,59 @@ _move_check_and_get_revs(Motor * motor, int amount,
     return 0;
 }
 
-PROXYIMPL(mcMoveAbsolute, int distance) {
-    UNPACK_ARGS(mcMoveAbsolute, args);
+int PROXYIMPL(mcMoveAbsolute, MOTOR motor, int distance) {
+    motion_instruction_t command;
+    command.type = MCABSOLUTE;
 
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
+    int status = _move_check_and_get_revs(CONTEXT->motor, distance,
+        0, &command);
+    if (status != 0)
+        return status;
+
+    return INVOKE(CONTEXT->motor, move, &command);
+}
+
+int
+PROXYIMPL(mcMoveAbsoluteUnits, MOTOR motor, int distance,
+        unit_type_t units) {
 
     motion_instruction_t command;
     command.type = MCABSOLUTE;
 
-    int status = _move_check_and_get_revs(m, args->distance, 0, &command);
+    int status = _move_check_and_get_revs(CONTEXT->motor, distance,
+        units, &command);
     if (status != 0)
-        RETURN( status );
+        return status;
 
-    RETURN( m->driver->class->move(m->driver, &command) );
+    return INVOKE(CONTEXT->motor, move, &command);
 }
 
-PROXYIMPL(mcMoveAbsoluteUnits, int distance, unit_type_t units) {
-    UNPACK_ARGS(mcMoveAbsoluteUnits, args);
-
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
-
-    motion_instruction_t command;
-    command.type = MCABSOLUTE;
-
-    int status = _move_check_and_get_revs(m, args->distance, args->units, &command);
-    if (status != 0)
-        RETURN( status );
-
-    RETURN( m->driver->class->move(m->driver, &command) );
-}
-
-PROXYIMPL(mcMoveRelative, int distance) {
-    UNPACK_ARGS(mcMoveRelative, args);
-
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
+int
+PROXYIMPL(mcMoveRelative, MOTOR motor, int distance) {
 
     motion_instruction_t command;
     command.type = MCRELATIVE;
 
-    int status = _move_check_and_get_revs(m, args->distance, 0, &command);
+    int status = _move_check_and_get_revs(CONTEXT->motor, distance, 0, &command);
     if (status != 0)
-        RETURN( status );
+        return status;
 
-    RETURN( m->driver->class->move(m->driver, &command) );
+    return INVOKE(CONTEXT->motor, move, &command);
 }
 
-PROXYIMPL(mcMoveRelativeUnits, int distance, unit_type_t units) {
-    UNPACK_ARGS(mcMoveRelativeUnits, args);
-
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
+int
+PROXYIMPL(mcMoveRelativeUnits, MOTOR motor, int distance,
+        unit_type_t units) {
 
     motion_instruction_t command;
     command.type = MCRELATIVE;
 
-    int status = _move_check_and_get_revs(m, args->distance, args->units, &command);
+    int status = _move_check_and_get_revs(CONTEXT->motor, distance, units,
+        &command);
     if (status != 0)
-        RETURN( status );
+        return status;
 
-    RETURN( m->driver->class->move(m->driver, &command) );
+    return INVOKE(CONTEXT->motor, move, &command);
 }
 
 /**
@@ -153,134 +140,91 @@ PROXYIMPL(mcMoveRelativeUnits, int distance, unit_type_t units) {
  * ENOTSUP - if motor driver does not support ::stop
  * EINVAL - if motor specified is invalid
  */
-PROXYIMPL(mcStop) {
-    UNPACK_ARGS(mcStop, args);
-
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
+int
+PROXYIMPL(mcStop, MOTOR motor) {
 
     // Ensure the driver supports a stop operation
-    if (m->driver->class->stop == NULL)
-        RETURN( ENOTSUP );
+    if (!SUPPORTED(CONTEXT->motor, stop))
+        return ENOTSUP;
 
-    RETURN( m->driver->class->stop(m->driver, MCSTOP) );
-}
-
-PROXYIMPL(mcHalt) {
-    UNPACK_ARGS(mcHalt, args);
-
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
-
-    // Ensure the driver supports a stop operation
-    if (m->driver->class->stop == NULL)
-        RETURN( ENOTSUP );
-
-    RETURN( m->driver->class->stop(m->driver, MCHALT) );
-}
-
-PROXYIMPL(mcEStop) {
-    UNPACK_ARGS(mcEStop, args);
-
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
-
-    // Ensure the driver supports a stop operation
-    if (m->driver->class->stop == NULL)
-        RETURN( ENOTSUP );
-
-    RETURN( m->driver->class->stop(m->driver, MCESTOP) );
-}
-
-PROXYIMPL(mcSlew, int rate) {
-    UNPACK_ARGS(mcSlew, args);
-
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
-
-    motion_instruction_t command = {
-        .type = MCSLEW
-    };
-
-    int status = _move_check_and_get_revs(m, args->rate, 0, &command);
-    if (status != 0)
-        RETURN( status );
-
-    RETURN( m->driver->class->move(m->driver, &command) );
-}
-
-PROXYIMPL(mcSlewUnits, int rate, unit_type_t units) {
-    UNPACK_ARGS(mcSlewUnits, args);
-
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
-
-    motion_instruction_t command = {
-        .type = MCSLEW
-    };
-
-    int status = _move_check_and_get_revs(m, args->rate, args->units, &command);
-    if (status != 0)
-        RETURN( status );
-
-    RETURN( m->driver->class->move(m->driver, &command) );
-}
-
-PROXYIMPL(mcHome, enum home_type type, enum home_direction direction) {
-    UNPACK_ARGS(mcHome, args);
-
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
-
-    if (m->driver->class->home == NULL)
-        RETURN( ENOTSUP );
-
-    RETURN( m->driver->class->home(m->driver, args->type, args->direction) );
-}
-
-PROXYIMPL(mcUnitScaleSet, unit_type_t units, long long urevs) {
-    UNPACK_ARGS(mcUnitScaleSet, args);
-
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
-    
-    if (args->units <= DEFAULT_UNITS)
-        RETURN( ER_BAD_UNITS );
-
-    m->op_profile.units = args->units;
-    m->op_profile.scale = args->urevs;
-
-    RETURN( 0 );
-}
-
-PROXYIMPL(mcUnitScaleGet, OUT unit_type_t * units, OUT int * urevs) {
-    UNPACK_ARGS(mcUnitScaleGet, args);
-
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
-    
-    args->units = m->op_profile.units;
-    args->urevs = m->op_profile.scale;
-
-    RETURN( 0 );
+    return INVOKE(CONTEXT->motor, stop, MCSTOP);
 }
 
 int
-mcMicroRevsToDistanceF(Motor * motor, long long mrevs, double * distance) {
-    // Lookup scale and distance
-    if (motor->op_profile.units == 0)
-        return ER_NO_UNITS;
+PROXYIMPL(mcHalt, MOTOR motor) {
 
-    return mcMicroRevsToDistanceUnitsF(motor, mrevs, distance,
-        motor->op_profile.units);
+    // Ensure the driver supports a stop operation
+    if (!SUPPORTED(CONTEXT->motor, stop))
+        return ENOTSUP;
+
+    return INVOKE(CONTEXT->motor, stop, MCHALT);
+}
+
+int
+PROXYIMPL(mcEStop, MOTOR motor) {
+
+    // Ensure the driver supports a stop operation
+    if (!SUPPORTED(CONTEXT->motor, stop))
+        return ENOTSUP;
+
+    return INVOKE(CONTEXT->motor, stop, MCESTOP);
+}
+
+int
+PROXYIMPL(mcSlew, MOTOR motor, int rate) {
+
+    motion_instruction_t command = { .type = MCSLEW };
+
+    int status = _move_check_and_get_revs(CONTEXT->motor, rate, 0,
+        &command);
+    if (status != 0)
+        return status;
+
+    return INVOKE(CONTEXT->motor, move, &command);
+}
+
+int
+PROXYIMPL(mcSlewUnits, MOTOR motor, int rate, unit_type_t units) {
+
+    motion_instruction_t command = { .type = MCSLEW };
+
+    int status = _move_check_and_get_revs(CONTEXT->motor, rate, units, &command);
+    if (status != 0)
+        return status;
+
+    return INVOKE(CONTEXT->motor, move, &command);
+}
+
+int
+PROXYIMPL(mcHome, MOTOR motor, enum home_type type,
+        enum home_direction direction) {
+
+    if (!SUPPORTED(CONTEXT->motor, home))
+        return ENOTSUP;
+
+    return INVOKE(CONTEXT->motor, home, type, direction);
+}
+
+int
+PROXYIMPL(mcUnitScaleSet, MOTOR motor, unit_type_t units, long long urevs) {
+    
+    if (units <= DEFAULT_UNITS)
+        return ER_BAD_UNITS;
+
+    CONTEXT->motor->op_profile.units = units;
+    CONTEXT->motor->op_profile.scale = urevs;
+
+    return 0;
+}
+
+int
+PROXYIMPL(mcUnitScaleGet, MOTOR motor, OUT unit_type_t * units,
+        OUT long long * urevs) {
+    
+    *units = CONTEXT->motor->op_profile.units;
+    *urevs = CONTEXT->motor->op_profile.scale;
+
+    return 0;
 }
 
 int
@@ -291,18 +235,6 @@ mcMicroRevsToDistance(Motor * motor, long long mrevs, int * distance) {
 
     return mcMicroRevsToDistanceUnits(motor, mrevs, distance,
         motor->op_profile.units);
-}
-
-int
-mcMicroRevsToDistanceUnits(Motor * motor, long long urevs, int * distance,
-        unit_type_t units) {
-    double _distance;
-    int status = mcMicroRevsToDistanceF(motor, urevs, &_distance);
-    if (status)
-        return status;
-
-    *distance = (int) _distance;
-    return 0;
 }
 
 int
@@ -335,6 +267,28 @@ mcMicroRevsToDistanceUnitsF(Motor * motor, long long urevs,
         *distance *= c->scale;
     }
 
+    return 0;
+}
+
+int
+mcMicroRevsToDistanceF(Motor * motor, long long mrevs, double * distance) {
+    // Lookup scale and distance
+    if (motor->op_profile.units == 0)
+        return ER_NO_UNITS;
+
+    return mcMicroRevsToDistanceUnitsF(motor, mrevs, distance,
+        motor->op_profile.units);
+}
+
+int
+mcMicroRevsToDistanceUnits(Motor * motor, long long urevs, int * distance,
+        unit_type_t units) {
+    double _distance;
+    int status = mcMicroRevsToDistanceF(motor, urevs, &_distance);
+    if (status)
+        return status;
+
+    *distance = (int) _distance;
     return 0;
 }
 
@@ -382,17 +336,8 @@ mcDistanceUnitsToMicroRevs(Motor * motor, int distance, unit_type_t units,
     return 0;
 }
 
-PROXYIMPL(mcUnitToMicroRevs, unit_type_t unit, OUT long long urevs) {
-    UNPACK_ARGS(mcUnitToMicroRevs, args);
-
-    Motor * m = find_motor_by_id(motor, message->pid);
-    if (m == NULL)
-        RETURN( EINVAL );
-
-    int status;
-    status = mcDistanceUnitsToMicroRevs(m, 1, args->unit, &args->urevs);
-    if (status)
-        RETURN(status);
-
-    RETURN(0);
+int
+PROXYIMPL(mcUnitToMicroRevs, MOTOR motor, unit_type_t unit,
+        OUT long long * urevs) {
+    return mcDistanceUnitsToMicroRevs(CONTEXT->motor, 1, unit, urevs);
 }

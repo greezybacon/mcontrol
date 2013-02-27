@@ -186,25 +186,20 @@ mcSignalEvent(Driver * driver, struct event_info * info) {
  * Returns:
  * (int) EINVAL if invalid event or motor was specified
  */
-PROXYIMPL(mcEventRegister, int event) {
-    UNPACK_ARGS(mcEventRegister, args);
+int
+PROXYIMPL(mcEventRegister, MOTOR motor, int event) {
 
-    Motor * m = find_motor_by_id(motor, message->pid);
-
-    if (m == NULL)
-        RETURN( EINVAL );
-
-    if (args->event > EV__LAST || args->event < EV__FIRST)
-        RETURN( EINVAL );
+    if (event > EV__LAST || event < EV__FIRST)
+        return EINVAL;
 
     // Subscribe to events received from the motor
-    if (m->driver->class->notify == NULL)
-        RETURN( ENOTSUP );
+    if (!SUPPORTED(CONTEXT->motor, notify))
+        return ENOTSUP;
 
-    m->driver->class->notify(m->driver, args->event, 0, mcSignalEvent);
+    INVOKE(CONTEXT->motor, notify, event, 0, mcSignalEvent);
 
-    m->subscriptions[args->event]++;
-    RETURN( 0 );
+    CONTEXT->motor->subscriptions[event]++;
+    return 0;
 }
 
 /**
@@ -218,19 +213,14 @@ PROXYIMPL(mcEventRegister, int event) {
  * Returns:
  * (int) - EINVAL if invalid motor or event is specified. 0 otherwise
  */
-PROXYIMPL(mcEventUnregister, int event) {
-    UNPACK_ARGS(mcEventUnregister, args);
+int
+PROXYIMPL(mcEventUnregister, MOTOR motor, int event) {
 
-    Motor * m = find_motor_by_id(motor, message->pid);
+    if (event > EV__LAST || event < EV__FIRST)
+        return EINVAL;
 
-    if (m == NULL)
-        RETURN( EINVAL );
-
-    if (args->event > EV__LAST || args->event < EV__FIRST)
-        RETURN( EINVAL );
-
-    m->subscriptions[args->event]--;
-    RETURN( 0 );
+    CONTEXT->motor->subscriptions[event]--;
+    return 0;
 }
 
 /**

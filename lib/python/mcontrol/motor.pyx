@@ -259,7 +259,7 @@ cdef class Motor:
         cdef String results
         cdef int count
         with nogil:
-            count = mcSearch(0, &dri, &results)
+            count = mcSearch(&dri, &results)
         print("Found %d motors" % count)
 
     search = classmethod(search)
@@ -586,9 +586,19 @@ cdef class Event(object):
             self._callback(self)
 
     def call(self, callback):
+        """
+        Request a function to be called when the event is triggered. The
+        function will receive a single argument which will be the Event
+        instance firing the event.
+        """
         self._callback = callback
         return self
 
     def wait(self):
+        """
+        Block until the event is triggered. This is implemented with the
+        mcEventWait function in libmcontrol, which will abort on termination
+        signals as well as the KeyboardInterrupt.
+        """
         with nogil:
             mcEventWait(self.motor.id, self.event)

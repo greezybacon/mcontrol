@@ -318,7 +318,7 @@ mcTraceChannelLookup(const char * name) {
     unsigned long hash = hashstring(name);
 
     struct trace_channel * c = trace_channels;
-    while (c->id) {
+    while (c && c->id) {
         if (c->active && c->hash == hash)
             if (strncmp(c->name, name, sizeof c->name) == 0)
                 return c->id;
@@ -360,94 +360,91 @@ mcTraceChannelGetName(int id) {
  * still need to subscribe to the EV_TRACE event and declare a callback
  * function or wait for the events to arrive in a threaded loop.
  */
+int
 PROXYIMPL(mcTraceSubscribeRemote, int level, unsigned long long mask) {
-    UNPACK_ARGS(mcTraceSubscribeRemote, args);
 
-    int id = mcTraceSubscribe(args->level, args->mask, NULL);
+    int id = mcTraceSubscribe(level, mask, NULL);
 
     if (id == -ER_TOO_MANY)
-        RETURN(-ER_TOO_MANY);
+        return -ER_TOO_MANY;
 
     // Find the id in the subscriber array
     struct trace_subscriber * s = subscribers;
     while (s->id && s->id != id) s++;
     
-    // XXX: Very magical
-    s->pid = message->pid;
+    s->pid = CONTEXT->caller_pid;
     s->channels = 0;
 
-    RETURN(id);
+    return id;
 }
 
+int
 PROXYIMPL(mcTraceUnsubscribeRemote, int id) {
-    UNPACK_ARGS(mcTraceUnsubscribeRemote, args);
-
-    RETURN(mcTraceUnsubscribe(args->id));
+    return mcTraceUnsubscribe(id);
 }
 
-PROXYIMPL(mcTraceSubscribeAdd, int id, String name) {
-    UNPACK_ARGS(mcTraceSubscribeAdd, args);
+int
+PROXYIMPL(mcTraceSubscribeAdd, int id, String * name) {
 
     // Find the id in the subscriber array
     struct trace_subscriber * s = subscribers;
-    while (s->id && s->id != args->id) s++;
+    while (s->id && s->id != id) s++;
 
-    int channel = mcTraceChannelLookup(args->name.buffer);
+    int channel = mcTraceChannelLookup(name->buffer);
     if (channel == -ENOENT)
-        RETURN(-ENOENT);
+        return -ENOENT;
 
     s->channels |= 1 << (channel - 1);
-    RETURN(0);
+    return 0;
 }
 
-PROXYIMPL(mcTraceSubscribeRemove, int id, String name) {
-    UNPACK_ARGS(mcTraceSubscribeRemove, args);
+int
+PROXYIMPL(mcTraceSubscribeRemove, int id, String * name) {
 
     // Find the id in the subscriber array
     struct trace_subscriber * s = subscribers;
-    while (s->id && s->id != args->id) s++;
+    while (s->id && s->id != id) s++;
 
-    int channel = mcTraceChannelLookup(args->name.buffer);
+    int channel = mcTraceChannelLookup(name->buffer);
     if (channel == -ENOENT)
-        RETURN(-ENOENT);
+        return -ENOENT;
 
     s->channels &= ~(1 << (channel - 1));
-    RETURN(0);
+    return 0;
 }
 
-PROXYIMPL(mcTraceChannelEnum, String channels) {
-    UNPACK_ARGS(mcTraceChannelEnum, args);
+int
+PROXYIMPL(mcTraceChannelEnum, String * channels) {
 
-    char * pos = args->channels.buffer, * start = pos;
+    char * pos = channels->buffer, * start = pos;
     int count = 0;
 
     struct trace_channel * c = trace_channels;
-    while (c->id) {
-        pos += snprintf(pos, sizeof args->channels.buffer + start - pos, "%s",
+    while (c && c->id) {
+        pos += snprintf(pos, sizeof channels->buffer + start - pos, "%s",
             c->name) + 1;
         c++;
         count++;
     }
-    args->channels.size = pos - start;
+    channels->size = pos - start;
 
-    RETURN(count);
+    return count;
 }
 
+int
 PROXYIMPL(mcTraceChannelLookupRemote, String * buffer, OUT int * id) {
-    UNPACK_ARGS(mcTraceChannelLookupRemote, args);
 
-    args->id = mcTraceChannelLookup(args->buffer.buffer);
-    RETURN ((args->id > 0) ? 0 : -(args->id));
+    *id = mcTraceChannelLookup(buffer->buffer);
+    return (*id > 0) ? 0 : -(*id);
 }
     
-
+int
 PROXYIMPL(mcTraceChannelGetNameRemote, int id, OUT String * buffer) {
-    UNPACK_ARGS(mcTraceChannelGetNameRemote, args);
 
-    char * name = mcTraceChannelGetName(args->id);
+    char * name = mcTraceChannelGetName(id);
     if (name != NULL)
-        args->buffer.size = snprintf(args->buffer.buffer,
-            sizeof args->buffer.buffer, "%s", name);
+        buffer->size = snprintf(buffer->buffer, sizeof buffer->buffer,
+            "%s", name);
 
-    RETURN ((args->buffer.size) ? 0 : ENOENT);
+    return (buffer->size) ? 0 : ENOENT;
 }

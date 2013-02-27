@@ -46,16 +46,16 @@ cdef extern from "lib/client.h" nogil:
     int mcUnitScaleSet(int motor, int units, long long urevs)
     int mcUnitScaleGet(int motor, int * units, long long * urevs)
 
-    int mcSearch(int motor, String * driver, String * results)
+    int mcSearch(String * driver, String * results)
     int mcFirmwareLoad(int motor, String * filename)
     int mcMicrocodeLoad(int motor, String * filename)
 
-    int mcTraceSubscribeRemote(int, int level, long long mask)
-    int mcTraceUnsubscribeRemote(int, int id)
-    int mcTraceSubscribeAdd(int, int id, String * name)
-    int mcTraceSubscribeRemove(int, int id, String * name)
-    int mcTraceChannelEnum(int, String * channels)
-    int mcTraceChannelLookupRemote(int, String * channel, int * id)
+    int mcTraceSubscribeRemote(int level, long long mask)
+    int mcTraceUnsubscribeRemote(int id)
+    int mcTraceSubscribeAdd(int id, String * name)
+    int mcTraceSubscribeRemove(int id, String * name)
+    int mcTraceChannelEnum(String * channels)
+    int mcTraceChannelLookupRemote(String * channel, int * id)
 
 cdef extern from "lib/trace.h" nogil:
     ctypedef void (*trace_callback_t)(int id, int level, int channel, char * buffer)

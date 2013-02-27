@@ -1,12 +1,13 @@
 from __future__ import print_function
 
 import re, sys
-proxy = re.compile(r'PROXYDEF\((?P<name>[^,)]+),'
-                   r'\s*(?P<ret>[^,)]+)'
+proxy = re.compile(r'(?P<flags>IMPORTANT|SLOW)? *PROXYSTUB\((?P<ret>[^,)]+),'
+                   r'\s*(?P<name>[^,)]+)'
                    r'(?P<args>(?:,[^,)]+)*)\);', re.M)
 
 funcs = []
-for doth in sys.argv:
+for doth in sys.argv[1:]:
+    print('#include "{0}"'.format(doth))
     for stub in proxy.finditer(open(doth, 'rt').read()):
         items = stub.groupdict()
         funcs.append(items['name'])
@@ -21,11 +22,6 @@ print( """    TYPE__LAST
 };
 """)
 
-# Export defs for Impl functions
-
-for i in sorted(funcs):
-    print("extern void %sImpl(request_message_t * message);" % (i,))
-
 # Export dispatch table (list of message type numbers and corresponding
 # functions
 
@@ -38,7 +34,7 @@ struct dispatch_table {
 } table[] = {""")
 
 for i in sorted(funcs):
-    print('    {{ TYPE_{0}, {0}Impl, "{0}" }},'.format(i))
+    print('    {{ TYPE_{0}, {0}Stub, "{0}" }},'.format(i))
 
 print("""    { 0, NULL, NULL }
 };
