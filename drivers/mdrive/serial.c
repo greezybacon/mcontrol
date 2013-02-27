@@ -523,8 +523,7 @@ mdrive_async_read(void * arg) {
 
     // Wait time for a single char at the device speed
     // XXX: dev->speed is allowed to be changed on the fly
-    struct timespec now,
-        onechartime = { .tv_nsec = mdrive_xmit_time(dev, 2) };
+    struct timespec now, onechartime = { .tv_nsec = 0 };
 
     int length;
     char buffer[512];
@@ -539,6 +538,7 @@ mdrive_async_read(void * arg) {
     while (true) {
 
         // Try to read more than one char at a time
+        onechartime.tv_nsec = mdrive_xmit_time(dev, 2);
         nanosleep(&onechartime, NULL);
         length = read(dev->fd, load, sizeof buffer - (int)(load - buffer));
 
@@ -747,18 +747,6 @@ mdrive_receive_response(mdrive_device_t * device,
     if (status != ETIMEDOUT) {
         local_response = queue_pop(&device->comm->queue);
 
-        mcTraceF(40, MDRIVE_CHANNEL_RX,
-            "Received: (%s%s%s%s%s%s:%d) %d:%s",
-            local_response->ack ? "A" : "",
-            local_response->nack ? "N" : "",
-            local_response->checksum_good ? "C" : "",
-            local_response->echo ? "E" : "",
-            (local_response->prompt || local_response->crlf) ? ">" : "",
-            local_response->error ? "?" : "",
-            local_response->code,
-            local_response->length,
-            local_response->buffer);
-
         if (local_response->ack) device->stats.acks++;
         if (local_response->nack) device->stats.nacks++;
 
@@ -777,6 +765,19 @@ mdrive_receive_response(mdrive_device_t * device,
                      - local_response->received * onechartime
                   ) >> 5);
         }
+
+        mcTraceF(40, MDRIVE_CHANNEL_RX,
+            "Received: (%s%s%s%s%s%s:%d) %d:%s",
+            (*response)->ack ? "A" : "",
+            (*response)->nack ? "N" : "",
+            (*response)->checksum_good ? "C" : "",
+            (*response)->echo ? "E" : "",
+            ((*response)->prompt || (*response)->crlf) ? ">" : "",
+            (*response)->error ? "?" : "",
+            (*response)->code,
+            (*response)->length,
+            (*response)->buffer);
+
     }
 
     pthread_mutex_unlock(&device->comm->rxlock);
@@ -936,7 +937,7 @@ receive:
             } else {
                 // Non-responsive unit
                 device->stats.timeouts++;
-                mcTraceF(30, MDRIVE_CHANNEL_RX, "Timed out: %d", device->echo);
+                mcTraceF(30, MDRIVE_CHANNEL_RX, "Unexpected timeout");
                 // XXX: response if existing is not classified and status is
                 //      left at default value of 0 (RESPONSE_OK)
                 status = RESPONSE_TIMEOUT;
@@ -951,9 +952,9 @@ receive:
             // However, if the unit indicated an error already, then we're
             // finished.
             if (!response->code) {
-                mcTrace(30, MDRIVE_CHANNEL_RX, "Waiting longer ...");
+                mcTrace(50, MDRIVE_CHANNEL_RX, "Waiting longer ...");
                 clock_gettime(CLOCK_REALTIME, &now);
-                tsAdd(&timeout, &more_waittime, &now);
+                tsAdd(&now, &more_waittime, &timeout);
                 goto receive;
             }
         }
