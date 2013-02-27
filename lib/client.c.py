@@ -57,6 +57,7 @@ print("""
  **
  **/
 
+#include <assert.h>
 #include <errno.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -267,10 +268,12 @@ class ProxyStubGenerator(object):
             switch (size) {{
                 case -ENOENT:
                 case -EAGAIN:
+                case -EBADF:
                     return -ER_NO_DAEMON;
                 case -ETIMEDOUT:
                     return -ER_DAEMON_BUSY;
             }}
+            assert(size > 0);
 
             struct _{s.name}_args * payload =
                 (struct _{s.name}_args *)(char *) response.payload;
