@@ -32,19 +32,22 @@ rm -rf %{buildroot}
 %package libs
 Summary:    mcontrol libraries
 Group:      Manchac Technologies, LLC
+%description libs
+Libraries for the mcontrol software
 
 %package cli
 Summary:    Command-line interface for mcontrol
 Group:      Manchac Technologies, LLC
-Requires:   Python >= 2.6
+Requires:   python >= 2.6
+%description cli
+Command-line interface for mcontrol
 
-%package drivers
-Summary:    Drivers and firmware for mcontrol
+%package drivers-mdrive
+Summary:    Drivers and firmware for the MDrive motor suite
 Group:      Manchac Technologies, LLC
-
-%package microcode-dosis
-Summary:    Microcode for the Dosis software
-Group:      Manchac Technologies, LLC
+%description drivers-mdrive
+MDrive driver for mcontrol and stock and custom firmwares. This package also
+include the microcode for the MDrive motors in the dosis-1.x software
 
 %files
 %defattr(-,dosis,dosis,-)
@@ -54,13 +57,10 @@ Group:      Manchac Technologies, LLC
 %defattr(-,dosis,dosis,-)
 /home/dosis/lib/libmcontrol.so
 
-%files drivers
+%files drivers-mdrive
 %defattr(-,dosis,dosis,-)
 /opt/dosis/mcontrol/drivers
 /opt/dosis/mcontrol/firmware/MDI*
-
-%files microcode-dosis
-%defattr(-,dosis,dosis,-)
 /opt/dosis/mcontrol/microcode/dosis*
 
 %files cli
