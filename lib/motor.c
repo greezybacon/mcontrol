@@ -17,20 +17,6 @@ static int motor_conn_count = 0;
 static struct backend_motor * motor_list = NULL;
 static int motor_uid = 1;
 
-void __attribute__((constructor))
-mcInitialize(void) {
-    mcMessageBoxOpen();
-}
-
-void __attribute__((destructor))
-mcGoodBye(void) {
-    char buffer[64];
-
-    // Create queue for the client and events
-    snprintf(buffer, sizeof buffer, CLIENT_QUEUE_FMT, getpid(), "wait");
-    mq_unlink(buffer);
-}
-
 static void
 mcGarbageCollect(void) {
     // Performs various cleanup of internally static lists
@@ -40,6 +26,8 @@ mcGarbageCollect(void) {
             if (m->active && kill(m->client_pid, 0) == -1) {
                 m->active = false;
                 motor_conn_count--;
+                // TODO: Possibly clean up client's mqueue box if it's still
+                //       hanging around
             }
             m++;
         }
@@ -52,7 +40,8 @@ mcGarbageCollect(void) {
  *  Finds the requested motor and connects to its queue. It also creates a
  *  return traffic queue for responses.
  */
-PROXYIMPL(mcConnect, String connection, OUT MOTOR motor_t motor) {
+PROXYIMPL(mcConnect, String connection, OUT MOTOR motor_t motor,
+        bool recovery) {
     UNPACK_ARGS(mcConnect, args);
 
     if (motor_list == NULL)
@@ -75,19 +64,48 @@ PROXYIMPL(mcConnect, String connection, OUT MOTOR motor_t motor) {
         .client_pid = message->pid,
         .id = motor_uid++
     };
-    int status = mcDriverConnect(args->connection.buffer, &m->driver);
-    if (status != 0)
+    int status = mcDriverConnect(args->connection.buffer, &m->instance);
+    if (status != 0 && !args->recovery)
         RETURN(status);
 
-    if (m->driver == NULL)
+    if (m->instance == NULL)
         // Invalid connection string
         RETURN(EINVAL);
 
+    m->driver = m->instance->driver;
     m->active = true;
     motor_conn_count++;
 
     args->motor = m->id;
     
+    RETURN(0);
+}
+
+/**
+ * mcDisconnect
+ *
+ * Can be called by the client (electively) to destroy a connection to a
+ * motor and motor driver. mcDriverDisconnect will be used to terminate the
+ * driver connection. By usual convention, if this is the last connection to
+ * the motor, the communication with the device will be cleaned up and
+ * terminated.
+ *
+ * Returns:
+ * (int) - 0 upon success, EINVAL if called on invalid or unknown motor
+ */
+PROXYIMPL(mcDisconnect) {
+    UNPACK_ARGS(mcDisconnect, args);
+
+    Motor * m = find_motor_by_id(motor, message->pid);
+
+    if (m == NULL)
+        RETURN( EINVAL );
+
+    mcDriverDisconnect(m->instance);
+    m->driver = NULL;
+    // This motor won't work anymore
+    mcInactivate(m);
+
     RETURN(0);
 }
 
@@ -107,7 +125,7 @@ find_motor_by_id(motor_t id, int pid) {
     // Scan through high-water-mark using the id member
     if (m != NULL) {
         while (m->id) {
-            if (m->id == id && pid == m->client_pid)
+            if (m->id == id && pid == m->client_pid && m->active)
                 return m;
             m++;
         }
@@ -116,24 +134,17 @@ find_motor_by_id(motor_t id, int pid) {
 }
 
 /**
- * mcDisconnect
+ * mcInactivate
  *
  * Server-side utility to mark a client motor connection as inactive. The
  * slot will be reused when another client connects using mcConnect()
  */
-void mcDisconnect(motor_t motor) {
-    if (motor_list == NULL)
+void mcInactivate(Motor * motor) {
+    if (motor == NULL)
         return;
 
-    struct backend_motor * m = motor_list;
-    while (m->id) {
-        if (m->id == motor) {
-            m->active = false;
-            motor_conn_count--;
-            break;
-        }
-        m++;
-    }
+    motor->active = false;
+    motor_conn_count--;
 }
 
 int
@@ -142,8 +153,8 @@ mcMotorsForDriver(Driver * driver, Motor * list, int size) {
     struct backend_motor * m = motor_list;
 
     // Scan through high-water-mark using the id member
-    while (m->id) {
-        if (m->driver == driver && m->active) {
+    while (m->id && m->instance) {
+        if (m->instance->driver == driver && m->active) {
             if (size < sizeof *m)
                 break;
             *list = *m;

@@ -5,6 +5,7 @@
 #include "../lib/trace.h"
 
 #include "controller.h"
+#include "trace.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,15 +17,16 @@ void cleanup(int signal) {
 }
 
 void
-trace_output(int level, int channel, const char * buffer) {
+trace_output(int id, int level, int channel, const char * buffer) {
     fprintf(stderr, "%d: %s\n", channel, buffer);
 }
 
 int main(int argc, char * argv[]) {
-    //mcDriverLoad("mdrive.so");
+    DaemonTraceInit();
+    mcDriverLoad("../drivers/mdrive.so");
 
     signal(SIGINT, cleanup);
-    signal(SIGKILL, cleanup);
+    signal(SIGHUP, cleanup);
 
     mcMessageBoxOpenDaemon();
 

@@ -1,7 +1,10 @@
 from __future__ import print_function
 
-import sys
-sys.path.insert(0, '../build/lib.linux-x86_64-3.2')
+import sys, glob
+sys.path.insert(0, '../cli')
+for lib in glob.glob('../build/lib.linux-*-{0}.{1}'.format(
+        sys.version_info.major, sys.version_info.minor)):
+    sys.path.insert(0, lib)
 
 import re
 class TerminalController(object):
@@ -149,7 +152,12 @@ class TerminalController(object):
         if s == '$$': return s
         else: return str(getattr(self, s[2:-1]))
 
-from motor import *
+from mcontrol import *
+
+import os
+#Library.run_in_process()
+#Library.load_driver(os.path.dirname(__file__)
+#    + "../../../drivers/mdrive.so")
 
 ms = 'abcdef'
 motors = [{
@@ -174,15 +182,15 @@ def report():
                 m['name'], m['moves'], m['fails'], m['latency']))
         sys.stdout.write("\r" + "\x1b[A" * (len(ms)))
 
-def run_a_bunch(motor, range=1000):
+def run_a_bunch(motor, range=10000):
     m = motor['motor']
-    m.units = MILLI_INCH
-    m.scale = 1000
+    m.scale = (1000, 'mil')
 
     while True:
         start = time.time()
         try:
             m.move(random.randint(-range, range))
+            time.sleep(0.001)
         except:
             motor['fails'] += 1
         else:

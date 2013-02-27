@@ -1,6 +1,28 @@
-__all__ = ['microcode', 'connect', 'Mixin']
+__all__ = ['connect', 'naming', 'microcode', 'startup', 'standalone',
+           'test', 'trace', 'utils', 'Mixin']
 
 class Mixin(object): pass
+
+def initializer(func):
+    """
+    Specifies an initialization function to be run when the shell is
+    constructed.
+    """
+    func.initializer = True
+    return func
+
+initializer.ignore = True
+
+def destructor(func):
+    """
+    Specifies a function that should be run when the main CLI environment is
+    shut down -- that is, when the CLI is exiting back to the operating
+    system
+    """
+    func.destructor = True
+    return func
+
+destructor.ignore = True
 
 def trim(docstring):
     if not docstring:

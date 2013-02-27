@@ -160,21 +160,88 @@ PROXYIMPL(mcStop) {
     if (m == NULL)
         RETURN( EINVAL );
 
-    // Ensure the driver supports a move operation
+    // Ensure the driver supports a stop operation
     if (m->driver->class->stop == NULL)
         RETURN( ENOTSUP );
 
-    RETURN( m->driver->class->stop(m->driver) );
+    RETURN( m->driver->class->stop(m->driver, MCSTOP) );
 }
 
+PROXYIMPL(mcHalt) {
+    UNPACK_ARGS(mcHalt, args);
 
-PROXYIMPL(mcHome) {
+    Motor * m = find_motor_by_id(motor, message->pid);
+    if (m == NULL)
+        RETURN( EINVAL );
+
+    // Ensure the driver supports a stop operation
+    if (m->driver->class->stop == NULL)
+        RETURN( ENOTSUP );
+
+    RETURN( m->driver->class->stop(m->driver, MCHALT) );
 }
 
-PROXYIMPL(mcJitter, int loops, int max_travel) {
+PROXYIMPL(mcEStop) {
+    UNPACK_ARGS(mcEStop, args);
+
+    Motor * m = find_motor_by_id(motor, message->pid);
+    if (m == NULL)
+        RETURN( EINVAL );
+
+    // Ensure the driver supports a stop operation
+    if (m->driver->class->stop == NULL)
+        RETURN( ENOTSUP );
+
+    RETURN( m->driver->class->stop(m->driver, MCESTOP) );
 }
 
-PROXYIMPL(mcJitterUnits, int loops, int max_travel, unit_type_t units) {
+PROXYIMPL(mcSlew, int rate) {
+    UNPACK_ARGS(mcSlew, args);
+
+    Motor * m = find_motor_by_id(motor, message->pid);
+    if (m == NULL)
+        RETURN( EINVAL );
+
+    motion_instruction_t command = {
+        .type = MCSLEW
+    };
+
+    int status = _move_check_and_get_revs(m, args->rate, 0, &command);
+    if (status != 0)
+        RETURN( status );
+
+    RETURN( m->driver->class->move(m->driver, &command) );
+}
+
+PROXYIMPL(mcSlewUnits, int rate, unit_type_t units) {
+    UNPACK_ARGS(mcSlewUnits, args);
+
+    Motor * m = find_motor_by_id(motor, message->pid);
+    if (m == NULL)
+        RETURN( EINVAL );
+
+    motion_instruction_t command = {
+        .type = MCSLEW
+    };
+
+    int status = _move_check_and_get_revs(m, args->rate, args->units, &command);
+    if (status != 0)
+        RETURN( status );
+
+    RETURN( m->driver->class->move(m->driver, &command) );
+}
+
+PROXYIMPL(mcHome, enum home_type type, enum home_direction direction) {
+    UNPACK_ARGS(mcHome, args);
+
+    Motor * m = find_motor_by_id(motor, message->pid);
+    if (m == NULL)
+        RETURN( EINVAL );
+
+    if (m->driver->class->home == NULL)
+        RETURN( ENOTSUP );
+
+    RETURN( m->driver->class->home(m->driver, args->type, args->direction) );
 }
 
 PROXYIMPL(mcUnitScaleSet, unit_type_t units, long long urevs) {
@@ -207,6 +274,16 @@ PROXYIMPL(mcUnitScaleGet, OUT unit_type_t * units, OUT int * urevs) {
 }
 
 int
+mcMicroRevsToDistanceF(Motor * motor, long long mrevs, double * distance) {
+    // Lookup scale and distance
+    if (motor->op_profile.units == 0)
+        return ER_NO_UNITS;
+
+    return mcMicroRevsToDistanceUnitsF(motor, mrevs, distance,
+        motor->op_profile.units);
+}
+
+int
 mcMicroRevsToDistance(Motor * motor, long long mrevs, int * distance) {
     // Lookup scale and distance
     if (motor->op_profile.units == 0)
@@ -219,6 +296,18 @@ mcMicroRevsToDistance(Motor * motor, long long mrevs, int * distance) {
 int
 mcMicroRevsToDistanceUnits(Motor * motor, long long urevs, int * distance,
         unit_type_t units) {
+    double _distance;
+    int status = mcMicroRevsToDistanceF(motor, urevs, &_distance);
+    if (status)
+        return status;
+
+    *distance = (int) _distance;
+    return 0;
+}
+
+int
+mcMicroRevsToDistanceUnitsF(Motor * motor, long long urevs,
+        double * distance, unit_type_t units) {
 
     if (units == MICRO_REVS) {
         *distance = urevs;
@@ -227,8 +316,10 @@ mcMicroRevsToDistanceUnits(Motor * motor, long long urevs, int * distance,
     else if (motor->op_profile.scale == 0)
         return ER_NO_SCALE;
 
-    // scale = units / rev .: units = scale * revs
-    *distance = urevs * motor->op_profile.scale;
+    // Keep *distance value at a 1e6x scale until after the final
+    // conversion to maintain accuracy
+    // scale = rev / unit .: distance = urevs / scale
+    *distance = (double) urevs / motor->op_profile.scale;
     
     if (units != motor->op_profile.units) {
         struct conversion * c;
@@ -268,11 +359,9 @@ mcDistanceUnitsToMicroRevs(Motor * motor, int distance, unit_type_t units,
     }
     else if (motor->op_profile.scale == 0)
         return ER_NO_SCALE;
-    // Keep *distance value at a 1000x scale until after the final
-    // conversion to maintain accuracy
-    //
-    // scale = units / rev .: urevs = units / scale
-    *urevs = (long long)1000 * distance / motor->op_profile.scale;
+
+    // scale = rev / unit .: revs = distance * units * scale
+    *urevs = (long long) distance * (long long) 1e6;
 
     if (units != motor->op_profile.units) {
         struct conversion * c;
@@ -288,7 +377,7 @@ mcDistanceUnitsToMicroRevs(Motor * motor, int distance, unit_type_t units,
         // smaller -- so multiply by the factor.
         *urevs *= c->scale;
     }
-    *urevs /= 1000;
+    *urevs = (*urevs * motor->op_profile.scale) / (long long) 1e6;
 
     return 0;
 }

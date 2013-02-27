@@ -22,23 +22,42 @@
  * (int) EIO if unable to retrieve settings from motor, 0 otherwise
  */
 int
-mdrive_lazyload_profile(mdrive_axis_t * device) {
+mdrive_lazyload_profile(mdrive_device_t * device) {
     if (device->loaded.profile)
         return 0;
     
-    int A, D, VM, VI, SF, RC, HC, P;
-    const char * vars[] = { "A", "D", "VM", "VI", "SF", "RC", "HC", "P" };
-    int * vals[] = { &A, &D, &VM, &VI, &SF, &RC, &HC, &P };
+    int A, D, VM, VI, SF, RC, HC, DB, P;
+    const char * vars[] = { "A", "D", "VM", "VI", "SF", "RC", "HC", "DB", "P" };
+    int * vals[] = { &A, &D, &VM, &VI, &SF, &RC, &HC, &DB, &P };
 
-    if (mdrive_get_integers(device, vars, vals, 8))
+    if (mdrive_get_integers(device, vars, vals, 9))
         return EIO;
 
     // Convert from steps to microrevs
-    device->profile.accel.raw = mdrive_steps_to_microrevs(device, A);
-    device->profile.decel.raw = mdrive_steps_to_microrevs(device, D);
-    device->profile.vmax.raw = mdrive_steps_to_microrevs(device, VM);
-    device->profile.vstart.raw = mdrive_steps_to_microrevs(device, VI);
-    device->profile.slip_max.raw = mdrive_steps_to_microrevs(device, SF);
+    device->profile.accel = (struct measurement) {
+        .value = mdrive_steps_to_microrevs(device, A),
+        .units = MICRO_REVS
+    };
+    device->profile.decel = (struct measurement) {
+        .value = mdrive_steps_to_microrevs(device, D),
+        .units = MICRO_REVS
+    };
+    device->profile.vmax = (struct measurement) {
+        .value = mdrive_steps_to_microrevs(device, VM),
+        .units = MICRO_REVS
+    };
+    device->profile.vstart = (struct measurement) {
+        .value = mdrive_steps_to_microrevs(device, VI),
+        .units = MICRO_REVS
+    };
+    device->profile.slip_max = (struct measurement) {
+        .value = mdrive_steps_to_microrevs(device, SF),
+        .units = MICRO_REVS
+    };
+    device->profile.accuracy = (struct measurement) {
+        .value = mdrive_steps_to_microrevs(device, DB),
+        .units = MICRO_REVS
+    };
 
     device->profile.current_run = RC;
     device->profile.current_hold = HC;
@@ -50,10 +69,10 @@ mdrive_lazyload_profile(mdrive_axis_t * device) {
 }
 
 int
-mdrive_profile_accel(mdrive_axis_t * device, long long accel) {
+mdrive_profile_accel(mdrive_device_t * device, long long accel) {
     mdrive_lazyload_profile(device);
 
-    if (device->profile.accel.raw == accel)
+    if (device->profile.accel.value == accel)
         return 0;
 
     if (accel < 1)
@@ -63,15 +82,15 @@ mdrive_profile_accel(mdrive_axis_t * device, long long accel) {
             mdrive_microrevs_to_steps(device, accel)))
         return EIO;
 
-    device->profile.accel.raw = accel;
+    device->profile.accel.value = accel;
     return 0;
 }
 
 int
-mdrive_profile_decel(mdrive_axis_t * device, long long decel) {
+mdrive_profile_decel(mdrive_device_t * device, long long decel) {
     mdrive_lazyload_profile(device);
 
-    if (device->profile.decel.raw == decel)
+    if (device->profile.decel.value == decel)
         return 0;
 
     if (decel < 1)
@@ -81,15 +100,15 @@ mdrive_profile_decel(mdrive_axis_t * device, long long decel) {
             mdrive_microrevs_to_steps(device, decel)))
         return EIO;
 
-    device->profile.decel.raw = decel;
+    device->profile.decel.value = decel;
     return 0;
 }
 
 int
-mdrive_profile_vmax(mdrive_axis_t * device, long long vmax) {
+mdrive_profile_vmax(mdrive_device_t * device, long long vmax) {
     mdrive_lazyload_profile(device);
 
-    if (device->profile.vmax.raw == vmax)
+    if (device->profile.vmax.value == vmax)
         return 0;
 
     if (vmax < 1)
@@ -99,15 +118,15 @@ mdrive_profile_vmax(mdrive_axis_t * device, long long vmax) {
             mdrive_microrevs_to_steps(device, vmax)))
         return EIO;
 
-    device->profile.vmax.raw = vmax;
+    device->profile.vmax.value = vmax;
     return 0;
 }
 
 int
-mdrive_profile_vstart(mdrive_axis_t * device, long long vstart) {
+mdrive_profile_vstart(mdrive_device_t * device, long long vstart) {
     mdrive_lazyload_profile(device);
 
-    if (device->profile.vstart.raw == vstart)
+    if (device->profile.vstart.value == vstart)
         return 0;
 
     if (vstart < 1)
@@ -117,15 +136,15 @@ mdrive_profile_vstart(mdrive_axis_t * device, long long vstart) {
             mdrive_microrevs_to_steps(device, vstart)))
         return EIO;
 
-    device->profile.vstart.raw = vstart;
+    device->profile.vstart.value = vstart;
     return 0;
 }
 
 int
-mdrive_profile_slipmax(mdrive_axis_t * device, long long slipmax) {
+mdrive_profile_slipmax(mdrive_device_t * device, long long slipmax) {
     mdrive_lazyload_profile(device);
 
-    if (device->profile.slip_max.raw == slipmax)
+    if (device->profile.slip_max.value == slipmax)
         return 0;
 
     mdrive_lazyload_motion_config(device);
@@ -140,12 +159,35 @@ mdrive_profile_slipmax(mdrive_axis_t * device, long long slipmax) {
             mdrive_microrevs_to_steps(device, slipmax)))
         return EIO;
 
-    device->profile.slip_max.raw = slipmax;
+    device->profile.slip_max.value = slipmax;
     return 0;
 }
 
 int
-mdrive_profile_irun(mdrive_axis_t * device, int irun) {
+mdrive_profile_accuracy(mdrive_device_t * device, long long accuracy) {
+    mdrive_lazyload_profile(device);
+
+    if (device->profile.accuracy.value == accuracy)
+        return 0;
+
+    mdrive_lazyload_motion_config(device);
+    if (!device->encoder)
+        // Device will only honor stall factor (DB) in encoder mode
+        return ENOTSUP;
+
+    if (accuracy < 1)
+        return EINVAL;
+
+    if (!mdrive_set_variable(device, "DB",
+            mdrive_microrevs_to_steps(device, accuracy)))
+        return EIO;
+
+    device->profile.accuracy.value = accuracy;
+    return 0;
+}
+
+int
+mdrive_profile_irun(mdrive_device_t * device, int irun) {
     mdrive_lazyload_profile(device);
 
     if (device->profile.current_run == irun)
@@ -162,7 +204,7 @@ mdrive_profile_irun(mdrive_axis_t * device, int irun) {
 }
 
 int
-mdrive_profile_ihold(mdrive_axis_t * device, int ihold) {
+mdrive_profile_ihold(mdrive_device_t * device, int ihold) {
     mdrive_lazyload_profile(device);
 
     if (device->profile.current_hold == ihold)
@@ -179,13 +221,15 @@ mdrive_profile_ihold(mdrive_axis_t * device, int ihold) {
 }
 
 int
-mdrive_set_profile(mdrive_axis_t * device, struct motion_profile * profile) {
+mdrive_set_profile(mdrive_device_t * device, struct motion_profile * profile) {
     // TODO: Add error checking
-    mdrive_profile_accel(device, profile->accel.raw);
-    mdrive_profile_decel(device, profile->decel.raw);
-    mdrive_profile_vmax(device, profile->vmax.raw);
-    mdrive_profile_vstart(device, profile->vstart.raw);
-    mdrive_profile_slipmax(device, profile->slip_max.raw);
+    // XXX: Check units for each measurable item is MICRO_REVS
+    mdrive_profile_accel(device, profile->accel.value);
+    mdrive_profile_decel(device, profile->decel.value);
+    mdrive_profile_vmax(device, profile->vmax.value);
+    mdrive_profile_vstart(device, profile->vstart.value);
+    mdrive_profile_slipmax(device, profile->slip_max.value);
+    mdrive_profile_accuracy(device, profile->accuracy.value);
     mdrive_profile_irun(device, profile->current_run);
     mdrive_profile_ihold(device, profile->current_hold);
 

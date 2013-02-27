@@ -14,7 +14,7 @@
 
 static mqd_t _inbox = 0;        // Client's queue for return traffic,
                                 //      server's queue for incoming traffic
-static mqd_t _outbox = 0;       // Server's queue for client's perpective
+static mqd_t _outbox = 0;       // Server's queue from client's perpective
 static unsigned long message_id = 1;
 
 static bool _async_registered = false;
@@ -24,6 +24,35 @@ static struct mq_attr _inbox_attr = {
     .mq_maxmsg = 8         // Backlog
 };
 
+static int
+construct_request_raw(request_message_t *, int, void *, int);
+
+static int
+construct_response(request_message_t *, response_message_t *, void *, int);
+
+static int
+construct_request(motor_t, request_message_t *, int, void *, int);
+
+void __attribute__((constructor))
+mcInitialize(void) {
+    mcMessageBoxOpen();
+}
+
+static void __attribute__((destructor))
+mcGoodBye(void) {
+    char buffer[64];
+
+    // Create queue for the client and events
+    snprintf(buffer, sizeof buffer, CLIENT_QUEUE_FMT, getpid(), "wait");
+    mq_unlink(buffer);
+}
+
+static void
+mcRudeGoodBye(int signal) {
+    // Run all the destructors
+    exit(0);
+}
+
 int
 mcMessageBoxOpen(void) {
     char buffer[64];
@@ -32,6 +61,13 @@ mcMessageBoxOpen(void) {
     _inbox = mq_open(buffer, O_CREAT | O_EXCL, 0600, &_inbox_attr);
     if (_inbox == -1)
         printf("Unable to open event queue: %d\n", errno);
+    else {
+        // Make sure mcGoodBye is called at program exit
+        struct sigaction action = { .sa_handler = mcRudeGoodBye };
+        sigaction(SIGTERM, &action, NULL);
+        sigaction(SIGQUIT, &action, NULL);
+        sigaction(SIGHUP, &action, NULL);
+    }
     return (_inbox > 0) ? 0 : -1;
 }
 
@@ -67,11 +103,12 @@ mcMessageSend(motor_t motor, int type,
         const struct timespec * timeout) {
     int status;
 
-    if (_outbox == 0)
+    if (_outbox == 0) {
         _outbox = mq_open(DAEMON_QUEUE_NAME, O_WRONLY);
         if (_outbox <= 0)
             return -errno;
-        
+    }
+
     request_message_t message;
     status = construct_request(motor, &message,
         type, payload, payload_size);
@@ -141,6 +178,8 @@ mcEventSend(int pid, struct event_message * evt) {
     
     status = mq_send(client_inbox, (void *)&m,
         m.size, PRIORITY_EVENT);
+
+    mq_close(client_inbox);
 
     if (status == -1)
         return -errno;
@@ -212,6 +251,8 @@ mcMessageReply(request_message_t * message, void * payload, int payload_size) {
     snprintf(boxname, sizeof boxname, CLIENT_QUEUE_FMT, message->pid, "wait");
 
     mqd_t client_inbox = mq_open(boxname, O_WRONLY);
+    if (client_inbox == -1)
+        return;
     
     status = mq_send(client_inbox, (void *)&response,
         response.size, PRIORITY_CMD);
@@ -276,6 +317,17 @@ mcAsyncReceive(void) {
 }
 
 int
+mcIsMessageAvailable(bool * available) {
+    struct mq_attr attrs;
+    int status = mq_getattr(_inbox, &attrs);
+    if (status)
+        return status;
+
+    *available = attrs.mq_curmsgs > 0;
+    return 0;
+}
+
+int
 mcResponseReceive2(response_message_t * response, bool message,
         const struct timespec * timeout) {
     unsigned int priority, length;
@@ -305,7 +357,7 @@ mcResponseReceive2(response_message_t * response, bool message,
 
         // Handle events directly from here (client side)
         if (priority == PRIORITY_EVENT)
-            mcDispatchSignaledEvent(response);
+            mcDispatchSignaledEventMessage(response);
         else
             // If event was received when a message was expected, another
             // call to mq_receive should be made until a message is received
@@ -355,7 +407,7 @@ mcInboxExpunge(void) {
     mq_setattr(_inbox, &attributes, NULL);
 }
 
-int
+static int
 construct_request_raw(request_message_t * message, int type,
         void * payload, int payload_size) {
 
@@ -376,7 +428,7 @@ construct_request_raw(request_message_t * message, int type,
     return 0;
 }
 
-int
+static int
 construct_request(motor_t motor, request_message_t * message,
         int type, void * payload, int payload_size) {
 
@@ -388,7 +440,7 @@ construct_request(motor_t motor, request_message_t * message,
     return status;
 }
 
-int
+static int
 construct_response(request_message_t * message, response_message_t * response,
         void * payload, int payload_size) {
 

@@ -1,7 +1,21 @@
 cdef extern from "motor.h":
     ctypedef enum motor_query:
         MCPOSITION
+        MCVELOCITY
         MCMOVING
+        MCSTALLED
+        MCINPUT
+        MCOUTPUT
+
+        MCPROFILE
+        MCACCEL
+        MCDECEL
+        MCVMAX
+        MCVINITIAL
+        MCDEADBAND
+        MCRUNCURRENT
+        MCHOLDCURRENT
+        MCSLIPMAX
 
     ctypedef enum motion_increment:
         MILLI_INCH

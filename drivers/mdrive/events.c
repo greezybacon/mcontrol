@@ -1,6 +1,9 @@
 #include "mdrive.h"
 
+#include "events.h"
+
 #include "config.h"
+#include "serial.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -8,61 +11,151 @@
 // Cross reference between motor error codes reported in event notifications
 // and the event constants defined in mcontrol's motor.h
 static struct event_xref {
-    short           event_code;
-    enum event_name event_name;
+    short           error;
+    enum event_name event_code;
 } event_xrefs[] = {
-    { MDRIVE_ESTALL,    EV_MOTOR_STALLED },
+    { MDRIVE_ESTALL,    EV_MOTION },
+    { MDRIVE_EDEADBAND, EV_MOTION },
+    { MDRIVE_ETEMP,     EV_OVERTEMP },
+    { MDRIVE_ELITEMP,   EV_OVERTEMP },
+    { MDRIVE_EHOT,      EV_OVERTEMP },
     { 200,              EV_MOTOR_RESET },
     { 0, 0 }
 };
 
 int
-mdrive_subscribe(Driver * self, driver_event_callback_t callback) {
-    mdrive_axis_t * axis = self->internal;
+mdrive_notify(Driver * self, event_t code, int condition,
+        driver_event_callback_t callback) {
+    mdrive_device_t * device = self->internal;
 
-    if (axis == NULL)
+    if (device == NULL)
         return EINVAL;
 
-    if (axis->subscribers >= MAX_SUBSCRIPTIONS - 1)
+    if (callback == NULL)
+        return EINVAL;
+
+    struct event_callback * event = device->event_handlers;
+    int i = MAX_SUBSCRIPTIONS;
+    for (; i; i--, event++)
+        if (!event->active) break;
+
+    if (i == 0)
         return ER_TOO_MANY;
 
-    event_callback_t * event = &axis->event_handlers[axis->subscribers++];
+    *event = (struct event_callback) {
+        .callback = callback,
+        .active = true,
+        .condition = condition,
+        .event = code
+    };
 
-    event->callback = callback;
-    event->active = true;
-
+    // TODO: Setup special traps for events, especially wrt. the condition
+    // variable (eg. event at absolute position)
+    switch (code) {
+        case EV_POSITION:
+            break;
+        case EV_INPUT:
+            break;
+        default:
+            break;
+    }
+    
     return 0;
 }
 
 int
 mdrive_unsubscribe(Driver * self, driver_event_callback_t callback) {
-    mdrive_axis_t * axis = self->internal;
+    mdrive_device_t * device = self->internal;
 
-    if (axis == NULL)
+    if (device == NULL)
         return EINVAL;
 
-    if (axis->subscribers == 0)
-        return EINVAL;
-
-    int i;
-    for (i=0; i < axis->subscribers; i++)
-        if (axis->event_handlers[i].callback == callback)
+    int i = MAX_SUBSCRIPTIONS;
+    struct event_callback * event = device->event_handlers;
+    for (; i; i--, event++)
+        if (event->callback == callback)
             break;
 
-    if (i == axis->subscribers)
+    if (i == 0)
         // Callback function not registered
         return EINVAL;
 
-    // Remove the subscriber from the list by shifting the following items
-    // over the callback to be removed
-    while (i < axis->subscribers) {
-        axis->event_handlers[i] = axis->event_handlers[i+1];
-        i++;
-    }
-
-    axis->subscribers--;
+    // Remove the subscriber from the list by setting the active flag to false
+    device->event_handlers[i].active = false;
 
     return 0;
+}
+
+/**
+ * mdrive_signal_error_event
+ *
+ * Convenience method to signal an event based on an error code from a
+ * device. This function will call and return the value from
+ * mdrive_signal_event if the error code received has a matching event code.
+ * This function will also keep track of error-related statistics, such as
+ * stalls.
+ *
+ * Returns:
+ * (int) 0 upon successful lookup, EINVAL otherwise
+ */
+int
+mdrive_signal_error_event(mdrive_device_t * device, int error) {
+    if (device == NULL)
+        return EINVAL;
+
+    struct event_xref * xref = event_xrefs;
+    while (xref->error && xref->error != error)
+        xref++;
+
+    if (xref->event_code == 0)
+        // Error code does have a corresponding event
+        return EINVAL;
+
+    union event_data data = {};
+    int temp;
+
+    // Update stats for interesting events
+    switch (error) {
+        case MDRIVE_ESTALL:     // 86
+            device->stats.stalls++;
+            data.motion.stalled = true;
+            // Clear the stall flag on the device
+            mdrive_send(device, "ST");
+            // Device is no longer moving
+            device->movement.moving = false;
+            break;
+        
+        case MDRIVE_EDEADBAND:  // 92
+            data.motion.failed = true;
+            // This occurs at the end of a move, so no cleanup is really
+            // necessary
+            break;
+
+        case MDRIVE_ELITEMP:    // 75
+            // Linear over temperature
+            mcTraceF(10, MDRIVE_CHANNEL,
+                "WARNING: %c: Unit reports linear over temperature",
+                device->address);
+            // TODO: Perform some kind of compenstaion -- DE, stop, refuse
+            //       to move or something. EHOT should likely be emulated
+            break;
+        case MDRIVE_EHOT:       // 72
+            mcTraceF(1, MDRIVE_CHANNEL,
+                "CRITICAL: %c: Unit reports thermal shutdown",
+                device->address);
+            data.temp.shutdown = true;
+            // Continue onward to collect and signal actual temperature of
+            // the device
+        case MDRIVE_ETEMP:      // 71
+            mdrive_get_integer(device, "IT", &temp);
+            data.temp.temperature = (float) temp;
+            mcTraceF(10, MDRIVE_CHANNEL,
+                "WARNING: %c: Unit reports over temperature: %d",
+                device->address, temp);
+            break;
+    }
+    int status = mdrive_signal_event(device, xref->event_code, &data);
+    return status;
 }
 
 /**
@@ -72,43 +165,48 @@ mdrive_unsubscribe(Driver * self, driver_event_callback_t callback) {
  * The event received should correspond to an event or error code listed in
  * the event_xrefs[] array defined at the top of this module.
  *
+ * Parameters:
+ * device - (mdrive_device_t *) Device signaling the event
+ * code - (int) event code to be signaled. Use codes from {enum event_name}.
+ * data - (union event_data *) information to be coupled with the event
+ *      code. Can be set to NULL if no other data is pertinent
+ *
  * Returns:
  * (int) EINVAL if AXIS is null or the mdrive event code does not have a
  *       corresponding mcontrol event code, 0 otherwise
  */
 int
-mdrive_signal_event(mdrive_axis_t * axis, int event) {
-    if (axis == NULL)
-        return EINVAL;
-
-    struct event_xref * xref = event_xrefs;
-    int i;
-    while (xref->event_code && xref->event_code != event)
-        xref++;
-
-    if (xref->event_code == 0)
-        // Event code does not match a defined event name
+mdrive_signal_event(mdrive_device_t * device, int code, union event_data * data) {
+    if (device == NULL)
         return EINVAL;
 
     // TODO: Send "EV=0" to the unit to signal the receipt of the event
-
     // Update stats for interesting events
-    switch (event) {
-        case EV_MOTOR_STALLED:
-            axis->stats.stalls++;
-            break;
-        case EV_MOTOR_RESET:
-            axis->stats.reboots++;
-            mdrive_config_inspect(axis);
+    // XXX: Looks like this code isn't used
+    switch (code) {
+        case MDRIVE_RESET:
+            device->stats.reboots++;
+            mdrive_config_inspect(device, true);
             // Reset lazy loaded flags
-            axis->loaded.mask = 0;
+            device->loaded.mask = 0;
             break;
     }
 
     // Broadcast the event to all (active) subscribers
-    for (i=0; i < axis->subscribers; i++)
-        if (axis->event_handlers[i].active)
-            axis->event_handlers[i].callback(axis->driver, xref->event_name);
+    struct event_callback * event = device->event_handlers;
+    struct event_info info = {
+        .event = code,
+        .data = data
+    };
+    int i = MAX_SUBSCRIPTIONS;
+    for (; i; i--, event++) {
+        if (event->active && !event->paused && event->event == code) {
+            event->callback(device->driver, &info);
+            // Subscriber will have to request notification for the same
+            // type of event again
+            event->active = false;
+        }
+    }
     
     return 0;
 }
@@ -116,7 +214,7 @@ mdrive_signal_event(mdrive_axis_t * axis, int event) {
 /**
  * mdrive_signal_event_device
  *
- * Used when the axis signaling the event is unknown. This is most likely
+ * Used when the device signaling the event is unknown. This is most likely
  * from the async receive thread that will receive events for multiple
  * devices in party mode.
  *
@@ -126,15 +224,19 @@ mdrive_signal_event(mdrive_axis_t * axis, int event) {
  * For the driver that matches, the mdrive_signal_event routine will be
  * called to trigger the event.
  *
+ * Parameters:
+ * event - (int) event code to signal -- use mdrive_error_to_event() to
+ *      convert between Mcode errors and mcontrol event codes
+ *
  * Returns:
  * (int) EINVAL if no device driver is found servicing the given address,
  *       otherwise, the value from mdrive_signal_event is returned.
  */
 int
-mdrive_signal_event_device(mdrive_axis_device_t * device, char address,
+mdrive_signal_event_device(mdrive_comm_device_t * comm, char address,
         int event) {
     Driver * d;
-    mdrive_axis_t * axis;
+    mdrive_device_t * device;
     void * handle;
     handle = mcEnumDrivers();
 
@@ -144,31 +246,11 @@ mdrive_signal_event_device(mdrive_axis_device_t * device, char address,
             break;
 
         if (strcmp(d->class->name, "mdrive") == 0) {
-            axis = d->internal;
-            if (axis->address == address)
-                return mdrive_signal_event(axis, event);
+            device = d->internal;
+            if (device->address == address)
+                return mdrive_signal_event(device, event, NULL);
         }
     }
 
     return EINVAL;
-}
-
-int
-mdrive_event_notify(Driver * self, int event, int arg,
-        driver_event_callback_t callback) {
-    mdrive_axis_t * axis = self->internal;
-
-    if (axis == NULL)
-        return EINVAL;
-
-    // TODO: Manage list of subscriptions based on event type. For instance,
-    //       for MDrive systems, only one trip on position can be setup at a
-    //       time. Therefore, if two clients are waiting on different
-    //       positions, that will be a problem.
-    switch (event) {
-        case EV_POSITION:
-            break;
-        case EV_INPUT:
-            break;
-    }
 }

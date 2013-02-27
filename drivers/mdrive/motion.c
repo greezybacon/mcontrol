@@ -1,5 +1,6 @@
 #include "mdrive.h"
 
+#include "events.h"
 #include "motion.h"
 #include "serial.h"
 #include "profile.h"
@@ -9,29 +10,45 @@
 #include <stdio.h>
 #include <time.h>
 
-#include "lib/callback.h"
+// #include "lib/callback.h"
 
 int
 mdrive_move(Driver * self, motion_instruction_t * command) {
+    if (self == NULL)
+        return EINVAL;
+    mdrive_device_t * device = self->internal;
 
-    mdrive_axis_t * motor = self->internal;
     char buffer[24];
-    int steps = mdrive_microrevs_to_steps(motor, command->amount);
+    int steps = mdrive_microrevs_to_steps(device, command->amount),
+        urevs = command->amount;
+
+    struct motion_details move_info = {
+        .urevs = urevs,
+        .pstart = device->position,
+        .type = command->type,
+        .moving = true
+    };
 
     switch (command->type) {
         case MCABSOLUTE:
             snprintf(buffer, sizeof buffer, "MA %d", steps);
-            mdrive_set_profile(motor, &command->profile);
+            // XXX: Ensure device position is known
+            move_info.urevs = mdrive_steps_to_microrevs(device,
+                steps - device->position);
             break;
 
         case MCRELATIVE:
             snprintf(buffer, sizeof buffer, "MR %d", steps);
-            mdrive_set_profile(motor, &command->profile);
             break;
 
         case MCSLEW:
+            if (device->movement.moving && device->movement.type == MCSLEW
+                    && device->movement.urevs == urevs)
+                // Requested slew rate is already in progress
+                return 0;
             snprintf(buffer, sizeof buffer, "SL %d", steps);
-            mdrive_set_profile(motor, &command->profile);
+            // XXX: Device position will no longer be known
+            // TODO: Cancel motion completion callback event if any
             break;
 
         case MCJITTER:
@@ -40,212 +57,200 @@ mdrive_move(Driver * self, motion_instruction_t * command) {
         default:
             return ENOTSUP;
     }
-    if (RESPONSE_OK != mdrive_send(motor, buffer))
-        return EIO;
 
-    motor->movement = (struct motion_details) {
-        .urevs = command->amount,
-        .pstart = motor->position
-    };
-    clock_gettime(CLOCK_REALTIME, &motor->movement.start);
+    int status = mdrive_drive_enable(device);
+    if (status)
+        return status;
 
-    // Signal completion event
-    mdrive_on_async_complete(motor, true);
+    device->movement = move_info;
+    clock_gettime(CLOCK_REALTIME, &device->movement.start);
+
+    if (device->microcode.features.move) {
+        status = mdrive_move_assisted(device, command, steps);
+        if (status)
+            return status;
+    }
+    else {
+        mdrive_set_profile(device, &command->profile);
+        if (RESPONSE_OK != mdrive_send(device, buffer))
+            return EIO;
+    }
+
+    // Signal completion event -- cancel in-progress one first
+    mdrive_async_complete_cancel(device);
+    if (command->type != MCSLEW)
+        // XXX: Ensure device position is known
+        mdrive_async_complete(device);
 
     return 0;
 }
 
-/**
- * __urevs_from_midpoint
- *
- * Estimation of total device rotation if it accelerates its rotation from
- * time t=0 until t=t, and then decelerates back to a stop. This function
- * assumes that the unit's VM (max-velocity, profile.vmax) is never reached.
- *
- * The unit's velocity curve will look like
- *
- * v ^       /\
- *   |     /    \
- *   |   /        \
- *   | /            \
- *   +--------+---------> t
- *   t=0      t=t
- *
- * The area under the curve represents the total distance traveled --
- * urevs (micro-rotations) in this case. The unit will accelerate from and
- * decelerate to the unit's VI (initial-velocity, profile.vstart).
- * Therefore, the acceleration half (left-side) will be (1/2 * b * h), or
- * (1/2) * (t - 0) * (V@t=t), where V@t=t is velocity at time t=t,
- * (VI + A * * t), where A is the unit's acceleration in urevs/sec^2, and
- * the deceleration half (right-side) will be (1/2) * (V@t=t * decel_time),
- * where decel_time is the velocity at t=t minus VI, quantity over the
- * units's deceleration (D), or ((V@t=t - VI) / D)
- *
- * Returns:
- * (double) Estimated unit travel (in urevs) if the unit accelerates from
- * time t=0 until t=t and decelerates back to a stop.
- */
-static double
-__urevs_from_midpoint(mdrive_axis_t * device, double t) {
-    // return (
-    //          1/2 * (vstart + (accel * t)) * t 
-    //        + 1/2 * (vstart + (accel * t)) * decel_time)
-    int vel_at_t = device->profile.vstart.raw
-        + (device->profile.accel.raw * t);
-    double decel_time = (1.0 * vel_at_t - device->profile.vstart.raw)
-        / device->profile.decel.raw;
-    return (vel_at_t >> 1) * (t + decel_time);
+int
+mdrive_move_assisted(mdrive_device_t * device, motion_instruction_t * command,
+        int steps) {
+    struct micrcode_packed_move_op {
+        unsigned    mode        :3;
+        unsigned    profile     :3;
+        unsigned    reset_pos   :1;
+        unsigned    steps       :24;
+    } R1 = {
+        .mode = 0
+    };
+
+    switch (command->type) {
+        case MCABSOLUTE:
+            R1.mode = 1;
+            break;
+        case MCRELATIVE:
+            R1.mode = 2;
+            break;
+        case MCSLEW:
+            R1.mode = 3;
+            R1.reset_pos = 1;
+            break;
+        default:
+            return ENOTSUP;
+    }
+
+    // Configure hardware profile if current motor profile has the hardware
+    // flag set
+    if (command->profile.attrs.hardware)
+        R1.profile = command->profile.attrs.number;
+    else
+        mdrive_set_profile(device, &command->profile);
+
+    char buffer[64];
+    snprintf(buffer, sizeof buffer, "R1=%d", R1.mode + (R1.profile << 3)
+        + (R1.reset_pos << 6));
+    if (mdrive_send(device, buffer))
+        return EIO;
+
+    snprintf(buffer, sizeof buffer, "R2=%d", steps);
+    if (mdrive_send(device, buffer))
+        return EIO;
+
+    snprintf(buffer, sizeof buffer, "EX %s", device->microcode.labels.move);
+    if (mdrive_send(device, buffer))
+        return EIO;
+
+    return 0;
 }
 
-/**
- * __decel_lambda
- *
- * By inspection from the above graph, the slope of the unit's position
- * (velocity) at time t=t is the unit's deceleration (D) rate. However, the
- * deceleration value in the profile is considered a positive value, so we
- * will cast it as a negative value here, since geometricly it is a negative
- * slope.
- */
-static double
-__decel_lambda(mdrive_axis_t * device, double t) {
-    return -(signed)device->profile.decel.raw;
-}
-
-struct newton_raphson_state {
-    mdrive_axis_t * device;             /* Device with motion profile */
-    double          xn;                 /* Current value in sequence */
-    double          answer;             /* (this) - func() == 0 */
-    /* Function whose x value at f(x) = answer is sought */
-    double (*func)(mdrive_axis_t *, double); 
-    double (*prime)(mdrive_axis_t *, double); /* d/dx (func(x)) */
+struct travel_time_info {
+    double  accel_time;
+    double  decel_time;
 };
 
 /**
- * _newton_raphson_iter
+ * travel_to_time
  *
- * Newton's method implemented as an infinite sequence. The function uses a
- * (struct newton_raphson_state) to setup and continue the sequence. The
- * same state should be passed to the function for the initial and
- * subsequent calls.
+ * Estimates the unit's travel time for the specified travel distance.
  *
- * Parameters:
- * state (struct newton_raphson_state *) Ongoing state of the sequence
+ * If the unit does not reach the maximum velocity, the unit's velocity
+ * curve will look like
+ *
+ *   v ^
+ *     |       /\
+ *     |     /    \
+ *     |   /        \
+ * VI _| /            \
+ *     | |              \
+ *     +-+------+--------+-> t
+ *       t=0   t@VM     t@rest
+ *
+ * Where the unit will start from VI, accelerate to some maximum velocity
+ * and then decelerate to a complete stop. The area under this curve
+ * represents the distance traveled, and the total time (t@rest) is what is
+ * sought.
+ *
+ * Patameters:
+ * info - (struct travel_time_info *) which will receive the information
+ *      about the travel time including the amount of time spent
+ *      accelerating and the amount of time spent decelerating.
  *
  * Returns:
- * state->xn (double) Next value of the sequence
- *
- * Side Effects:
- * state is modified and should be passed back into the function for the
- * next item in the sequence to be generated
+ * EINVAL if the unit will reach the current profile's vmax. 0 upon success.
  */
-static double
-_newton_raphson_iter(struct newton_raphson_state * state) {
-    state->xn -= (state->answer - state->func(state->device, state->xn))
-                / state->prime(state->device, state->xn);
-    return state->xn;
+static int
+travel_to_time(mdrive_device_t * device, long long urevs,
+        struct travel_time_info * info) {
+    double A = device->profile.accel.value;
+    double D = device->profile.decel.value;
+    double VI = device->profile.vstart.value;
+    double VM = sqrt(((urevs * 2 * A * D) - (D * VI * VI)) / (A + D));
+
+    if (VM > device->profile.vmax.value)
+        return EINVAL;
+
+    *info = (struct travel_time_info) {
+        .accel_time = ((VM - VI) / A),
+        .decel_time = (VM / D)
+    };
+    return 0;
 }
 
 /**
- * _newton_raphson_xcel
- * 
- * Newton-Raphson method implemeted with Euler's sequence accelerator so
- * that it converges in fewer iterations. The sequence accelerator is
- * implemented from a Python example at
- * http://linuxgazette.net/100/pramode.html, in the section "Representing
- * infinite sequences".
+ * mdrive_project_completion
+ *
+ * Estimates the resting time, from the start of the move operation, of the
+ * motor for the move descrived in the the given motion_details. Projected
+ * time of completion is stored as an absolute (struct timespec) value into
+ * the detail->projected member. Also, the parts of the move are broken down
+ * in to time spent accelerating and time spent decelerating. Those pieces
+ * are saved into the details->vmax_us and details->decel_us respectively.
+ * The times will reflect the time when the motor is expected to reach the
+ * maximum velocity of the move and the time when the motor is expected to
+ * start decelerating. Both figures are in micro-seconds from the start of
+ * the move (details->start).
+ *
+ * If the unit will never reach the profile VMAX, the vmax_us and decel_us
+ * times will have the same value, because the unit will start decelerating
+ * at the time it reaches the max velocity of the move.
  *
  * Parameters:
- * device (mdrive_axis_t *) Mdrive device (passed to func())
- * x0 (double) Initial value of the sequence
- * answer (double) Sought value from func(). Typically this is zero for
- *      Newton's method in a classic sense, but this can be used where
- *      func(t) = answer -or- answer - func(t) = 0
- *      is being sought.
- * tolerance (double) Acceptable difference between func(t) and answer
- * func (*function(device *, t)) Function with an interesting zero
- * prime (*function(device *, t)) Derivative of func()
+ * device - (struct mdrive_device_t *) Device performing the move
+ * details - (struct motion_details *) Contains information about the move,
+ *      and will receive the estimated timing characteristics of the move
  *
  * Returns:
- * Value passed to func -- t (time) in this case, where func(t) = answer.
+ * 0 upon success. EINVAL if unable to determine the resting time.
  */
-static double
-_newton_raphson_xcel(mdrive_axis_t * device, double answer, double x0,
-        double tolerance,
-        double (*func)(mdrive_axis_t *, double),
-        double (*prime)(mdrive_axis_t *, double)) {
-    struct newton_raphson_state state = {
-        .xn = x0,
-        .answer = answer,
-        .func = func,
-        .prime = prime,
-        .device = device
-    };
-    double s0, s1, s2, next, val;
-    s0 = _newton_raphson_iter(&state);
-    s1 = _newton_raphson_iter(&state);
-    s2 = _newton_raphson_iter(&state);
-    while (true) {
-        next = s2 - (((s2 - s1) * (s2 - s1)) / (s0 - (2 * s1) + s2));
-        // Less than 1 milli-second will be lost in the comm noise and
-        // device latency variation
-        if (abs(s2 - s1) < 0.001)
-            return next;
-        s0 = s1;
-        s1 = s2;
-        s2 = _newton_raphson_iter(&state);
-    }
-}
-
 int
-mdrive_project_completion(mdrive_axis_t * device,
+mdrive_project_completion(mdrive_device_t * device,
         struct motion_details * details) {
     // Acceleration ramp
-    long long dividend =
-        (long long)1e9 * (device->profile.vmax.raw - device->profile.vstart.raw);
-    long long t1 = dividend / device->profile.accel.raw;
-    int avg = (device->profile.vmax.raw + device->profile.vstart.raw) / 2;
-    int distance = avg * t1 / (int)1e9;
-
-    // Deceleration ramp
-    long long t3 = dividend / device->profile.decel.raw;
-    distance += avg * t3 / (int)1e9;
+    double ramp = device->profile.vmax.value - device->profile.vstart.value,
+    // Acceleration ramp and distance traveled during accel
+           t1 = ramp / device->profile.accel.value,
+           distance = ((ramp / 2) + device->profile.vstart.value) * t1,
+    // Time at VM
+           t2,
+    // Deceleration ramp and distance traveled during decel
+           t3 = 1. * device->profile.vmax.value / device->profile.decel.value;
+    distance += (device->profile.vmax.value >> 1) * t3;
 
     // And the remaining distance, performed at vmax
-    signed long long rem = abs(details->urevs) - distance;
+    double rem = fabs(details->urevs) - distance;
 
     // Now total time (in nano-seconds) is t1 + t2 + t3
-    long long t2, total;
+    long long total;
 
     if (rem < 0) {
-        // Unit will never reach vmax and will start decelerating at 50% of
-        // the total distance. Estimate the travel time by numerical
-        // analysis
-        int t = 1e6 * _newton_raphson_xcel(device,
-            /* (this) - func() == 0 */ abs(details->urevs),
-            /* x0 -- half of A ramp */ t1 / 2e9,
-            /* Accept tolerance of 100urevs */ 100,
-            __urevs_from_midpoint, __decel_lambda);
-        //
-        // Then, t is where the curves meet, and t_finish can be found from
-        // t_decel = (accel * t + vstart) / decel 
-        // t_total = t + t_decel
-        //
-        // But we just need t -- where the unit will start decelerating
-        details->vmax_us = details->decel_us = t;
-        // Recalc t1 and t3 times:
-        // t1 = Accel time: t * 1000
-        // t3 = Decel time: velocity-at-t / decel
-        t3 = (device->profile.vstart.raw
-            + (device->profile.accel.raw * t))
-            / device->profile.decel.raw;
-        total = (t + t3) * 1000;
+        // Unit will never reach vmax and will start decelerating at the
+        // intersection of the acceleration and deceleration curves.
+        struct travel_time_info info;
+        if (travel_to_time(device, abs(details->urevs), &info))
+            return EINVAL;
+
+        details->vmax_us = details->decel_us = info.accel_time * 1e6;
+        total = (info.accel_time + info.decel_time) * 1e9;
     }
     else {
-        t2 = ((long long)1e9 * rem) / device->profile.vmax.raw;
+        t2 = rem / device->profile.vmax.value;
 
-        details->vmax_us = t1 / 1000;
-        details->decel_us = (t1 + t2) / 1000;
-        total = t1 + t2 + t3;
+        details->vmax_us = t1 * 1e6;
+        details->decel_us = (t1 + t2) * 1e6;
+        total = (t1 + t2 + t3) * 1e9;
     }
 
     struct timespec duration = {
@@ -262,13 +267,14 @@ mdrive_project_completion(mdrive_axis_t * device,
 }
 
 int
-mdrive_estimate_position_at(mdrive_axis_t * device,
+mdrive_estimate_position_at(mdrive_device_t * device,
         struct motion_details * details, int when) {
 
     // Travel time is time in microseconds into the device movement. See if
     // we are traveling at vmax, decelerating or still accelerating
     int phase, dt_us;
     long long pos_urev=0;
+    // TODO: Add case for motion already completed
     if (details->decel_us < when)
         // Unit is now decelerating
         phase = 3;
@@ -285,34 +291,43 @@ mdrive_estimate_position_at(mdrive_axis_t * device,
             // Velocity is vmax - (decel * dt)
             dt_us = when - details->decel_us;
             pos_urev += dt_us
-                * (device->profile.decel.raw * dt_us)
+                * (device->profile.decel.value * dt_us)
                 / (int)2e6;
         case 2:
             // Add travel time at vmax
-            pos_urev += device->profile.vmax.raw
+            pos_urev += device->profile.vmax.value
                 * (min(when, details->decel_us) - details->vmax_us);
         case 1:
             // Add accel ramp time
             dt_us = min(when, details->vmax_us);
             pos_urev += dt_us
-                * (device->profile.vstart.raw
-                    + (device->profile.accel.raw * dt_us))
+                * (device->profile.vstart.value
+                    + (device->profile.accel.value * dt_us))
                 / (int)2e6;
     }
     return mdrive_microrevs_to_steps(device, pos_urev / (int)1e6);
 }
 
 /**
+ * 
+ * (Callback) mdrive_async_completion_correct
  *
- * Called at device latency seconds before the expected completion of a
- * movement. This routine should collect the current device position and
- * compare it against the expected device position. From there, estimated
- * following error can be projected, and the estimated time of completion
- * can be adjusted based on the position error.
+ * Called at (half of the) device latency seconds before the expected
+ * completion of a movement. This routine should collect the current device
+ * position and compare it against the expected device position. From there,
+ * estimated following error can be projected, and the estimated time of
+ * completion can be adjusted based on the position error.
+ *
+ * If the motor is at rest when the callback is performed (optimal), the
+ * EV_MOTION event will be signaled and the details about the move will be
+ * included with the event data.
  */
-void *
+static void *
 mdrive_async_completion_correct(void * arg) {
-    mdrive_axis_t * device = arg;
+    mdrive_device_t * device = arg;
+
+    // Detect if this callback is canceled while in progress
+    int callback_id = device->cb_complete;
 
     struct timespec now;
     clock_gettime(CLOCK_REALTIME, &now);
@@ -323,47 +338,117 @@ mdrive_async_completion_correct(void * arg) {
     int travel_time = (now.tv_sec - device->movement.start.tv_sec) * (int)1e6;
     travel_time += (now.tv_nsec - device->movement.start.tv_nsec) / 1000;
 
-    const char * vars[] = {"MV", "ST", "P", "V"};
-    int moving, stalled, pos, vel;
-    int * vals[] = { &moving, &stalled, &pos, &vel };
+    const char * vars[] = {"ST", "P", "V",
+        device->microcode.labels.following_error };
+    int stalled, pos, vel, error, count = 4,
+        * vals[] = { &stalled, &pos, &vel, &error };
 
-    if (mdrive_get_integers(device, vars, vals, 4))
+    if (!device->microcode.features.following_error)
+        count--;
+
+    while (mdrive_get_integers(device, vars, vals, count));
+
+    if (!device->microcode.features.following_error) {
+        // Add (half-of) comm latency time (ns -> us)
+        travel_time += device->stats.latency / 2000;
+
+        int expected = mdrive_estimate_position_at(device, &device->movement,
+            travel_time);
+
+        // Add in starting position
+        expected += device->movement.pstart;
+        error = pos - expected;
+    }
+    // Check for possible race. If a callback has been scheduled since we
+    // started at the top of this procedure, than anoter, completely new
+    // move is in progress, and this move should be abandoned.
+    // XXX: Consider a lock on cb_complete to make this easier to manage
+    if (callback_id != device->cb_complete)
         return NULL;
 
-    // Add (half-of) comm latency time (ns -> us)
-    travel_time += device->stats.latency / 2000;
+    bool completed = true;
 
-    int expected = mdrive_estimate_position_at(device, &device->movement,
-        travel_time);
-    // Add in starting position
-    expected += device->movement.pstart;
-
+    if (vel != 0) {
+        // (perhaps it's safe to) Assume that the unit is decelerating.
+        // Currently, the velocity of the unit is given. The unit will
+        // continue to decelerate at a constant rate of D which we have in
+        // the unit's profile.
+        //
+        // Find the intersection of the decel curve with the current
+        // velocity:
+        //   v
+        //   ^
+        //   |     ------------\
+        //   |  - - - - - - - - X
+        //   |                  |\
+        //   +------------------+-x----------> t
+        //                  Now | L Resting time
+        //
+        // The change in time is the base of the triangle. The slope of the
+        // decel line is the unit's decel value, which will also equal the
+        // rise over the run or v / dt. Therefore, dt = v / D, if D is
+        // considered a positive value.
+        double dt = 1. * mdrive_steps_to_microrevs(device, abs(vel))
+            / device->profile.decel.value;
+        struct timespec callback = {
+            .tv_sec = (int)dt,
+            .tv_nsec = (int)1e9 * (dt - (int)dt)
+        };
+        if (callback.tv_sec == 0 && callback.tv_nsec < device->stats.latency)
+            // For all intents and purposes, the unit is stopped, because we
+            // won't be able to communicate with it again until well after
+            // it stops. Estimate the resting position of the unit and move
+            // on.  dt is units of seconds and vel is units of steps per
+            // second.  The area under the above triangle will be the
+            // distance travelled by the unit, which is 1/2 * b * h
+            // or 1/2 * dt * v
+            device->position = pos + dt * (vel >> 1);
+        else {
+            mcTraceF(50, MDRIVE_CHANNEL, "Early. Callback in %dns",
+		        callback.tv_nsec);
+            // Subtract time for device latency
+            callback.tv_nsec -= (device->stats.latency >> 1) - 1e6;
+            while (callback.tv_nsec < 0) {
+                callback.tv_sec--;
+                callback.tv_nsec += (int)1e9;
+            }
+            // Call this routine again at the estimated time of completion
+            // (minus about half of the unit's latency).
+            device->cb_complete = mcCallback(&callback,
+                mdrive_async_completion_correct, device);
+            completed = false;
+        }
+    }
     // Record the last-known position
-    if (!moving) {
+    else
+        // Device is rested and current position is known
         device->position = pos;
+
+    if (completed) {
         // Disarm the timer
         device->trip.completion = false;
-    } else
-        // TODO: Estimate resting position (and time) of the motor
-        device->position =
-            mdrive_microrevs_to_steps(device, device->movement.urevs);
-
-    int error = pos - expected;
-
-    mcTraceF(10, MDRIVE_CHANNEL, "Pos: %d, Error: %d", device->position,
-        error);
+        // Notify interested subscribers of motion event
+        union event_data data = {
+            .motion = {
+                .completed = !stalled,
+                .stalled = stalled,
+                .pos_known = true,
+                .position = mdrive_steps_to_microrevs(device, pos),
+                .error = error
+            }
+        };
+        mcTrace(10, MDRIVE_CHANNEL, "Signalling EV_MOTION event");
+        mdrive_signal_event(device, EV_MOTION, &data);
+    }
+    return NULL;        // Just for compiler warnings
 }
 
 int
-mdrive_on_async_complete(mdrive_axis_t * device, bool cancel) {
+mdrive_async_complete(mdrive_device_t * device) {
     // If not currently waiting on the completion of this device, setup a
     // new timeout and callback
-    if (device->trip.completion) {
-        if (cancel)
-            ;   // TODO: Signal motion-complete cancel event
-        else
-            return EBUSY;
-    }
+    if (device->trip.completion)
+        return EBUSY;
 
     // Calculate estimated time of completion
     mdrive_project_completion(device, &device->movement);
@@ -374,7 +459,7 @@ mdrive_on_async_complete(mdrive_axis_t * device, bool cancel) {
     exp.tv_nsec -= device->stats.latency / 2;
     // We'll also need time to communicate with the unit. Assume 15 chars
     // necessary to get the current position and such
-    exp.tv_nsec -= mdrive_xmit_time(device->device, 15);
+    exp.tv_nsec -= mdrive_xmit_time(device->comm, 15);
     // Add back 1ms to account for variations in the device latency
     exp.tv_nsec += (int)1e6;
 
@@ -385,35 +470,84 @@ mdrive_on_async_complete(mdrive_axis_t * device, bool cancel) {
 
     // Call mdrive_async_completion_correct at the projected end-time of
     // this motion command
-    mcCallbackAbs(&exp, mdrive_async_completion_correct, device);
+    device->cb_complete = mcCallbackAbs(&exp,
+        mdrive_async_completion_correct, device);
 
     device->trip.completion = true;
 
     return 0;
 }
 
+/**
+ * mdrive_async_complete_cancel
+ *
+ * Cancels a scheduled motion-complete callback if any is scheduled. If so,
+ * a EV_MOTION is signalled to indicate that the move was cancelled
+ *
+ * Parameters:
+ * device - (mdrive_device_t *) Device for which to check and cancel motion
+ *      callback
+ *
+ * Returns:
+ * (int) 0 upon success
+ */
 int
-mdrive_lazyload_motion_config(mdrive_axis_t * device) {
-    if (!device->loaded.encoder) {
-        // TODO: Move all 'dis to the config.c module and make it
-        //       configurable with a poke
+mdrive_async_complete_cancel(mdrive_device_t * device) {
+    if (device->trip.completion) {
+        if (device->cb_complete)
+            mcCallbackCancel(device->cb_complete);
+        // No longer to trip on motion-complete
+        device->trip.completion = false;
+        // TODO: Signal motion-complete cancel event
+        union event_data data = {
+            .motion = {
+                .cancelled = true
+            }
+        };
+        mdrive_signal_event(device, EV_MOTION, &data);
+    }
+    return 0;
+}
 
+int
+mdrive_drive_enable(mdrive_device_t * device) {
+    if (!device)
+        return EINVAL;
+    else if (!device->drive_enabled && !mdrive_set_variable(device, "DE", 1))
+        return EIO;
+    return 0;
+}
+
+int
+mdrive_drive_disable(mdrive_device_t * device) {
+    if (!device)
+        return EINVAL;
+    else if (device->drive_enabled && !mdrive_set_variable(device, "DE", 0))
+        return EIO;
+    return 0;
+}
+
+int
+mdrive_lazyload_motion_config(mdrive_device_t * device) {
+    if (!device->loaded.encoder) {
         // Fetch microstep and encoder settings
-        const char * vars[] = { "MS", "EE" };
-        int * vals[] = { &device->steps_per_rev, &device->encoder };
-        if (0 != mdrive_get_integers(device, vars, vals, 2))
+        const char * vars[] = { "MS", "EE", "DE" };
+        int * vals[] = { &device->steps_per_rev, &device->encoder,
+            &device->drive_enabled };
+        if (0 != mdrive_get_integers(device, vars, vals, 3))
             return EIO;
  
         // TODO: Check if different part numbers have varying steps per
         //       revolution
         device->steps_per_rev *= 200;
         device->loaded.encoder = true;
+        device->loaded.enabled = true;
     }
     return 0;
 }
 
 int
-mdrive_microrevs_to_steps(mdrive_axis_t * device, long long microrevs) {
+mdrive_microrevs_to_steps(mdrive_device_t * device, long long microrevs) {
     int steps_per_rev;
 
     if (mdrive_lazyload_motion_config(device))
@@ -428,7 +562,7 @@ mdrive_microrevs_to_steps(mdrive_axis_t * device, long long microrevs) {
 }
 
 long long
-mdrive_steps_to_microrevs(mdrive_axis_t * device, int steps) {
+mdrive_steps_to_microrevs(mdrive_device_t * device, int steps) {
     int steps_per_rev;
 
     if (mdrive_lazyload_motion_config(device))
@@ -443,8 +577,57 @@ mdrive_steps_to_microrevs(mdrive_axis_t * device, int steps) {
 }
 
 int
-mdrive_stop(Driver * self) {
-    mdrive_axis_t * axis = self->internal;
+mdrive_stop(Driver * self, enum stop_type type) {
+    if (self == NULL || self->internal == NULL)
+        return EINVAL;
 
-    return mdrive_send(axis, "\x1b");
+    mdrive_device_t * device = self->internal;
+    mdrive_device_t global;
+
+    // Unit won't be moving any more
+    bzero(&device->movement, sizeof device->movement);
+
+    // Cancel motion completion callback event if any
+    mdrive_async_complete_cancel(device);
+
+    switch (type) {
+        case MCSTOP:
+            return mdrive_send(device, "SL 0");
+        case MCHALT:
+            // Handle non-addressed mode (ES) where multiple responses will
+            // be received from this command.
+            return mdrive_send(device, "\x1b");
+        case MCESTOP:
+            global = *device;
+            global.address = '*';
+            // XXX: Detect if the targeted device does not have party mode
+            // XXX: Send with checksum toggled too, for safety
+            if (mdrive_send(&global, "\x1b"))
+                return EIO;
+            // XXX: DE the motors too
+            if (mdrive_send(&global, "DE=0"))
+                return EIO;
+        default:
+            return ENOTSUP;
+    }
 }
+
+int
+mdrive_home(Driver * self, enum home_type type, enum home_direction dir) {
+    if (self == NULL || self->internal == NULL)
+        return EINVAL;
+
+    mdrive_device_t * motor = self->internal;
+
+    switch (type) {
+        case MCHOMEDEF:
+            // XXX: Move to configuration or to firmware:
+            // "EX CF" -> "xx xx M1 ..." <-- #3 is homing label
+            return mdrive_send(motor, "EX M1");
+        case MCHOMESTOP:
+            // TODO: Home to hard stop, use microcode if supported
+        default:
+            return ENOTSUP;
+    }
+}
+

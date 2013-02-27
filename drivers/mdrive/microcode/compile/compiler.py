@@ -1,8 +1,8 @@
 from . import overloaded
 
-import grammar
+from . import grammar
 
-from pyPEG import Symbol
+from .pyPEG import Symbol
 import re
 
 
@@ -40,8 +40,8 @@ class Name(object):
     def __repr__(self):
         return self.__unicode__()
     def __unicode__(self):
-        return "{0}: {1}: {2}".format(
-            type(self).__name__, self.name, self.defined)
+        return "{0}: {1}: {2} @ {3}".format(
+            type(self).__name__, self.name, self.defined, self.line)
 
 class Label(Name):
     def __init__(self, name):
@@ -91,6 +91,8 @@ class Compiler(object):
         self.names = {}
         self.depth = 0
         self.current_frame = self.stack[-1]
+        self.defaults = []
+        self.current_label = None
 
     def PUSH(self, what):
         self.current_frame.append(what)
@@ -147,8 +149,8 @@ class Compiler(object):
                 else:
                     val = val[name]
         except KeyError:
-            raise CompileError('{0}: Undefined config variable'
-                .format(var))
+            warn("{0}: Undefined config variable".format(var), Warning)
+            val = "${0}".format(var)
         return val
 
     @ast_dispatcher(memoize=True)
@@ -170,12 +172,22 @@ class Compiler(object):
 
     @visit.when('assignment')
     def visit(self, node):
+        self.PUSH_BLOCK()
         for w in node.what:
             self.visit(w)
-        name = node.what[0].what
+        items = self.POP_BLOCK()
+        name = items.pop(0)
+        if name in grammar.label_args:
+            # This command receives a label (not a variable) as an argument
+            for i in items:
+                try:
+                    l = self.FIND_LABEL(i, force_convert=True)
+                    l.calls += 1
+                except KeyError:
+                    # Not a label
+                    pass
         lhs = self.FIND_VAR(name)
         lhs.assignments += 1
-
         if name in grammar.read_only:
             raise CompileError("Assignment to read-only internal variable {0}"
                 .format(name))
@@ -183,8 +195,14 @@ class Compiler(object):
             raise CompileError("{0}: Assignment to internal command"
                 .format(name))
 
+        # TODO: Keep track of defaults / assignments within labeled blocks.
+        #       Defaults should be emitted separately, and commonly, before
+        #       the first label is defined
+        #if self.current_label is None:
+        #    self.defaults.append(lhs)
+        #    lhs.default = ", ".join(items)
         operator = '= ' if name not in grammar.commands else ''
-        self.PUSH("{1} {2}{0}".format(self.POP(), self.POP(), operator))
+        self.PUSH("{0} {1}{2}".format(name, operator, ", ".join(items)))
 
     @visit.when('declaration')
     def visit(self, node):
@@ -200,7 +218,7 @@ class Compiler(object):
         else:
             self.PUSH("VA {0}".format(*B))
 
-    @visit.when('number', 'compare', 'math', 'command')
+    @visit.when('number', 'compare', 'math', 'command', 'unary')
     def visit(self, node):
         self.PUSH(node.what)
 
@@ -220,7 +238,12 @@ class Compiler(object):
         try:
             self.FIND_VAR(B[0]).references += 1
         except KeyError:
-            # Undeclared variable -- warning will be issued later
+            # Undeclared variable -- warning will be issued later if not
+            # defined before the end of the microcode
+            pass
+        except CompileError:
+            # If variable is used as a label, or visa-versa, emit the actual
+            # error somewhere else
             pass
 
         expr = ' '.join(B)
@@ -237,11 +260,15 @@ class Compiler(object):
     @visit.when('label')
     def visit(self, node):
         self.visit(node.what[0])
-        l = self.FIND_LABEL(node.what[0].what)
+        self.current_label = l = self.FIND_LABEL(node.what[0].what)
         self.label = l.name
         if l.defined:
             raise CompileError("Label '{0}' redefined, from {1}"
-                .format(name, node.line))
+                .format(l.name, node.__name__.line))
+        elif l.name in grammar.internal:
+            raise CompileError(
+                "{0}: Internal variable used as label, from {1}"
+                .format(l.name, node.__name__.line))
         else:
             l.defined = True
             l.where = node.__name__.line
@@ -255,13 +282,13 @@ class Compiler(object):
             self.names[node.what] = Name(node.what, node.__name__.line)
         self.PUSH(node.what)
 
-    def FIND_LABEL(self, name):
+    def FIND_LABEL(self, name, force_convert=False):
         name = self.names[name]
-        if type(name) is Name:
+        if type(name) is Name or force_convert:
             self.names[name.name] = name = Label.fromName(name)
         elif type(name) is not Label:
             raise CompileError('{0} used as a label'.format(
-                type(name).name))
+                name))
         return name
 
     def FIND_VAR(self, name):
@@ -269,8 +296,8 @@ class Compiler(object):
         if type(name) is Name:
             self.names[name.name] = name = Variable.fromName(name)
         elif type(name) is not Variable:
-            raise CompileError('{0} used as a variable'.format(
-                type(name).name))
+            raise CompileError('{0} used as a variable, from {1}'.format(
+                name.name, name.line))
         return name
 
     @visit.when('call', 'branch')

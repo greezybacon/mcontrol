@@ -1,5 +1,6 @@
 #include "driver.h"
 #include "mdrive.h"
+
 #include "serial.h"
 #include "config.h"
 #include "query.h"
@@ -13,7 +14,8 @@
 #include <regex.h>
 #include <errno.h>
 
-int MDRIVE_CHANNEL, MDRIVE_CHANNEL_TX, MDRIVE_CHANNEL_RX;
+int MDRIVE_CHANNEL, MDRIVE_CHANNEL_TX, MDRIVE_CHANNEL_RX,
+    MDRIVE_CHANNEL_FW;
 
 /**
  * mdrive_init -- (DriverClass::initialize)
@@ -37,7 +39,7 @@ int mdrive_init(Driver * self, const char * cxn) {
     mdrive_address_t address;
     int status;
 
-    self->internal = calloc(1, sizeof(mdrive_axis_t));
+    self->internal = calloc(1, sizeof(mdrive_device_t));
     if (self->internal == NULL)
         // Indicate out-of-memory condition
         return -ENOMEM;
@@ -49,7 +51,7 @@ int mdrive_init(Driver * self, const char * cxn) {
     if ((status = regexec(&re_cxn, cxn, 4, matches, 0) != 0)) {
         // XXX: Set error condition somewhere
         mcTraceF(10, MDRIVE_CHANNEL, "Bad connection string: %d", status);
-        return -1;
+        return EINVAL;
     }
 
     snprintf(address.port,
@@ -66,7 +68,7 @@ int mdrive_init(Driver * self, const char * cxn) {
     else
         address.speed = DEFAULT_PORT_SPEED;
 
-    mdrive_axis_t * device = self->internal;
+    mdrive_device_t * device = self->internal;
     if (mdrive_connect(&address, device) != 0)
         // XXX: Set some error indication (or set it in mdrive_connect)
         return -1;
@@ -78,7 +80,7 @@ int mdrive_init(Driver * self, const char * cxn) {
     device->driver = self;
 
     // XXX: Move to mdrive_connect
-    if (mdrive_config_inspect(device))
+    if (mdrive_config_inspect(device, true))
         return ER_COMM_FAIL;
 
     return 0;
@@ -88,7 +90,7 @@ void mdrive_uninit(Driver * self) {
     if (self == NULL)
         return;
 
-    mdrive_axis_t * motor = self->internal;
+    mdrive_device_t * motor = self->internal;
 
     // Configure device for debugging (user usage)
     mdrive_set_checksum(motor, CK_OFF, false);
@@ -99,7 +101,7 @@ void mdrive_uninit(Driver * self) {
     free(self->internal);
 }
 
-int mdrive_reboot(mdrive_axis_t * device) {
+int mdrive_reboot(mdrive_device_t * device) {
     static struct cmd_wait {
         const char *    text;
         int             wait;
@@ -109,50 +111,39 @@ int mdrive_reboot(mdrive_axis_t * device) {
         { NULL, 0 }
     };
     mdrive_response_t result;
+    struct timespec waittime;
     struct mdrive_send_opts options = {
         .expect_data = false,
         .result = &result,
         .expect_err = true,
         .raw = true
     };
-    struct timespec waittime;
+    // Don't retry the reboot in party-mode (the unit won't give any
+    // indication of acceptance)
+    if (device->party_mode)
+        options.tries = 1;
 
     for (struct cmd_wait * cmd = cmds; cmd->text; cmd++) {
         if (cmd->wait) {
-            waittime = (struct timespec) {
-                .tv_nsec = cmd->wait
-            };
+            waittime = (struct timespec) { .tv_nsec = cmd->wait };
             options.waittime = &waittime;
         }
         else
             options.waittime = NULL;
 
-        options.command = cmd->text;
-        mdrive_communicate(device, &options);
+        mdrive_communicate(device, cmd->text, &options);
 
         // Sense firmware upgrade mode
         if (result.buffer[0] == '$')
             device->upgrade_mode = true;
     }
 
-    if (device->party_mode)
-        // Send a CTRL+J to activate party mode
-        mdrive_send(device, "");
-
     return 0;
 }
 
 int mdrive_reset(Driver * self) {
-    mdrive_axis_t * device = self->internal;
+    mdrive_device_t * device = self->internal;
     return mdrive_reboot(device);
-}
-
-int mdrive_home(Driver * self) {
-    mdrive_axis_t * motor = self->internal;
-
-    // XXX: Move to configuration or to firmware:
-    // "EX CF" -> "xx xx M1 ..." <-- #3 is homing label
-    mdrive_send(motor, "EX M1");
 }
 
 int
@@ -183,10 +174,11 @@ mdrive_search(char * cxns, int size) {
     return count;
 }
 
+static
 DriverClass mdrive_driver = {
     .name = "mdrive",
     .description = "Schneider MDrive / MForce",
-    .revision = "A1",
+    .revision = "0.1-1",
 
     .initialize = mdrive_init,
     .destroy = mdrive_uninit,
@@ -200,7 +192,7 @@ DriverClass mdrive_driver = {
     .read = mdrive_read_variable,
     .write = mdrive_write_variable,
 
-    .subscribe = mdrive_subscribe,
+    .notify = mdrive_notify,
     .unsubscribe = mdrive_unsubscribe,
 
     .load_firmware = mdrive_load_firmware,
@@ -214,4 +206,5 @@ _mdrive_driver_init(void) {
     MDRIVE_CHANNEL = mcTraceChannelInit(CHANNEL);
     MDRIVE_CHANNEL_RX = mcTraceChannelInit(CHANNEL_RX);
     MDRIVE_CHANNEL_TX = mcTraceChannelInit(CHANNEL_TX);
+    MDRIVE_CHANNEL_FW = mcTraceChannelInit(CHANNEL_FW);
 }

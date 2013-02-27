@@ -11,22 +11,31 @@ struct backend_motor {
     int         client_pid;
     bool        active;
 
-    Driver *    driver;         // Driver controlling the motor
+    struct driver_instance *
+                instance;       // Driver controlling the motor
+    Driver *    driver;         // Shortcut to instance->driver
 
     Profile     profile;        // Client's requested motion profile
     OpProfile   op_profile;     // Client's requested operating guidelines
 
-    long long   subscriptions;  // Bitmask of subscribed events
+    unsigned short subscriptions[EV__LAST];  // Bitmask of subscribed events
 };
 
 extern void mcInitialize(void);
 extern void mcGoodBye(void);
-extern void mcDisconnect(motor_t motor);
+extern void mcInactivate(Motor * motor);
 
 extern Motor * find_motor_by_id(motor_t id, int pid);
 extern int mcMotorsForDriver(Driver *, Motor *, int);
 
 // Suppress auto motor argument
-PROXYDEF(mcConnect, int, String * connection, OUT MOTOR motor_t * motor);
+SLOW PROXYDEF(mcConnect, int, String * connection, OUT MOTOR motor_t * motor,
+    bool recovery);
+PROXYDEF(mcDisconnect, int);
 PROXYDEF(mcSearch, int, String * driver, OUT String * results);
+
+// A couple of #defines to make calling driver class functions nicer looking
+#define driver_invoke(motor, func, ...) \
+    motor->instance->driver->class->func(
+
 #endif

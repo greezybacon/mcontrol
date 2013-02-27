@@ -15,15 +15,15 @@
 
 // Max number of characters written per trace call (for formatted messages
 // using mcTraceF). Remote clients will be limited by the buffer size
-// declared in the event_user_data.event structure.
+// declared in the event_data.event structure.
 static const int MAX_TRACE_SIZE = 512;
 
-static const int MAX_TRACE_CHANNELS = sizeof(long long);
+static const int MAX_TRACE_CHANNELS = sizeof(unsigned long long) * 8;
 static struct trace_channel * trace_channels = NULL;
 static int trace_channel_count = 0;
 static int trace_channel_serial = 0;
 
-static const int MAX_SUBSCRIBERS = sizeof(long long);
+static const int MAX_SUBSCRIBERS = sizeof(unsigned long long) * 8;
 static struct trace_subscriber * subscribers = NULL;
 static int subscriber_count = 0;
 static int subscriber_serial = 0;
@@ -35,24 +35,19 @@ static int subscriber_serial = 0;
 // 2. Used to lock mcTraceWrite so calls from multiple threads are
 //    serialized to help ensure that the subscriber callback functions need
 //    not be thread safe.
-static pthread_mutex_t * trace_lock = NULL;
+static pthread_mutex_t trace_lock = PTHREAD_MUTEX_INITIALIZER;
 
-static void
+static inline void
 mcTraceLock(void) {
-    if (trace_lock == NULL) {
-        trace_lock = calloc(1, sizeof *trace_lock);
-        pthread_mutex_init(trace_lock, NULL);
-    }
-    pthread_mutex_lock(trace_lock);
+    pthread_mutex_lock(&trace_lock);
 }
 
-static void
+static inline void
 mcTraceUnlock(void) {
-    if (trace_lock == NULL)
-        return;
-
-    pthread_mutex_unlock(trace_lock);
+    pthread_mutex_unlock(&trace_lock);
 }
+
+int LIB_CHANNEL;
 
 /**
  * mcTraceSubscribersLookup
@@ -61,23 +56,27 @@ mcTraceUnlock(void) {
  * given level and channel. This bitmask should be passed into mcTraceWrite
  * sometime later.
  */
-static long long
+static unsigned long long
 mcTraceSubscribersLookup(int level, int channel) {
     if (subscribers == NULL || subscriber_count == 0)
         return 0;
 
-    long long mask = 0;
-    long long channel_mask = 1 << (channel - 1);
+    unsigned long long
+        mask = 0, channel_mask = 1ULL << (channel - 1),
+        SET = 1ULL << (((sizeof mask) * 8) - 1);
+    int count = 0;
     struct trace_subscriber * s = subscribers;
 
     // Walk to high-water mark using the id field, which isn't unset for
     // unsubcriptions
     while (s->id) {
-        mask <<= 1;
+        count++;
+        mask >>= 1;
         if (s->active && s->level >= level && s->channels & channel_mask)
-            mask |= 1;
+            mask |= SET;
         s++;
     }
+    mask >>= ((sizeof mask) * 8) - count;
 
     return mask;
 }
@@ -101,8 +100,8 @@ mcTraceRemoteWrite(int pid, int level, int channel, const char * buffer) {
 }
 
 static int
-mcTraceWrite(long long mask, int level, int channel, const char * buffer,
-        int length) {
+mcTraceWrite(unsigned long long mask, int level, int channel,
+        const char * buffer, int length) {
 
     // Actually write the trace buffer to the subscribers
     struct trace_subscriber * s = subscribers;
@@ -110,7 +109,7 @@ mcTraceWrite(long long mask, int level, int channel, const char * buffer,
     while (mask) {
         if (mask & 1) {
             if (s->callback)
-                s->callback(level, channel, buffer);
+                s->callback(s->id, level, channel, buffer);
             else if (s->pid) {
                 status = mcTraceRemoteWrite(s->pid, level, channel, buffer);
                 if (status == -ENOENT)
@@ -119,7 +118,7 @@ mcTraceWrite(long long mask, int level, int channel, const char * buffer,
             }
         }
         s++;
-        mask >>=1;
+        mask >>= 1;
     }
     return 0;
 }
@@ -143,13 +142,14 @@ mcTrace(int level, int channel, const char * buffer, int length) {
 void
 mcTraceF(int level, int channel, const char * fmt, ...) {
     va_list args;
-    char * buffer;
-    int length;
 
     mcTraceLock();
 
     long long mask = mcTraceSubscribersLookup(level, channel);
     if (mask) {
+        char * buffer;
+        int length;
+
         buffer = malloc(MAX_TRACE_SIZE);
 
         va_start(args, fmt);
@@ -181,7 +181,7 @@ mcTraceBuffer(int level, int channel, const char * buffer,
 
     mcTraceLock();
 
-    long long mask = mcTraceSubscribersLookup(level, channel);
+    unsigned long long mask = mcTraceSubscribersLookup(level, channel);
     if (!mask) {
         mcTraceUnlock();
         return;
@@ -228,16 +228,19 @@ mcTraceBuffer(int level, int channel, const char * buffer,
     mcTraceUnlock();
 }
 
-int
-mcTraceSubscribe(int level, long long channel_mask,
-        trace_callback_t callback) {
+static void __attribute__((constructor))
+mcTraceSystemInit(void) {
     // Allocate the list here on the heap so that everything that links
     // against this library will not have to allocate memory for trace
     // subscription
-    if (subscribers == NULL) {
-        // Keep an extra as end-of-list sentinel
-        subscribers = calloc(MAX_SUBSCRIBERS+1, sizeof *subscribers);
-    }
+    // Keep an extra as end-of-list sentinel
+    subscribers = calloc(MAX_SUBSCRIBERS+1, sizeof *subscribers);
+    LIB_CHANNEL = mcTraceChannelInit(LIB_CHANNEL_NAME);
+}
+
+int
+mcTraceSubscribe(int level, unsigned long long channel_mask,
+        trace_callback_t callback) {
     
     if (subscriber_count == MAX_SUBSCRIBERS)
         return -ER_TOO_MANY;
@@ -283,7 +286,8 @@ hashstring(const char * key) {
 
     unsigned long hash = 5381;
     int c;
-    while (c = *key++)
+    while ((c = *key++))
+        // hash = hash * 33 + c
         hash = ((hash << 5) + hash) + c;
 
     return hash;
@@ -316,12 +320,35 @@ mcTraceChannelLookup(const char * name) {
     struct trace_channel * c = trace_channels;
     while (c->id) {
         if (c->active && c->hash == hash)
-            if (strncmp(c->name, name, sizeof c->name))
+            if (strncmp(c->name, name, sizeof c->name) == 0)
                 return c->id;
         c++;
     }
 
     return -ENOENT;
+}
+
+char *
+mcTraceChannelGetName(int id) {
+    // XXX: There is no ChannelUninit currently, so treat id's as sorted and
+    //      matched to the location in the trace_channel list
+
+    if (!trace_channels)
+        // Why did you come here?
+        return NULL;
+
+    if (id > trace_channel_serial)
+        // No such id
+        return NULL;
+
+    struct trace_channel * c = trace_channels + id;
+    while (c->id) {
+        if (c->id == id)
+            return c->name;
+        c++;
+    }
+
+    return NULL;
 }
 
 // Remote clients
@@ -333,7 +360,7 @@ mcTraceChannelLookup(const char * name) {
  * still need to subscribe to the EV_TRACE event and declare a callback
  * function or wait for the events to arrive in a threaded loop.
  */
-PROXYIMPL(mcTraceSubscribeRemote, int level, long long mask) {
+PROXYIMPL(mcTraceSubscribeRemote, int level, unsigned long long mask) {
     UNPACK_ARGS(mcTraceSubscribeRemote, args);
 
     int id = mcTraceSubscribe(args->level, args->mask, NULL);
@@ -386,4 +413,41 @@ PROXYIMPL(mcTraceSubscribeRemove, int id, String name) {
 
     s->channels &= ~(1 << (channel - 1));
     RETURN(0);
+}
+
+PROXYIMPL(mcTraceChannelEnum, String channels) {
+    UNPACK_ARGS(mcTraceChannelEnum, args);
+
+    char * pos = args->channels.buffer, * start = pos;
+    int count = 0;
+
+    struct trace_channel * c = trace_channels;
+    while (c->id) {
+        pos += snprintf(pos, sizeof args->channels.buffer + start - pos, "%s",
+            c->name) + 1;
+        c++;
+        count++;
+    }
+    args->channels.size = pos - start;
+
+    RETURN(count);
+}
+
+PROXYIMPL(mcTraceChannelLookupRemote, String * buffer, OUT int * id) {
+    UNPACK_ARGS(mcTraceChannelLookupRemote, args);
+
+    args->id = mcTraceChannelLookup(args->buffer.buffer);
+    RETURN ((args->id > 0) ? 0 : -(args->id));
+}
+    
+
+PROXYIMPL(mcTraceChannelGetNameRemote, int id, OUT String * buffer) {
+    UNPACK_ARGS(mcTraceChannelGetNameRemote, args);
+
+    char * name = mcTraceChannelGetName(args->id);
+    if (name != NULL)
+        args->buffer.size = snprintf(args->buffer.buffer,
+            sizeof args->buffer.buffer, "%s", name);
+
+    RETURN ((args->buffer.size) ? 0 : ENOENT);
 }

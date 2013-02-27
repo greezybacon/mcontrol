@@ -4,6 +4,6 @@
 #include "mdrive.h"
 
 extern int
-mdrive_reboot(mdrive_axis_t *);
+mdrive_reboot(mdrive_device_t *);
 
 #endif

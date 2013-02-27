@@ -1,8 +1,9 @@
 #include "mdrive.h"
 #include "serial.h"
 
-#include "queue.h"
+#include "config.h"
 #include "events.h"
+#include "queue.h"
 
 #include <errno.h>
 #include <signal.h>
@@ -24,7 +25,7 @@ extern void tsAdd(const struct timespec *, const struct timespec *,
     struct timespec *);
 extern long long nsecDiff(struct timespec *, struct timespec *);
 
-static mdrive_axis_device_t * all_port_infos = NULL;
+static mdrive_comm_device_t * all_port_infos = NULL;
 
 const struct baud_rate baud_rates[] = {
     { 4800,     B4800,      48 },
@@ -36,42 +37,45 @@ const struct baud_rate baud_rates[] = {
 };
 
 int
-mdrive_get_string(mdrive_axis_t * axis, const char * variable,
+mdrive_get_string(mdrive_device_t * device, const char * variable,
         char * value, int size) {
     char buffer[48];
-    mdrive_response_t result = {};
+    mdrive_response_t result = { .txid = 0 };
 
     snprintf(buffer, sizeof buffer, "PR %s", variable);
 
     struct mdrive_send_opts options = {
-        .command = buffer,
         .expect_data = true,
         .result = &result
     };
-    if (mdrive_communicate(axis, &options) != RESPONSE_OK)
+    if (mdrive_communicate(device, buffer, &options) != RESPONSE_OK)
         return -EIO;
 
     return snprintf(value, size, "%s", result.buffer);
 }
 
 int
-mdrive_get_integer(mdrive_axis_t * axis, const char * variable, int * value) {
+mdrive_get_integer(mdrive_device_t * device, const char * variable, int * value) {
     char buffer[16];
-    mdrive_response_t result = {};
+    mdrive_response_t result = { .txid = 0 };
 
     snprintf(buffer, sizeof buffer, "PR %s", variable);
 
     struct mdrive_send_opts options = {
-        .command = buffer,
         .expect_data = true,
         .result = &result
     };
 
-    if (mdrive_communicate(axis, &options) != RESPONSE_OK)
+    if (mdrive_communicate(device, buffer, &options) != RESPONSE_OK)
         return EIO;
 
     errno = 0;
-    *value = strtol(result.buffer, NULL, 10);
+    char * nondigit;
+    *value = strtol(result.buffer, &nondigit, 10);
+
+    if (*nondigit != 0)
+        // Garbage in the resulting buffer
+        return EIO;
 
     // TODO: Return some error indication
     return errno;
@@ -84,12 +88,12 @@ mdrive_get_integer(mdrive_axis_t * axis, const char * variable, int * value) {
  * type for each value is assumed to be (int).
  */
 int
-mdrive_get_integers(mdrive_axis_t * axis, const char * vars[],
+mdrive_get_integers(mdrive_device_t * device, const char * vars[],
     int * values[], int count) {
 
     char buffer[64], * pbuf = buffer;
     int cValues = count;
-    mdrive_response_t result = {};
+    mdrive_response_t result = { .txid = 0 };
 
     pbuf += snprintf(buffer, sizeof buffer, "PR %s", *vars++);
     while (--count)
@@ -97,11 +101,10 @@ mdrive_get_integers(mdrive_axis_t * axis, const char * vars[],
             ",\" \",%s", *vars++);
 
     struct mdrive_send_opts options = {
-        .command = buffer,
         .expect_data = true,
         .result = &result
     };
-    if (mdrive_communicate(axis, &options) != RESPONSE_OK)
+    if (mdrive_communicate(device, buffer, &options) != RESPONSE_OK)
         return EIO;
 
     errno = 0;
@@ -132,18 +135,17 @@ mdrive_get_integers(mdrive_axis_t * axis, const char * vars[],
  * (int) error code currently set on the unit
  */
 int
-mdrive_get_error(mdrive_axis_t * axis) {
+mdrive_get_error(mdrive_device_t * device) {
     int code;
-    mdrive_response_t result = {};
+    mdrive_response_t result = { .txid = 0 };
 
     // This will also clear the error flag, if set
     struct mdrive_send_opts options = {
-        .command = "PR ER",
         .expect_data = true,
         .result = &result,
         .expect_err = true      // Don't retry on error condition
     };
-    mdrive_communicate(axis, &options);
+    mdrive_communicate(device, "PR ER", &options);
     errno = 0;
     code = strtol(result.buffer, NULL, 10);
     if (errno != EINVAL)
@@ -158,8 +160,8 @@ mdrive_get_error(mdrive_axis_t * axis) {
  * Clears error flag on the device by sending "ER" to the device.
  */
 void
-mdrive_clear_error(mdrive_axis_t * axis) {
-    mdrive_send(axis, "ER");
+mdrive_clear_error(mdrive_device_t * device) {
+    mdrive_send(device, "ER");
 }
 
 /**
@@ -221,12 +223,12 @@ mdrive_check_checksum(const char * buffer, int length, char checksum) {
  * yet-classified response.
  */
 int
-mdrive_classify_response(mdrive_axis_t * axis, mdrive_response_t * response) {
+mdrive_classify_response(mdrive_device_t * device, mdrive_response_t * response) {
     // If the unit is in checksum mode, a good checksum in the response with
     // an ACK will indicate clear success. If a NACK is present with a good
     // checksum, an error exists on the unit. Otherwise, NACK indicates a
     // clear failure in processing the command.
-    if (axis->checksum) {
+    if (device->checksum) {
         // Require no data returned or good_checksum with the returned data
         if ((response->length > 0) == response->checksum_good) {
             if (response->ack)
@@ -248,40 +250,56 @@ mdrive_classify_response(mdrive_axis_t * axis, mdrive_response_t * response) {
         }
         else if (response->nack)
             return RESPONSE_NACK;
+        else if (!response->nack && !response->ack) {
+            if (device->txnest == 1)
+                mdrive_config_after_reboot(device);
+            // Fall through to non checksum-mode checks
+        }
         else if (!response->checksum_good)
             return RESPONSE_BAD_CHECKSUM;
     }
-
-    // If the unit sends a standard prompt (>), then the request was
-    // correctly received and processed. On Manchac custom firmware, EM=1
-    // will still send the prompt; however, on stock firmware, only the CRLF
-    // will be transmitted.
-    if (response->prompt || response->crlf)
-        return RESPONSE_OK;
 
     // If an error is indicated by the response, clear the error and signal
     // the error to create an event
     if (response->error) {
         if (!response->code) {
             // Don't recurse again to find this
-            if (axis->txnest == 1 && !axis->ignore_errors)
-                response->code = mdrive_get_error(axis);
+            if (device->txnest == 1 && !device->ignore_errors)
+                response->code = mdrive_get_error(device);
         }
         else
             // Unit sent the error code, so clear the error on the unit
-            mdrive_clear_error(axis);
+            mdrive_clear_error(device);
 
         if (response->code) {
-            mdrive_signal_event(axis, response->code);
-            if (response->code == MDRIVE_EOVERRUN)
+            mdrive_signal_error_event(device, response->code);
+            if (response->code == MDRIVE_EOVERRUN
+                    || response->code == MDRIVE_EWHAT)
                 return RESPONSE_RETRY;
+            // Stall errors don't indicate bad data; retry is not necessary
+            else if (response->code == MDRIVE_ESTALL)
+                return RESPONSE_OK;
             else
                 return RESPONSE_ERROR;
         }
         else if (response->nack)
             return RESPONSE_NACK;
+
         // Else: erroneous error indication
     }
+
+    // If the unit sends a standard prompt (>), then the request was
+    // correctly received and processed. On Manchac custom firmware, EM=1
+    // will still send the prompt; however, on stock firmware, only the CRLF
+    // will be transmitted.
+    else if (response->prompt || response->crlf)
+        return RESPONSE_OK;
+
+    else if (response->nack && response->length == 0
+            && device->checksum == CK_OFF)
+        // Device is _really_ in checksum mode, and this is still an
+        // unexpected response
+        device->checksum = CK_ON;
 
     return RESPONSE_UNKNOWN;
 }
@@ -331,6 +349,11 @@ mdrive_process_response(char * buffer, mdrive_response_t * response,
                         response->error = true;
                         bufc++;
                     }
+                    else if (*(bufc+1) == '\x06') {
+                        // If a procedure as EX'd and it printed something,
+                        // in checksum mode, the ACK will follow the CRLF
+                        bufc++;
+                    }
                     // Stock firmwares will not send the prompt in EM=1;
                     // however, CRLF (\r\n) indicates command accepted.
                     // TODO: Check firmware version
@@ -351,6 +374,16 @@ mdrive_process_response(char * buffer, mdrive_response_t * response,
                 // actual data followed, then the checksum char, and then
                 // the CR char. So we need to calculate the checksum from
                 // after the ACK to before the checksum char.
+                //
+                // Prompts only occur immediately before the \r or
+                // immediately after the \n. The latter case is handled in
+                // the '\n' block.  NOTE: This case only occurs in the
+                // Manchac custom firmware with EM=1
+                if (*(bufc-1) == '>' && response->length) {
+                    target--;
+                    response->length--;
+                    response->prompt = true;
+                }
                 break;
             case '\x06':
                 response->ack = true;
@@ -378,9 +411,12 @@ mdrive_process_response(char * buffer, mdrive_response_t * response,
                         response->length--;
                     }
                 } else if (response->length) {
-                    if (*(bufc-1) == '\n') {
+                    if (*(bufc-1) == '\n' || *(bufc-1) == '\x13') {
                         // Checksum was before ACK/NACK -- echo mode
-                        // enabled.  Drop the received buffer.
+                        // enabled.  Drop the received buffer. Also, on some
+                        // motors, the CR sent in the magic firmware lines
+                        // is somehow translated to \x13 (hex 13 rather than
+                        // decimal 13) on the (echo'd) response
                         target = response->buffer;
                         response->length = 0;
                         response->echo = true;
@@ -396,14 +432,10 @@ mdrive_process_response(char * buffer, mdrive_response_t * response,
                 response->error = true;
                 break;
             case '>':
-                // Prompts only occur immediately before the \r or
-                // immediately after the \n. The latter case is handled in
-                // the '\n' block.  NOTE: This case only occurs in the
-                // Manchac custom firmware with EM=1
-                if (*(bufc+1) == '\r') {
-                    response->prompt = true;
+                // in EM=0, the prompt can carry over from the previous
+                // response
+                if (response->length == 0)
                     break;
-                }
                 goto normal_char;
             case '!':
                 // If received as the first char, this is an event. The
@@ -486,7 +518,7 @@ normal_char:
  */
 void *
 mdrive_async_read(void * arg) {
-    mdrive_axis_device_t * dev = arg;
+    mdrive_comm_device_t * dev = arg;
     mdrive_response_t * response = calloc(1, sizeof *response);
 
     // Wait time for a single char at the device speed
@@ -506,6 +538,8 @@ mdrive_async_read(void * arg) {
 
     while (true) {
 
+        // Try to read more than one char at a time
+        nanosleep(&onechartime, NULL);
         length = read(dev->fd, load, sizeof buffer - (int)(load - buffer));
 
         // If the txid's changed while this thread was asleep, scratch the
@@ -544,7 +578,8 @@ mdrive_async_read(void * arg) {
 
             // If the message was acked, wait for the rest of the message to
             // roll in.
-            if (response->ack || response->nack || response->processed) {
+            if ((response->length == 0 && (response->ack || response->nack))
+                    || response->processed) {
                 response->buffer[response->length] = 0;
 
                 if (response->event) {
@@ -623,7 +658,7 @@ mdrive_combine_response(mdrive_response_t * a, mdrive_response_t * b) {
  *
  */
 int
-mdrive_write_buffer(mdrive_axis_t * axis, const char * buffer, int length) {
+mdrive_write_buffer(mdrive_device_t * device, const char * buffer, int length) {
     struct timespec txwait, now,
         txspacetime = { .tv_nsec = MIN_TX_GAP_NSEC };
 
@@ -634,31 +669,40 @@ mdrive_write_buffer(mdrive_axis_t * axis, const char * buffer, int length) {
     // The device maintains a time of last send in the lasttx member of
     // the device structure.
     clock_gettime(CLOCK_REALTIME, &now);
-    tsAdd(&axis->device->lastActivity, &txspacetime, &txwait);
+    tsAdd(&device->comm->lastActivity, &txspacetime, &txwait);
 
-    // Set baudrate speed on axis->device to axis->speed. This allows motors
-    // on the same comm channel to be at different speeds. This doesn't make
-    // great sense for production units; however, it make diagnostics and
-    // motor setup much easier.
-    mdrive_set_baudrate(axis->device, axis->speed);
+    // Set baudrate speed on device->comm to device->speed. This
+    // allows motors on the same comm channel to be at different speeds.
+    // This doesn't make great sense for production units; however, it make
+    // diagnostics and motor setup much easier.
+    mdrive_set_baudrate(device->comm, device->speed);
 
     // Don't bother checking if [txwait] is in the past, because
     // clock_nanosleep() will too. No need checking twice
     clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &txwait, NULL);
 
-    write(axis->device->fd, buffer, length);
+    int pos = 0, written;
+    // Write data to the file descriptor. If interrupted and not all data
+    // was written out, loop and continue writing the rest of the
+    // transmission
+    do {
+        written = write(device->comm->fd, buffer + pos, length - pos);
+        if (written == -1)
+            return errno;
+        pos += written;
+    } while (pos < length);
 
     // There's no point in considering the transmission time in the
     // receive timeout
-    tcdrain(axis->device->fd);
+    tcdrain(device->comm->fd);
 
     // Log the time of last transmission
-    clock_gettime(CLOCK_REALTIME, &axis->device->lasttx);
-    axis->device->lastActivity = axis->device->lasttx;
+    clock_gettime(CLOCK_REALTIME, &device->comm->lasttx);
+    device->comm->lastActivity = device->comm->lasttx;
 
     // Update device statistics
-    axis->stats.tx++;
-    axis->stats.txbytes += length;
+    device->stats.tx++;
+    device->stats.txbytes += length;
 
     return 0;
 }
@@ -670,20 +714,20 @@ mdrive_write_buffer(mdrive_axis_t * axis, const char * buffer, int length) {
  * communicate with the unit, the transmission will be automatically retried
  * up to MAX_RETRIES times.
  *
- * The timeout period for the received response is autosensed at 60ms plus
- * time to receive 2 chars. If an incomplete response is received, an
- * additional 20ms + the time to receive the rest of the buffer (62 chars)
- * will be added to the timeout time. In order to make use of the delayed
- * response detection, set the <expects_data> flag.
+ * The timeout period for the received response is autosensed at 55ms. This
+ * value will float as the current latency of the unit plus 40ms. If an
+ * incomplete response is received, an additional 25ms + the time to receive
+ * the rest of the buffer (62 chars) will be added to the timeout time. In
+ * order to make use of the delayed response detection, set the
+ * <expects_data> flag.
  *
  * Parameters:
- * axis - Mdrive device to communicate with
+ * device - Mdrive device to communicate with
+ * command - (const char *) Command to send to the device. The command
+ *     should be considered raw -- that is, without the device address
+ *     prefixed or the CR or LF suffixed. Null termination is also assumed
  * options - (struct mdrive_send_opts) a struct is used to make adding
  *          additional, optional parameters easier {
- *     command - (const char *) Command to send to the device. The command
- *         should be considered raw -- that is, without the device address
- *         prefixed or the CR or LF suffixed. Null termination is also
- *         assumed
  *     expect_data - (bool) If the driver should expect a response from the
  *         device (other that the usual prompt, ACK, or NACK). Refer to the
  *         paragraph above concerning the transmission timeouts.
@@ -698,7 +742,7 @@ mdrive_write_buffer(mdrive_axis_t * axis, const char * buffer, int length) {
  *     expect_err - (bool) error indication by the unit is considered ok
  *     raw - (bool) omit the trailing \r or \n char
  *     tries - (short) attempt the transmission this number of times (rather
- *          than the default value of 1 + MAX_RETRIES
+ *          than the default value of 1 + MAX_RETRIES)
  * }
  *
  * Returns:
@@ -706,7 +750,7 @@ mdrive_write_buffer(mdrive_axis_t * axis, const char * buffer, int length) {
  * documentation of mdrive_classify_response for details.
  */
 int
-mdrive_communicate(mdrive_axis_t * axis,
+mdrive_communicate(mdrive_device_t * device, const char * command,
         const struct mdrive_send_opts * options) {
 
     int i, status=0, length, txid;
@@ -718,19 +762,19 @@ mdrive_communicate(mdrive_axis_t * axis,
     // timeout will be for the rest of the data payload. This will allow
     // short commands to timeout early and longer commands can have the
     // additional wait time (requires checksum mode and responds == true)
-    int onechartime = mdrive_xmit_time(axis->device, 1);
-    struct timespec now, timeout, first_waittime = {},
-        more_waittime = { .tv_nsec = (int)25e6 + onechartime * 62 };
+    int onechartime = mdrive_xmit_time(device->comm, 1);
+    struct timespec now, timeout, first_waittime = { .tv_sec = 0 },
+        more_waittime = { .tv_nsec = (int)15e6 + onechartime * 62 };
 
-    if (axis->party_mode)
+    if (device->party_mode)
         // NOTE: Dec the buffer size to save room for the checksum byte
-        length = snprintf(buffer, sizeof buffer-1, "%c%s%s", axis->address,
-            options->command, (options->raw) ? "" : "\n");
+        length = snprintf(buffer, sizeof buffer-1, "%c%s%s", device->address,
+            command, (options->raw) ? "" : "\n");
     else
-        length = snprintf(buffer, sizeof buffer-1, "%s%s", options->command,
+        length = snprintf(buffer, sizeof buffer-1, "%s%s", command,
             (options->raw) ? "" : "\r");
 
-    if (axis->checksum) {
+    if (device->checksum) {
         if (options->raw) {
             buffer[length] = mdrive_calc_checksum(buffer, length);
         } else {
@@ -743,98 +787,110 @@ mdrive_communicate(mdrive_axis_t * axis,
         buffer[++length] = 0;
     }
 
-    // Use 60ms waittime if no waittime is specified in the options
-    if (axis->stats.latency == 0 || axis->echo == EM_QUIET)
-        // Start with a reasonable value (20ms)
-        axis->stats.latency = (int)20e6;
+    // Use 55ms waittime if no waittime is specified in the options
+    if (device->stats.latency == 0 || device->echo == EM_QUIET)
+        // Start with a reasonable value (15ms)
+        device->stats.latency = (int)15e6;
     if (options->waittime)
         first_waittime = *options->waittime;
     else
         // Allow for a 40ms deviation in latency
-        first_waittime.tv_nsec = axis->stats.latency + (int)40e6;
+        first_waittime.tv_nsec = device->stats.latency + (int)40e6;
 
     // The [txlock] is really more of a transaction lock, so it should be
     // held the entire time communicating to the device or waiting or
     // processing a response from the device. Ultimately, no other devices
     // on this comm channel should be communicated with while the command is
     // issued to this device
-    pthread_mutex_lock(&axis->device->txlock);
+    pthread_mutex_lock(&device->comm->txlock);
 
     // If txnest == 0, flush the device queue since there are no other
     // expected responses (?)
-    if (axis->txnest == 0) {
-        pthread_mutex_lock(&axis->device->rxlock);
-        queue_flush(&axis->device->queue);
-        pthread_mutex_unlock(&axis->device->rxlock);
+    if (device->txnest == 0) {
+        pthread_mutex_lock(&device->comm->rxlock);
+        queue_flush(&device->comm->queue);
+        pthread_mutex_unlock(&device->comm->rxlock);
     }
 
     // Detect send/receive recursions -- used by automatic error detection
-    axis->txnest++;
+    device->txnest++;
 
     // Use prescribed number of tries or the default
     i = (options->tries) ? options->tries : 1 + MAX_RETRIES;
     while (i--) {
 
         // Store in current stack frame for distinction against recursive
-        // calls to mdrive_send...()
-        txid = ++axis->device->txid;
+        // calls to mdrive_communicate...(). txid is incremented for every
+        // transmit to incidate that any previously-received data is now
+        // invalid and does not belong to this transaction.
+        txid = ++device->comm->txid;
 
-        mdrive_write_buffer(axis, buffer, length);
+        if (mdrive_write_buffer(device, buffer, length)) {
+            status = RESPONSE_IOERROR;
+            goto finish;
+        }
 
         clock_gettime(CLOCK_REALTIME, &now);
         tsAdd(&now, &first_waittime, &timeout);
 
-        // If axis is not in checksum mode, add the more_waittime to the
+        // If device is not in checksum mode, add the more_waittime to the
         // timeout to since the unit will not send the early ACK of the
         // command receipt.
-        if (!axis->checksum)
+        if (!device->checksum && options->expect_data)
             tsAdd(&timeout, &more_waittime, &timeout);
 
 wait_longer:
-        pthread_mutex_lock(&axis->device->rxlock);
+        pthread_mutex_lock(&device->comm->rxlock);
 
-        while (!queue_length(&axis->device->queue)) {
-            if (ETIMEDOUT == pthread_cond_timedwait(&axis->device->has_data,
-                    &axis->device->rxlock, &timeout)) {
+        while (!queue_length(&device->comm->queue)) {
+            if (ETIMEDOUT == pthread_cond_timedwait(&device->comm->has_data,
+                    &device->comm->rxlock, &timeout)) {
 
-                pthread_mutex_unlock(&axis->device->rxlock);
-                if (axis->echo == EM_QUIET && !options->expect_data) {
+                pthread_mutex_unlock(&device->comm->rxlock);
+                if ((device->echo == EM_QUIET || device->address == '*')
+                        && !options->expect_data) {
                     // No response from unit. If the unit is EM=2
                     // (EM_QUIET), this is likely just a command with no
                     // response, which indicates success -- even if checksum
                     // is enabled
-                    return RESPONSE_OK;
+                    //
+                    // Globally addressed devices will usually not respond
+                    // to commands
+                    status = RESPONSE_OK;
+                    goto finish;
                 }
+
                 // Non-responsive unit
-                axis->stats.timeouts++;
-                mcTraceF(30, MDRIVE_CHANNEL_RX, "Timed out: %d", axis->echo);
+                device->stats.timeouts++;
+                mcTraceF(30, MDRIVE_CHANNEL_RX, "Timed out: %d", device->echo);
                 // XXX: response if existing is not classified and status is
                 //      left at default value of 0 (RESPONSE_OK)
                 status = RESPONSE_TIMEOUT;
-                goto resend;
+                goto process;
             }
         }
 
         // Combine previously-received response
         if (response) {
-            mdrive_response_t * response2 = queue_pop(&axis->device->queue);
+            mdrive_response_t * response2 = queue_pop(&device->comm->queue);
             mdrive_combine_response(response, response2);
             free(response2);
         } else {
-            response = queue_pop(&axis->device->queue);
+            response = queue_pop(&device->comm->queue);
             // Record latency of the first response. Average over 32 xmits
             clock_gettime(CLOCK_REALTIME, &now);
-            axis->stats.latency = 
-                  ((31 * axis->stats.latency) >> 5)
+            device->stats.latency = 
+                  ((31 * device->stats.latency) >> 5)
                 + ((
                        // Don't consider receive time in latency
-                       nsecDiff(&now, &axis->device->lasttx)
+                       nsecDiff(&now, &device->comm->lasttx)
                      - response->received * onechartime
                   ) >> 5);
         }
 
-        pthread_mutex_unlock(&axis->device->rxlock);
+        pthread_mutex_unlock(&device->comm->rxlock);
 
+process:
         if (!response)
             goto resend;
 
@@ -859,51 +915,78 @@ wait_longer:
 
         if (options->expect_data && !response->length && 
                 (response->ack | response->nack | response->crlf)) {
-            // Handle embedded error condition if one exists
-            mdrive_classify_response(axis, response);
-
             // A response was expected but not received -- wait longer. Add
-            // the additional wait time to the timeout and wait longer
-            mcTrace(30, MDRIVE_CHANNEL_RX, "Waiting longer ...");
-            tsAdd(&timeout, &more_waittime, &timeout);
-            goto wait_longer;
+            // the additional wait time to the timeout and wait longer.
+            // However, if the unit indicated an error already, then we're
+            // finished.
+            if (response->code)
+                break;
+            else if (status != RESPONSE_TIMEOUT) {
+                mcTrace(30, MDRIVE_CHANNEL_RX, "Waiting longer ...");
+                tsAdd(&timeout, &more_waittime, &timeout);
+                goto wait_longer;
+            }
+        }
+        // Detect remote echo
+        else if (options->expect_data && device->echo == EM_ON
+                && response->length) {
+            // In echo mode, then unit will send the request back in the
+            // response. On [swift OSes], the response will be closed after
+            // the echo is received, but before the real data is received.
+            // Be careful not to consider the \r, \n, >, ? or checksum
+            // chars, as none of them will exist in the response buffer
+            if (strncmp(response->buffer, buffer, response->length) == 0) {
+                // Clear the buffer and set the echo flag
+                *response->buffer = 0;
+                response->length = 0;
+                response->echo = true;
+                tsAdd(&timeout, &more_waittime, &timeout);
+                goto wait_longer;
+            }
         }
             
-        if (response->ack) axis->stats.acks++;
-        if (response->nack) axis->stats.nacks++;
+        if (response->ack) device->stats.acks++;
+        if (response->nack) device->stats.nacks++;
 
-        status = mdrive_classify_response(axis, response);
+        status = mdrive_classify_response(device, response);
         
         if (status == RESPONSE_OK || options->expect_err) {
-            // Error was handled in the response_classify routine (if there
-            // was one)
+            // Error was handled in the classify_response routine (if there
+            // was a response)
             break;
-        } else if (status == RESPONSE_RETRY) {
-            axis->stats.overflows++;
+        } else if (status == RESPONSE_ERROR && response->code) {
+            // Error was signaled by the device and the error code was
+            // retrieved and cleared. The transmission should not be retried
+            // unless the error was EOVERRUN, in which case status will be
+            // RETRY
+            break;
         } else {
-            if (status == RESPONSE_BAD_CHECKSUM)
-                axis->stats.bad_checksums++;
+            // Transmission will be retried due to unacceptable response
+            // from the unit. Keep interesting statistics, though.
+            if (status == RESPONSE_RETRY)
+                device->stats.overflows++;
+            else if (status == RESPONSE_BAD_CHECKSUM)
+                device->stats.bad_checksums++;
             else if (status == RESPONSE_UNKNOWN)
                 mcTrace(20, MDRIVE_CHANNEL_RX, "UNKNOWN response received");
             // Wait and retry the transmission
         }
-        // Sleep to timeout
-        // clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &timeout, NULL);
 resend:
         // Clear previous response if retrying
         if (response) {
-            axis->stats.rx++;
-            axis->stats.rxbytes += response->received;
+            device->stats.rx++;
+            device->stats.rxbytes += response->received;
 
             free(response);
             response = NULL;
         }
-        axis->stats.resends++;
+        device->stats.resends++;
     } // end while (i--)
 
+finish:
     if (response) {
-        axis->stats.rx++;
-        axis->stats.rxbytes += response->received;
+        device->stats.rx++;
+        device->stats.rxbytes += response->received;
 
         // Copy out response to the caller
         if (options->result)
@@ -913,56 +996,61 @@ resend:
     else if (i == 0) {
         // Motor refused to ACK the command (no response)
         mcTraceF(10, MDRIVE_CHANNEL, "Out of retries: %d, %d", i, status);
-        status = -EIO;
+        status = RESPONSE_IOERROR;
     }
 
-    axis->txnest--;
+    device->txnest--;
 
-    pthread_mutex_unlock(&axis->device->txlock);
+    pthread_mutex_unlock(&device->comm->txlock);
 
+    mcTraceF(50, MDRIVE_CHANNEL_RX, "Status is %d", status);
     return status;
 }
 
-int mdrive_send(mdrive_axis_t * axis, const char * command) {
+int mdrive_send(mdrive_device_t * device, const char * command) {
     struct mdrive_send_opts opts = {
-        .command = command,
         .expect_data = false,
         .result = NULL
     };
-    return mdrive_communicate(axis, &opts);
+    return mdrive_communicate(device, command, &opts);
 }
 
 int
-mdrive_connect(mdrive_address_t * address, mdrive_axis_t * axis) {
+mdrive_connect(mdrive_address_t * address, mdrive_device_t * device) {
     // Transfer the motor's address ('a' for instance)
-    axis->address = address->address;
+    device->address = address->address;
     // Address '!' can't be set, so unit is not in party mode if set.
-    axis->party_mode = address->address != '!';
+    device->party_mode = address->address != '!';
 
     // Axis is declared to operate at ->speed. This is important to set here
-    // even if the axis is reusing a connected comm channel, because
+    // even if the device is reusing a connected comm channel, because
     // axes sharing a comm channel can operate at different speeds. This
     // will definitely be the case when naming or reinitializing motors
-    axis->speed = address->speed;
+    device->speed = address->speed;
 
-    // Search for axis sharing an in-use port
-    mdrive_axis_device_t * current_port = all_port_infos;
+    // Search for device sharing an in-use port
+    mdrive_comm_device_t * current_port = all_port_infos, * tail = NULL;
 
     while (current_port) {
         if (strncmp(current_port->name, address->port,
                 sizeof(current_port->name)) == 0) {
-            // This device is already initialized. Just link it to the axis
-            axis->device = current_port;
+            // This device is already initialized. Just link it to the device
+            device->comm = current_port;
             current_port->active_axes++;
             return 0;
         }
+        tail = current_port;
         current_port = current_port->next;
     }
 
-    // New axis and new port. Set things up
-    mdrive_axis_device_t * new_port = calloc(1, sizeof *all_port_infos);
-    if (current_port)
-        current_port->next = new_port;
+    // New device and new port. Set things up
+    mdrive_comm_device_t * new_port = calloc(1, sizeof *all_port_infos);
+    if (tail)
+        tail->next = new_port;
+    // XXX: Else this is the new HEAD
+    else
+        all_port_infos = new_port;
+
     new_port->active_axes++;
     snprintf(new_port->name, sizeof new_port->name, "%s", address->port);
 
@@ -973,7 +1061,7 @@ mdrive_connect(mdrive_address_t * address, mdrive_axis_t * axis) {
 
     if (new_port->fd < 0)
         return new_port->fd;
-    axis->device = new_port;
+    device->comm = new_port;
 
     pthread_mutex_init(&new_port->rxlock, NULL);
     pthread_cond_init(&new_port->has_data, NULL);
@@ -1000,46 +1088,51 @@ mdrive_connect(mdrive_address_t * address, mdrive_axis_t * axis) {
 }
 
 void
-mdrive_disconnect(mdrive_axis_t * axis) {
-    mdrive_axis_device_t * device = axis->device;
+mdrive_disconnect(mdrive_device_t * device) {
+    if (!device)
+        return;
+
+    mdrive_comm_device_t * channel = device->comm;
+
+    if (!channel)
+        return;
 
     // Decrement active_axes counter for this device and cleanup the device
     // itself if there are no more active motors on this device
-    if (--device->active_axes != 0)
+    if (--channel->active_axes != 0)
         return;
 
-    pthread_cancel(device->read_thread);
+    pthread_cancel(channel->read_thread);
 
-    pthread_mutex_destroy(&device->rxlock);
-    pthread_mutex_destroy(&device->txlock);
-    pthread_cond_destroy(&device->has_data);
+    pthread_mutex_destroy(&channel->rxlock);
+    pthread_mutex_destroy(&channel->txlock);
+    pthread_cond_destroy(&channel->has_data);
 
     // tcsetattr(fd, TCSAFLUSH, &device->termios);
-    close(device->fd);
+    close(channel->fd);
 
-    // XXX: Free items retrieved from the queue
-    while (queue_length(&device->queue))
-        queue_pop(&device->queue);
+    // Free items retrieved from the queue
+    queue_flush(&channel->queue);
 
     // Drop device from the list of port infos
-    if (device == all_port_infos) {
+    if (channel == all_port_infos) {
         // device is the head of the all_port_infos list, so advance
         // all_port_infos
-        all_port_infos = device->next;
+        all_port_infos = channel->next;
     }
     else {
         // Find where device falls in the list and relink the list so that
         // device isn't in it
-        mdrive_axis_device_t * current_port = all_port_infos;
+        mdrive_comm_device_t * current_port = all_port_infos;
         while(current_port) {
-            if (current_port->next == device) {
-                current_port->next = device->next;
+            if (current_port->next == channel) {
+                current_port->next = channel->next;
                 break;
             }
             current_port = current_port->next;
         }
     }
-    free(device);
+    free(channel);
 }
 
 int
@@ -1081,7 +1174,7 @@ mdrive_initialize_port(const char * port, int speed, bool async) {
  * speed, the function will return without issuing the new baudrate.
  *
  * Parameters:
- * device - (mdrive_axis_device_t *) communication channel to receive the
+ * channel - (mdrive_comm_device_t *) communication channel to receive the
  *      new baud rate
  * speed - (int) baud rate, human readable (9600 for B9600 baud rate)
  *
@@ -1089,8 +1182,12 @@ mdrive_initialize_port(const char * port, int speed, bool async) {
  * (int) ENOTSUP for invalid speed setting, 0 upon successful transition
  */
 int
-mdrive_set_baudrate(mdrive_axis_device_t * device, int speed) {
+mdrive_set_baudrate(mdrive_comm_device_t * channel, int speed) {
     const struct baud_rate * s;
+
+    // If device is operating at the requested speed already, just bail
+    if (channel->speed == speed)
+        return 0;
 
     for (s=baud_rates; s->human; s++)
         if (s->human == speed)
@@ -1099,21 +1196,17 @@ mdrive_set_baudrate(mdrive_axis_device_t * device, int speed) {
         // Bad speed specified
         return ENOTSUP;
 
-    // If device is operating at the requested speed already, just bail
-    if (device->speed == speed)
-        return 0;
-
     struct termios tty;
 
-    tcgetattr(device->fd, &tty);
+    tcgetattr(channel->fd, &tty);
 
     cfsetispeed(&tty, s->constant);
     cfsetospeed(&tty, s->constant);
 
-    int status = tcsetattr(device->fd, TCSAFLUSH, &tty);
+    int status = tcsetattr(channel->fd, TCSAFLUSH, &tty);
 
     if (status == 0)
-        device->speed = speed;
+        channel->speed = speed;
 
     return status;
 }
@@ -1126,8 +1219,8 @@ mdrive_set_baudrate(mdrive_axis_device_t * device, int speed) {
  * current device speed.
  */
 inline int
-mdrive_xmit_time(mdrive_axis_device_t * device, int chars) {
+mdrive_xmit_time(mdrive_comm_device_t * channel, int chars) {
     // The Mdrive units only support 8N1 mode, so 1 start-bit and 1 stop-bit
     // means a total of 10-bit bytes.
-    return chars * ((int)1e9 / (device->speed / 10));
+    return chars * ((int)1e9 / (channel->speed / 10));
 }

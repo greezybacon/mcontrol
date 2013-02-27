@@ -10,8 +10,8 @@
 #include <time.h>
 
 int
-mdrive_firmware_write(mdrive_axis_t * axis, const char * filename) {
-    static const struct timespec wait = { .tv_nsec = 500e6 }; // 500ms
+mdrive_firmware_write(mdrive_device_t * device, const char * filename) {
+    static const struct timespec wait = { .tv_sec = 3 };
 
     mcTraceF(10, MDRIVE_CHANNEL, "Loading firmware from: %s", filename);
     
@@ -28,30 +28,32 @@ mdrive_firmware_write(mdrive_axis_t * axis, const char * filename) {
                 return errno;
         }
     }
+    mcTraceF(20, MDRIVE_CHANNEL_FW, "Entering firmware upgrade mode");
 
     // Put device in upgrade mode
-    mdrive_send(axis, "UG 2956102");
+    mdrive_send(device, "UG 2956102");
 
-    // The unit may indicate NACKs, but will not response to PR ER
-    axis->ignore_errors = true;
+    // The unit may indicate NACKs, but will not respond to PR ER
+    device->ignore_errors = true;
 
     // Unset checksum mode and party mode -- the unit now has an address
     // of ':'
-    axis->checksum = CK_OFF;
-    axis->party_mode = false;
+    device->checksum = CK_OFF;
+    device->party_mode = false;
 
     // Reset the motor
-    mdrive_reboot(axis);
+    mdrive_reboot(device);
 
     // Change to 19200 baud
-    mdrive_set_baudrate(axis->device, 19200);
+    if (mdrive_set_baudrate(device->comm, 19200) == 0)
+       device->speed = 19200;
 
     // Reset the motor -- (which will allow reading the '$' prompt sent back
     // from the unit when rebooted in upgrade mode)
-    mdrive_reboot(axis);
+    mdrive_reboot(device);
 
     // Ensure the device is in upgrade mode
-    if (!axis->upgrade_mode)
+    if (!device->upgrade_mode)
         return EIO;
 
     // Prepare options for sending firmware lines
@@ -68,6 +70,7 @@ mdrive_firmware_write(mdrive_axis_t * axis, const char * filename) {
     // TODO: Split firmware load into two parts, the first will read the
     // unit information (VR, SN, etc) and send then back for user
     // confirmation. The second call will actually flash the firmware.
+    mcTraceF(30, MDRIVE_CHANNEL_FW, "Sending magic");
 
     // Send some magic numbers, the unit responds with
     // :v -- Firmware version, hex encoded (03000D for 3.013)
@@ -77,18 +80,21 @@ mdrive_firmware_write(mdrive_axis_t * axis, const char * filename) {
     // :e -- Enter into programming mode
     char * magic_codes[] =
         { ":IMSInc\r", "::v\r", "::c\r", "::p\r", "::s\r", "::e\r", NULL };
+    struct timespec waittime = { .tv_nsec=15e6 },
+        longer = { .tv_nsec=250e6 };
     for (char ** magic = magic_codes; *magic; magic++) {
-        options.command = *magic;
-        mdrive_communicate(axis, &options);
+        do {
+            nanosleep(&waittime, NULL);
+            result.ack = false;
+            mdrive_communicate(device, *magic, &options);
+        } while (!result.ack);
     }
-
-    // The unit will respond after the ':e' before it is really ready
-    sleep(2);
 
     // Use default timeout algorithm when sending firmware lines
     options.waittime = NULL;
     // Read data from the input file
     char ch, buffer[64], *pBuffer;
+    int tries, line=0;
     do {
         // Reset the buffer position (for file reads)
         pBuffer = buffer;
@@ -99,7 +105,7 @@ mdrive_firmware_write(mdrive_axis_t * axis, const char * filename) {
                 break;
             // Only accept ':' and hex chars
             else if (!(ch == ':' || isxdigit(ch)))
-                mcTraceF(10, MDRIVE_CHANNEL, "Skipping garbage char: %c", ch);
+                continue;
 
             *pBuffer++ = ch;
         }
@@ -123,47 +129,131 @@ mdrive_firmware_write(mdrive_axis_t * axis, const char * filename) {
         // Add carriage return and null-terminate
         *pBuffer++ = '\r';
         *pBuffer = 0;
-        options.command = buffer;
 
-        // Retry the send until we get a clear ACK from the unit
-        do {
+        // Increment the line counter
+        if (++line % 25 == 0)
+            mcTraceF(20, MDRIVE_CHANNEL_FW, "Burning block %d", line);
+
+        // Retry the send until we get a clear ACK from the unit. Even
+        // though the unit is not in checksum mode, it will respond with an
+        // ACK or NACK char to indicate receipt of the record.
+        tries = 3;    // Three tries max
+        while (true) {
+            nanosleep(&waittime, NULL);
             result.ack = false;
-            mdrive_communicate(axis, &options);
-        } while (!result.ack);
+            mdrive_communicate(device, buffer, &options);
+            if (result.ack)
+                break;
+            else if (tries-- > 0) {
+                nanosleep(&longer, NULL);
+                waittime.tv_nsec += 1e6;
+            }
+            else
+                return EIO;
+        }
+
     } while (ch != EOF);
     fclose(file);
 
+    mcTraceF(30, MDRIVE_CHANNEL_FW, "Completed. Rebooting");
+
     // Restore error handling
-    axis->ignore_errors = false;
+    device->ignore_errors = false;
 
     // Wait for the unit to settle
     sleep(1);
 
     // Clear upgrade mode (mdrive_reboot will set it if the unit is still
     // in upgrade mode)
-    axis->upgrade_mode = false;
+    device->upgrade_mode = false;
 
     // Reboot the motor (again)
-    mdrive_reboot(axis);
+    mdrive_reboot(device);
 
-    if (axis->upgrade_mode)
+    if (device->upgrade_mode)
         return EIO;
+
+    mcTraceF(30, MDRIVE_CHANNEL_FW, "Firmware upgrade is successful");
 
     // Wait for the unit to settle
     sleep(1);
 
     // Unit is now factory defaulted. Change to default speed and re-inspect
     // comm settings
-    mdrive_set_baudrate(axis->device, DEFAULT_PORT_SPEED);
-    mdrive_config_inspect(axis);
-    axis->address = '!';
+    if (mdrive_set_baudrate(device->comm, DEFAULT_PORT_SPEED) == 0)
+        device->speed = DEFAULT_PORT_SPEED;
 
-    // TODO: Invalidate driver cache so that a request on the original
-    //       connection string that hit this motor will not be reused
+    mdrive_config_inspect(device, true);
+    device->address = '!';
+
+    // Invalidate driver cache so that a request on the original connection
+    // string that hit this motor will not be reused
+    mcDriverCacheInvalidate(device->driver);
+
+    // Clear cached firmware version
+    bzero(device->firmware_version, sizeof device->firmware_version);
     return 0;
 }
 
 int
 mdrive_load_firmware(Driver * self, const char * filename) {
+    if (self == NULL)
+        return EINVAL;
+
     return mdrive_firmware_write(self->internal, filename);
+}
+
+/**
+ * drive_check_ug_mode
+ *
+ * Determines if there is a device on the comm channel that is currently in
+ * factory upgrade mode. This is done by sending the :IMSInc and ::s magic
+ * codes to the device in that mode to see if one returns with it's serial
+ * number. This indicates two things, one, a motor is in upgrade mode, and
+ * two, the serial number of the motor that is in upgrade mode.
+ *
+ * Returns:
+ * 0 if a device on the channel is in UG mode. In this case, the serial
+ * argument will receive the serial number of the device in upgrade mode. -1
+ * is returned if no devices are in UG mode.
+ */
+int
+mdrive_check_ug_mode(mdrive_device_t * device, char * serial, int size) {
+    // Ultimately, this is generalized to the entire channel operating this
+    // device. Switch the device to 19200 baud and send off some magic to
+    // determine the serial number
+    static const struct timespec wait = { .tv_nsec = 200e6 };
+
+    int oldspeed = device->speed, ckmode = device->checksum;
+    device->speed = 19200;
+    device->checksum = CK_OFF;
+
+    mdrive_reboot(device);
+
+    mdrive_response_t result = { .ack = false };
+    struct mdrive_send_opts options = {
+        .result = &result,      // Capture the received result
+        .expect_data = true,
+        .expect_err = true,     // Handle error condition here
+        .waittime = &wait,      // For magic wait prescribed time
+        .tries = 1,             // Don't retry
+        .raw = true             // Don't add EOL
+    };
+
+    char * magic_codes[] = { ":IMSInc\r", "::s\r", NULL };
+    for (char ** magic = magic_codes; *magic; magic++) {
+        result.ack = false;
+        mdrive_communicate(device, *magic, &options);
+    }
+
+    // Reset the speed setting
+    device->speed = oldspeed;
+    device->checksum = ckmode;
+
+
+    if (result.ack) {
+        snprintf(serial, size, "%s", result.buffer);
+        return 0;
+    } else
+        return -1;
 }

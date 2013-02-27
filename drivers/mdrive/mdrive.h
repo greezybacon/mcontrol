@@ -19,7 +19,7 @@
 
 // Maximum times event_subscribe can be called for various event handler
 // routine subscriptions
-#define MAX_SUBSCRIPTIONS 16
+#define MAX_SUBSCRIPTIONS 48
 
 typedef struct mdrive_response mdrive_response_t;
 struct mdrive_response {
@@ -46,15 +46,19 @@ enum mdrive_response_class {
     RESPONSE_OK=0,
     RESPONSE_RETRY,                     // Error 63
     RESPONSE_ERROR,                     // Error exists on unit (not sent)
-    RESPONSE_NACK,                      // Response not processed by unit
-    RESPONSE_BAD_CHECKSUM,
+    RESPONSE_NACK,                      // Request not processed by unit
+    RESPONSE_BAD_CHECKSUM,              // Unit-sent checksum is incorrect
     RESPONSE_UNKNOWN,                   // Not properly classified by driver
-    RESPONSE_TIMEOUT
+    RESPONSE_TIMEOUT,                   // No response from the unit
+    RESPONSE_IOERROR,                   // Unable to send data to the unit
 };
 
 typedef struct event_callback event_callback_t;
 struct event_callback {
-    bool                active;     // Used to pause event receives
+    bool                active;     // Slot unused if not set
+    bool                paused;     // Used to pause event receives
+    enum event_name     event;      // Subscribed event
+    int                 condition;  // Condition of the event
     driver_event_callback_t callback;
 };
 
@@ -84,25 +88,34 @@ struct mdrive_stats {
 };
 
 struct motion_details {
-    long long           urevs;          // Requested revolutions
+    // Starting information
     int                 pstart;         // Starting position (steps)
     struct timespec     start;          // Absolute start time
+
+    // Motion timing information
     long                vmax_us;        // Estimated end of acceleration
                                         // ramp -- usecs rel to start
     long                decel_us;       // Estimated start of decel ramp
                                         // -- usecs rel to start
-    struct timespec     projected;      // Estimated time of completion
+    struct timespec     projected;      // Estimated time of completion (abs)
+
+    // Target information
+    enum move_type      type;           // Move type (MCABSOLUTE, etc)
+    long long           urevs;          // Requested revolutions
 
     // Details filled in after completion of motion request
     struct timespec     completed;      // Actual time of completion
     int                 error;          // Following error (urevs)
-    short               stalls;         // Number of stalls
+    unsigned char       stalls;         // Number of stalls
+
+    // Realtime/status information
+    bool                moving;         // Stall event occured since start
 };
 
 #include "queue.h"
 
-typedef struct mdrive_axis_device_list mdrive_axis_device_t;
-struct mdrive_axis_device_list {
+typedef struct mdrive_comm_device_list mdrive_comm_device_t;
+struct mdrive_comm_device_list {
     pthread_mutex_t     txlock;
     pthread_mutex_t     rxlock;
     char                name[32];       // Name of device (serial port)
@@ -120,7 +133,7 @@ struct mdrive_axis_device_list {
     queue_t             queue;
     pthread_t           read_thread;
 
-    mdrive_axis_device_t * next;
+    mdrive_comm_device_t * next;
 };
 
 enum mdrive_io_type {
@@ -146,13 +159,15 @@ enum mdrive_io_type {
 
 struct mdrive_io_config {
     enum mdrive_io_type type;
+    bool                output;         // If set, the port is setup out
     bool                active_high;
     bool                source;
+    bool                wide_range;     // For the analog input
 };
 
-typedef struct mdrive_axis_list mdrive_axis_t;
-struct mdrive_axis_list {
-    mdrive_axis_device_t * device;
+typedef struct mdrive_device_list mdrive_device_t;
+struct mdrive_device_list {
+    mdrive_comm_device_t * comm;
     char                serial_number[16];
     char                part_number[16];
     char                firmware_version[8]; // System firmware version
@@ -166,7 +181,7 @@ struct mdrive_axis_list {
     bool                upgrade_mode;   // Unit is in upgrade mode
     bool                ignore_errors;  // Don't auto-fetch error number
 
-    int                 speed;          // Speed of this axis, which allows
+    int                 speed;          // Speed of this device, which allows
                                         // axes to share a port and operate
                                         // at different speeds
     mdrive_stats_t      stats;          // Communication and performance stats
@@ -177,11 +192,10 @@ struct mdrive_axis_list {
     int                 position;       // Last known position
     Profile             profile;        // Current profile represented on the device
     struct motion_details movement;     // Information of last movement
-    timer_t             on_complete;
-    bool                drive_disabled; // DE=0
+    int                 cb_complete;    // Callback ID for completion event
+    int                 drive_enabled;  // DE=0
 
     event_callback_t    event_handlers[MAX_SUBSCRIPTIONS];
-    uint8_t             subscribers;    // Count of items in event_handlers list
 
     // Items that were lazy loaded. Kept in a bitmask for easy resetting
     // when the unit is detected to have rebooted
@@ -197,10 +211,7 @@ struct mdrive_axis_list {
     } loaded;
 
     // I/O configuration
-    struct mdrive_io_config io1;
-    struct mdrive_io_config io2;
-    struct mdrive_io_config io3;
-    struct mdrive_io_config io4;
+    struct mdrive_io_config io[5];
 
     // Trip notification configuration on the unit
     union {
@@ -221,12 +232,21 @@ struct mdrive_axis_list {
 
     // Well-known labels (for homing, moving, etc)
     struct {
-        char            home[3];
-        char            move[3];
-        char            jitter[3];
-    } labels;
+        unsigned short  version;
+        struct {
+            bool        following_error;
+            bool        move;
+        } features;
 
-    Driver *            driver;         // Driver for the axis (useful for signaling events)
+        struct {
+            char        home[3];
+            char        move[3];
+            char        following_error[3];
+            char        jitter[3];
+        } labels;
+    } microcode;
+
+    Driver *            driver;         // Driver for the device (useful for signaling events)
 };
 
 typedef struct mdrive_address mdrive_address_t;
@@ -235,27 +255,6 @@ struct mdrive_address {
     char                port[32];
     char                address;
 };
-
-enum checksum_mode {
-    CK_OFF=0,
-    CK_ON,
-    CK_BUSY_NACK
-};
-typedef enum checksum_mode checksum_mode_t;
-
-enum echo_mode {
-    EM_ON=0,
-    EM_PROMPT,
-    EM_QUIET,
-    EM_DELAY
-};
-typedef enum echo_mode echo_mode_t;
-
-enum variable_persistence {
-    TEMPORAL,
-    PERSISTENT
-};
-typedef enum variable_persistence persistence_t;
 
 // Special reads with mcQuery{Integer,String}
 enum mdrive_read_variable {
@@ -272,6 +271,7 @@ enum mdrive_read_variable {
     MDRIVE_NAME,                // Name a unit by S/N
     MDRIVE_RESET,               // Reboot
     MDRIVE_HARD_RESET,          // Factory defaults
+    MDRIVE_UG_MODE,             // Currently PEEK only, in upgrade mode
 
     // Communication statistics
     MDRIVE_STATS_RX,
@@ -279,28 +279,48 @@ enum mdrive_read_variable {
 
     // I/O Configuration
     MDRIVE_IO_TYPE,
-    MDRIVE_IO_INVERT,
-    MDRIVE_IO_DRIVE,
+    MDRIVE_IO_PARM1,
+    MDRIVE_IO_PARM2,
+
+    // Odd settings (last mile)
+    MDRIVE_ENCODER,
+    MDRIVE_VARIABLE,            // Peek/poke a variable
+    MDRIVE_EXECUTE              // Call a label (poke)
 };
 
 // Error codes
 enum mdrive_error {
-    MDRIVE_EBAD_VALUE = 21,
-    MDRIVE_ENOTSUP = 27,
+    MDRIVE_ENOVAR = 20,         // Set an unknown var
+    MDRIVE_EINVAL = 21,         // Assigned a bad value
+    MDRIVE_EWHAT = 24,          // Illegal data entered (not understand)
+    MDRIVE_ECLOBBER = 28,       // Label/Var already exists
+    MDRIVE_ENOLABEL = 30,       // Call an unknown label
+    MDRIVE_ENOTSUP = 37,        // Feature not in device
     MDRIVE_EOVERRUN = 63,
-    MDRIVE_ESTALL = 86
+    MDRIVE_ETEMP = 71,          // High-temp warning
+    MDRIVE_EHOT = 72,           // Thermal shutdown
+    MDRIVE_ELITEMP = 75,        // Linear overtemperature error
+    MDRIVE_ESTALL = 86,
+    MDRIVE_EDEADBAND = 92       // Unable to position within DB
 };
 
 // Tracing channel (source) names
 #define CHANNEL "mdrive"
 #define CHANNEL_RX CHANNEL ".rx"
 #define CHANNEL_TX CHANNEL ".tx"
+#define CHANNEL_FW CHANNEL ".firmware"
 
-extern int MDRIVE_CHANNEL, MDRIVE_CHANNEL_TX, MDRIVE_CHANNEL_RX;
+extern int MDRIVE_CHANNEL, MDRIVE_CHANNEL_TX, MDRIVE_CHANNEL_RX,
+    MDRIVE_CHANNEL_FW;
 
 #define min(a,b) \
    ({ __typeof__ (a) _a = (a); \
       __typeof__ (b) _b = (b); \
       _a < _b ? _a : _b; })
+
+#define max(a,b) \
+   ({ __typeof__ (a) _a = (a); \
+      __typeof__ (b) _b = (b); \
+      _a > _b ? _a : _b; })
 
 #endif

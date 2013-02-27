@@ -1,12 +1,13 @@
-clean:
-	python setup.py clean
+.PHONY: all libs clean install
 
 all: libs
 
 libs:
 	python setup.py build
 
-install:
-	python setup.py install
+clean:
+	python setup.py clean
+	$(RM) mcontrol/mcontrol.c
 
-.PHONY: all
+install:
+	python setup.py install --prefix $(DESTDIR)/usr --install-scripts $(BIN_DIR)/

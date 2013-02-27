@@ -1,18 +1,24 @@
-from . import overloaded
-from compiler import Compiler
-from grammar import language
+from __future__ import print_function
 
-from pyPEG import parse
+from . import overloaded
+from .compiler import Compiler
+from .grammar import language
+
+from .pyPEG import parse
 from ast import literal_eval
 import fileinput
 import operator
 import sys
+from functools import reduce
 
 class Parser(object):
 
     def __init__(self, environ=None):
         self.r = []
         self.env = environ or {}
+        if 'DEBUG' in self.env and self.env['DEBUG']:
+            import pyPEG
+            pyPEG.print_trace = True
 
     def parse(self, *files):
         sys.argv[1:] = files
@@ -25,10 +31,21 @@ class Parser(object):
         self.r.extend(self.compiler.compile(self.ast))
         return self.r
 
-    def compose(self, where):
+    def compose(self, where, declarations=False):
         self.compiler.check()
         for line in self.r:
-            where.write(line + '\n')
+            if line.startswith('VA') == declarations:
+                where.write(line + '\n')
+
+    def has_program_entry(self):
+        """
+        Returns true if the parsed microcode has a line with 'PG XX'
+        somewhere in it
+        """
+        if 'PG' in self.compiler.names:
+            return self.compiler.names['PG'].assignments > 0
+        else:
+            return False
 
 class pragma_dispatcher(overloaded):
 
@@ -46,15 +63,20 @@ class pragma_dispatcher(overloaded):
 class PreparserError(Exception): pass
 
 class Preparser(object):
+    library = {
+        '__builtin__': None,
+    }
 
     def __init__(self, environ=None):
         self.depth = 0
         self.skip = [False]             # If at this level code is ignored
         self.matched = [False]          # If at this level an if (x) was true
         self.environ = environ or {}
+        if not 'modules' in self.environ:
+            self.environ['modules'] = ""
 
     def eval(self, condition):
-        return eval(condition, {'__builtin__':None}, self.environ)
+        return eval(condition, self.library, self.environ)
 
     def parse(self, ast):
         self.tree = []
@@ -89,7 +111,11 @@ class Preparser(object):
 
     @handle.when('if')
     def handle(self, keyword, args, node):
-        self.matched.append(self.eval(args))
+        try:
+            self.matched.append(self.eval(args))
+        except:
+            # Assume false since evaluation failed
+            self.matched.append(False)
         self.skip.append(not self.matched[-1])
         self.depth += 1
 
@@ -127,13 +153,15 @@ class Preparser(object):
 
     @handle.when('define')
     def handle(self, keyword, args, node):
+        if self.skipping:
+            return
         what = args.split(' ', 1)
         val = None
         if len(what) == 2:
             val = what.pop()
             try:
-                val = literal_eval(val)
-            except ValueError, e:
+                val = self.eval(val)
+            except ValueError as e:
                 raise ValueError("#define {0}: {1}: {2}".format(
                     what, val, e.message))
         what = what[0]
@@ -147,8 +175,7 @@ class Preparser(object):
         self.environ['modules'] += ' ' + filename
 
         import os.path
-        dir = os.path.dirname(node.__name__.line[1])
+        dir = os.path.dirname(node.__name__.line[1]) or '.'
         filename = dir + '/' + filename
 
-        from parse import Parser
         self.tree.extend(Parser(self.environ).parse(filename))

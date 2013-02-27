@@ -61,7 +61,7 @@ struct event_message {
     motor_t         motor;          // Device signaling the event
     int32_t         id;             // Subscription owner of the event
     event_t         event;          // Type of event
-    union event_user_data data;
+    union event_data data;
 };
 
 // Thanks to http://stackoverflow.com/a/1872506
@@ -76,19 +76,23 @@ struct event_message {
     void func##Impl(request_message_t * message)
 
 #define UNPACK_ARGS(func, local) \
-    struct CONCATENATE(CONCATENATE(_,func),_args) * local = (void *) message->payload; \
+    struct CONCATENATE(CONCATENATE(_,func),_args) \
+        * local = (void *) message->payload, \
+        * __args = local; \
     motor_t motor = message->motor_id
 
 #define RETURN(what) \
     do { \
-        args->returned = what; \
-        mcMessageReply(message, args, sizeof *args); \
+        __args->returned = what; \
+        if (__args->outofproc) \
+            mcMessageReply(message, __args, sizeof *__args); \
         return; \
     } while(0)
 
 #define MOTOR
 #define OUT
 #define IMPORTANT
+#define SLOW
 
 extern int
 mcMessageBoxOpen(void);
@@ -113,6 +117,9 @@ extern void
 mcAsyncReceive(void);
 
 extern int
+mcIsMessageAvailable(bool * available);
+
+extern int
 mcResponseReceive(response_message_t * response,
     const struct timespec * timeout);
 
@@ -125,17 +132,5 @@ mcEventSend(int pid, struct event_message * evt);
 
 extern void
 mcMessageReply(request_message_t * message, void * payload, int payload_size);
-
-extern int
-construct_request_raw(request_message_t * message, int type, void * payload,
-    int payload_size);
-
-extern int
-construct_request(motor_t motor, request_message_t * message, int type,
-    void * payload, int payload_size);
-
-extern int
-construct_response(request_message_t * message, response_message_t * response,
-    void * payload, int payload_size);
 
 #endif

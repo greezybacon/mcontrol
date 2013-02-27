@@ -34,12 +34,13 @@ print("""
 struct dispatch_table {
     int type;
     void (*callable)(request_message_t * message);
+    const char * name;
 } table[] = {""")
 
 for i in sorted(funcs):
-    print("    { TYPE_%s, %sImpl }," % (i, i))
+    print('    {{ TYPE_{0}, {0}Impl, "{0}" }},'.format(i))
 
-print("""    { 0, NULL }
+print("""    { 0, NULL, NULL }
 };
 #endif
 """)
