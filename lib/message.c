@@ -346,22 +346,24 @@ mcResponseReceive2(response_message_t * response, bool message,
     // Blocking receive -- cancel async notification
     bool redo_async = mcAsyncReceiveCancel();
 
-    do {
-        if (timeout == NULL) {
-            length = mq_receive(_inbox, (void *) response,
-                sizeof *response, &priority);
+    struct timespec now, abstimeout, *then = &abstimeout;
+
+    // Properly handle the originally referenced timeout: if an event is
+    // received, the timeout will be restarted. The target absolute time
+    // should only be calculated once.
+    if (timeout != NULL) {
+        if (timeout->tv_sec < 100) {
+            // Time is relative and should be absolute
+            clock_gettime(CLOCK_REALTIME, &now);
+            tsAdd(&now, timeout, then);
         } else {
-            struct timespec now, then;
-            if (timeout->tv_sec < 100) {
-                // Time is relative and should be absolute
-                clock_gettime(CLOCK_REALTIME, &now);
-                tsAdd(&now, timeout, &then);
-            } else {
-                then = *timeout;
-            }
-            length = mq_timedreceive(_inbox, (void *) response,
-                sizeof *response, &priority, &then);
+            *then = *timeout;
         }
+    }
+
+    do {
+        length = mq_timedreceive(_inbox, (void *) response,
+            sizeof *response, &priority, then);
             
         if (length == -1)
             return -errno;
