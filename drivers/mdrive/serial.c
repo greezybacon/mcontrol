@@ -1045,8 +1045,12 @@ int mdrive_send(mdrive_device_t * device, const char * command) {
     return mdrive_communicate(device, command, &opts);
 }
 
+static pthread_mutex_t all_port_infos_lock = PTHREAD_MUTEX_INITIALIZER;
+
 int
 mdrive_connect(mdrive_address_t * address, mdrive_device_t * device) {
+    int status = 0;
+
     // Transfer the motor's address ('a' for instance)
     device->address = address->address;
     // Address '!' can't be set, so unit is not in party mode if set.
@@ -1061,17 +1065,21 @@ mdrive_connect(mdrive_address_t * address, mdrive_device_t * device) {
     // Search for device sharing an in-use port
     mdrive_comm_device_t * current_port = all_port_infos, * tail = NULL;
 
+    // Only search initialize one port at a time
+    pthread_mutex_lock(&all_port_infos_lock);
+    
     while (current_port) {
         if (strncmp(current_port->name, address->port,
                 sizeof(current_port->name)) == 0) {
             // This device is already initialized. Just link it to the device
             device->comm = current_port;
             current_port->active_axes++;
-            return 0;
+            goto finished;
         }
         tail = current_port;
         current_port = current_port->next;
     }
+
 
     // New device and new port. Set things up
     mdrive_comm_device_t * new_port = calloc(1, sizeof *all_port_infos);
@@ -1084,13 +1092,13 @@ mdrive_connect(mdrive_address_t * address, mdrive_device_t * device) {
     new_port->active_axes++;
     snprintf(new_port->name, sizeof new_port->name, "%s", address->port);
 
-    if (!all_port_infos) all_port_infos = new_port;
-
     new_port->fd = mdrive_initialize_port(new_port->name, address->speed, true);
     mdrive_set_baudrate(new_port, address->speed);
 
-    if (new_port->fd < 0)
-        return new_port->fd;
+    if (new_port->fd < 0) {
+        status = new_port->fd;
+        goto finished;
+    }
     device->comm = new_port;
 
     pthread_mutex_init(&new_port->rxlock, NULL);
@@ -1114,7 +1122,9 @@ mdrive_connect(mdrive_address_t * address, mdrive_device_t * device) {
     // Mark now as the time of last transmission -- just so it isn't zero
     clock_gettime(CLOCK_REALTIME, &new_port->lasttx);
 
-    return 0;
+finished:
+    pthread_mutex_unlock(&all_port_infos_lock);
+    return status;
 }
 
 void
