@@ -251,7 +251,7 @@ mdrive_classify_response(mdrive_device_t * device, mdrive_response_t * response)
         else if (response->nack)
             return RESPONSE_NACK;
         else if (!response->nack && !response->ack) {
-            if (device->txnest == 1)
+            if (!device->ignore_errors && device->txnest == 1)
                 mdrive_config_after_reboot(device);
             // Fall through to non checksum-mode checks
         }

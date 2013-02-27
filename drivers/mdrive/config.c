@@ -214,7 +214,7 @@ mdrive_config_set_address(mdrive_device_t * device, char address) {
 int
 mdrive_config_inspect_checksum(mdrive_device_t * device) {
     int value, i, old=device->checksum;
-    static int modes[] = { CK_OFF, CK_ON };
+    static int modes[] = { CK_ON, CK_OFF };
     int * setting;
 
     for (i=0, setting = modes; i<2; setting++, i++) {
@@ -260,6 +260,10 @@ mdrive_config_inspect(mdrive_device_t * device, bool set) {
     // Assume EM=0 which is the most difficult to work with
     device->echo = EM_ON;
 
+    // Don't clear errors during inspection
+    bool ignore_errors = device->ignore_errors;
+    device->ignore_errors = true;
+
     // Inspect CK setting
     if (mdrive_config_inspect_checksum(device))
         return EIO;
@@ -278,6 +282,7 @@ mdrive_config_inspect(mdrive_device_t * device, bool set) {
 
     // Inspect CE setting (for reset (CTRL+C)
 
+    device->ignore_errors = ignore_errors;
     return 0;
 }
 
