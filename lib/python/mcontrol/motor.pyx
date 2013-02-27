@@ -278,6 +278,7 @@ cdef extern from "drivers/mdrive/mdrive.h":
         MDRIVE_NAME,
         MDRIVE_RESET,
         MDRIVE_HARD_RESET,
+        MDRIVE_UG_MODE,
 
         MDRIVE_STATS_RX,
         MDRIVE_STATS_TX,
@@ -385,6 +386,24 @@ cdef class MdriveMotor(Motor):
             with nogil:
                 status = mcPokeInteger(self.id, MDRIVE_ENCODER, _val)
             raise_status(status, "Unable to set device encoder setting")
+
+    property upgrade_mode:
+        def __get__(self):
+            """
+            Reads devices on the comm channel of this device to see if any
+            are stuck in firmware upgrade mode. If exactly one is, the
+            serial number of the unit is returned. Otherwise, False is
+            returned indicating no devices are currently in firmware upgrade
+            mode
+            """
+            cdef String buf
+            cdef int status
+            with nogil:
+                status = mcQueryString(self.id, MDRIVE_UG_MODE, &buf)
+            if buf.size > 0:
+                return buf.buffer.decode('latin-1')
+            else:
+                return False
 
     def factory_default(self):
         cdef int status

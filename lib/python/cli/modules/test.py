@@ -496,7 +496,7 @@ class TestingRunContext(Shell):
         print var
         print [a->get stalled]
         """
-        self.out(self.eval(what))
+        self.status(self.eval(what))
 
     def do_pause(self, what):
         """

@@ -85,6 +85,16 @@ class NamingContext(Shell):
 
         self.do_connect("mdrive://{0} recover".format(port))
         self.motor = self.context['motors']['!'].motor
+
+        # Check for motor stuck in upgrade mode
+        sn = self.motor.upgrade_mode
+        if sn:
+            self.error("ATTENTION: The motor with S/N {0} is stuck in".format(sn))
+            self.error("           factory upgrade mode. Isolate the indicated")
+            self.error("           motor and use the 'Firmware' script to ")
+            self.error("           complete firmware installation")
+            raise Exception("Motor stuck in firmware-upgrade mode")
+        
         self.count = count
 
     def default(self, line, force=False):
@@ -173,7 +183,6 @@ class NamingContext(Shell):
                 if not os.path.exists(parts[1]):
                     return self.error("Firmware image not found")
 
-        self.status("Forcing {0} to {1}".format(option, parts))
         self.context['forced'][option] = parts
 
     def do_clean(self, line):
@@ -192,12 +201,10 @@ class NamingContext(Shell):
             return self.error("Provide a number for the baudrate", 
                 "See 'help clean'")
 
-        print("Cleaning named motors at {0}".format(baudrate))
         motors = MdriveMotor('mdrive://{0}@{1}:*'.format(
             self.context['port'], baudrate), recovery=True)
         motors.factory_default()
 
-        print("Cleaning unnamed motors at {0}".format(baudrate))
         motors = MdriveMotor('mdrive://{0}@{1}'.format(
             self.context['port'], baudrate), recovery=True)
         motors.factory_default()

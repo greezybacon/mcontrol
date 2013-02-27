@@ -43,6 +43,9 @@ class MotorContext(Shell):
             self.error("Daemon not responding", "is one running?")
         except AttributeError:
             self.error("{0}: Unknown attribute".format(what))
+        except:
+            self.warn("{0}: Unable to retrieve value".format(what))
+            self.out(None)
 
     def help_get(self):
         return "Retrieve settings from the unit"
