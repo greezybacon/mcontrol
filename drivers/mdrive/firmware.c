@@ -202,3 +202,58 @@ mdrive_load_firmware(Driver * self, const char * filename) {
 
     return mdrive_firmware_write(self->internal, filename);
 }
+
+/**
+ * drive_check_ug_mode
+ *
+ * Determines if there is a device on the comm channel that is currently in
+ * factory upgrade mode. This is done by sending the :IMSInc and ::s magic
+ * codes to the device in that mode to see if one returns with it's serial
+ * number. This indicates two things, one, a motor is in upgrade mode, and
+ * two, the serial number of the motor that is in upgrade mode.
+ *
+ * Returns:
+ * 0 if a device on the channel is in UG mode. In this case, the serial
+ * argument will receive the serial number of the device in upgrade mode. -1
+ * is returned if no devices are in UG mode.
+ */
+int
+mdrive_check_ug_mode(mdrive_device_t * device, char * serial, int size) {
+    // Ultimately, this is generalized to the entire channel operating this
+    // device. Switch the device to 19200 baud and send off some magic to
+    // determine the serial number
+    static const struct timespec wait = { .tv_nsec = 200e6 };
+
+    int oldspeed = device->speed, ckmode = device->checksum;
+    device->speed = 19200;
+    device->checksum = CK_OFF;
+
+    mdrive_reboot(device);
+
+    mdrive_response_t result = { .ack = false };
+    struct mdrive_send_opts options = {
+        .result = &result,      // Capture the received result
+        .expect_data = true,
+        .expect_err = true,     // Handle error condition here
+        .waittime = &wait,      // For magic wait prescribed time
+        .tries = 1,             // Don't retry
+        .raw = true             // Don't add EOL
+    };
+
+    char * magic_codes[] = { ":IMSInc\r", "::s\r", NULL };
+    for (char ** magic = magic_codes; *magic; magic++) {
+        result.ack = false;
+        mdrive_communicate(device, *magic, &options);
+    }
+
+    // Reset the speed setting
+    device->speed = oldspeed;
+    device->checksum = ckmode;
+
+
+    if (result.ack) {
+        snprintf(serial, size, "%s", result.buffer);
+        return 0;
+    } else
+        return -1;
+}

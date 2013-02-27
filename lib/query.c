@@ -125,7 +125,9 @@ PROXYIMPL (mcQueryFloat, motor_query_t query, OUT double value) {
 
     struct motor_query q = { .query = args->query };
 
-    m->driver->class->read(m->driver, &q);
+    int status = m->driver->class->read(m->driver, &q);
+    if (status)
+        RETURN(status);
 
     // Convert distance-based queries from microrevs
     switch (args->query) {
@@ -153,7 +155,9 @@ PROXYIMPL(mcQueryFloatUnits, int, motor_query_t query, OUT int value,
 
     struct motor_query q = { .query = args->query };
 
-    m->driver->class->read(m->driver, &q);
+    int status = m->driver->class->read(m->driver, &q);
+    if (status)
+        RETURN(status);
 
     // Convert distance-based queries from microrevs
     switch (args->query) {
@@ -179,17 +183,17 @@ PROXYIMPL (mcQueryString, motor_query_t query, OUT String value) {
     if (m->driver->class->read == NULL)
         RETURN( ENOTSUP );
 
-    int size;
+    int size, status;
     struct motor_query q = { .query = args->query };
 
-    m->driver->class->read(m->driver, &q);
+    status = m->driver->class->read(m->driver, &q);
     if (q.value.string.size > 0)
         // Use min of status an sizeof args->value.buffer
         args->value.size = snprintf(args->value.buffer,
             sizeof args->value.buffer,
             "%s", q.value.string.buffer);
 
-    RETURN(0);
+    RETURN(status);
 }
 
 PROXYIMPL (mcPokeString, motor_query_t query, String value) {
