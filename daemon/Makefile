@@ -4,7 +4,7 @@ LDFLAGS=-ldl -lrt -lrt -lpthread -lm
 
 SOURCES=main.c controller.c scheduler.c trace.c worker.c
 OBJECTS=$(SOURCES:.c=.o)
-EXECUTABLE=mcontrol
+EXECUTABLE=mcontrold
 
 ifeq ($(DEBUG), 1)
 CFLAGS += -g -pg

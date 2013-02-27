@@ -1,4 +1,4 @@
-include include.mk
+include Makefile.in
 
 # Change to 1 to enable debug build
 DEBUG = 0
@@ -25,7 +25,7 @@ install-dirs:
 	$(INSTALL) -d $(INSTALL_FLAGS) $(BIN_PERMS) $(FIRMWARE_DIR)
 
 install: install-dirs
-	$(INSTALL) $(INSTALL_FLAGS) $(BIN_PERMS) daemon/mcontrol $(BIN_DIR)/
+	$(INSTALL) $(INSTALL_FLAGS) $(BIN_PERMS) daemon/mcontrold $(BIN_DIR)/
 	$(INSTALL) $(INSTALL_FLAGS) $(LIB_PERMS) lib/libmcontrol.so $(LIB_DIR)/
 	$(INSTALL) $(INSTALL_FLAGS) $(LIB_PERMS) drivers/*.so $(DRIVER_DIR)/
 	$(INSTALL) $(INSTALL_FLAGS) $(CONFIG_PERMS) \
@@ -37,8 +37,8 @@ install: install-dirs
 
 rpm:
 	mkdir -p ${TMPDIR}/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
-	git archive HEAD . -o ${TMPDIR}/SOURCES/mcontrol-source.tar \
-		--prefix=mcontrol-1.0/
+	git archive HEAD . --prefix=mcontrol-0.1/ \
+		> ${TMPDIR}/SOURCES/mcontrol-source.tar
 	cp mcontrol.spec ${TMPDIR}/SPECS
 	rpmbuild --define "_topdir ${TMPDIR}" \
 		-ba ${TMPDIR}/SPECS/mcontrol.spec
