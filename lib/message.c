@@ -362,8 +362,12 @@ mcResponseReceive2(response_message_t * response, bool message,
     }
 
     do {
-        length = mq_timedreceive(_inbox, (void *) response,
-            sizeof *response, &priority, then);
+        if (timeout)
+            length = mq_timedreceive(_inbox, (void *) response,
+                sizeof *response, &priority, then);
+        else
+            length = mq_receive(_inbox, (void *) response,
+                sizeof *response, &priority);
             
         if (length == -1)
             return -errno;
