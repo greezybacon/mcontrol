@@ -406,8 +406,10 @@ mdrive_async_completion_correct(void * arg) {
         else {
             mcTraceF(50, MDRIVE_CHANNEL, "Early. Callback in %dns",
 		        callback.tv_nsec);
-            // Subtract time for device latency
-            callback.tv_nsec -= (device->stats.latency >> 1) - 1e6;
+            // Subtract time for device latency. Since the data we currently
+            // have is 1/2 latency old and the data we'll retrieve will be
+            // 1/2 after we ask, start the entire latency time early
+            callback.tv_nsec -= device->stats.latency;
             while (callback.tv_nsec < 0) {
                 callback.tv_sec--;
                 callback.tv_nsec += (int)1e9;
@@ -454,9 +456,11 @@ mdrive_async_complete(mdrive_device_t * device) {
     mdrive_project_completion(device, &device->movement);
 
     // Callback just before expected completion -- back up the device
-    // latency time, and calculate error then
+    // latency time, and calculate error then. Because the projected time
+    // was considered before we communicated with the device to issue the
+    // move, consider the entire latency period rather than just half.
     struct timespec exp = device->movement.projected;
-    exp.tv_nsec -= device->stats.latency / 2;
+    exp.tv_nsec -= device->stats.latency;
     // We'll also need time to communicate with the unit. Assume 15 chars
     // necessary to get the current position and such
     exp.tv_nsec -= mdrive_xmit_time(device->comm, 15);
