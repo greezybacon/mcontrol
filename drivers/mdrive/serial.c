@@ -726,7 +726,7 @@ int
 mdrive_receive_response(mdrive_device_t * device,
         const struct timespec * timeout, mdrive_response_t ** response) {
 
-    int status = 0, onechartime = mdrive_xmit_time(device->comm, 1);
+    int status = 0;
     mdrive_response_t * local_response;
     struct timespec now;
 
@@ -758,7 +758,7 @@ mdrive_receive_response(mdrive_device_t * device,
                 + ((
                        // Don't consider receive time in latency
                        nsecDiff(&now, &device->comm->lasttx)
-                     - local_response->received * onechartime
+                     - mdrive_xmit_time(device->comm, local_response->received)
                   ) >> 5);
         }
 
@@ -773,7 +773,6 @@ mdrive_receive_response(mdrive_device_t * device,
             (*response)->code,
             (*response)->length,
             (*response)->buffer);
-
     }
 
     pthread_mutex_unlock(&device->comm->rxlock);
@@ -1008,6 +1007,7 @@ receive:
                 txid, response->txid);
         }
         device->stats.resends++;
+
     } // end while (i--)
 
     if (response) {
