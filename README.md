@@ -22,10 +22,17 @@ this to build and install it on Fedora 11:
     wget http://cython.org/release/Cython-0.18.tar.gz
     tar xvzf Cython-0.18.tar.gz
     cd Cython-0.18
-    python setup.py build
-    sudo python setup.py install
+    python setup.py bdist --formats=rpm
+    sudo yum localinstall dist/Cython-0.18-1.i586.rpm
     cd ..
     rm -rf Cython-0.18.tar.gz Cython-0.18
+
+**NOTE**: that you will need to build and install an RPM, or you will have to
+hack the build process of `make rpm`, because `rpmbuild` will check to see
+if `Cython` is installed (as an rpm).
+
+**NOTE**: that you're arch might be different from `i586`, use the above
+script as a reference -- not copy+pasteable.
 
 Platform
 --------
