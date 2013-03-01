@@ -67,7 +67,15 @@ _move_check_and_get_revs(Motor * motor, int amount,
         return ENOTSUP;
 
     // Ensure motor motion profile is available, check reflected profile on
-    // the motor itself
+    // the motor itself. Sync motor profile from the driver if necessary
+    if (!motor->profile.attrs.loaded) {
+        struct motor_query q = {
+            .query = MCPROFILE,
+            .value.profile = &motor->profile
+        };
+        INVOKE(motor, read, &q);
+        motor->profile.attrs.loaded = true;
+    }
     command->profile = motor->profile;
 
     // TODO: Add tracing
