@@ -50,6 +50,7 @@ static struct query_variable query_xref[] = {
     { 5, MCRUNCURRENT,      NULL,   mdrive_profile_peek, NULL },
     { 5, MCHOLDCURRENT,     NULL,   mdrive_profile_peek, NULL },
     { 5, MCSLIPMAX,         NULL,   mdrive_profile_peek, NULL },
+    { 5, MCPROFILE,         NULL,   mdrive_profile_peek, NULL },
     { 1, MDRIVE_ENCODER,    "EE",   NULL,   mdrive_ee_poke },
 
     // Statistics peeks
@@ -420,6 +421,10 @@ mdrive_profile_peek(mdrive_device_t * device, struct motor_query * query,
         case MCSLIPMAX:
             query->value.number = device->profile.slip_max.value;
             break;
+        case MCPROFILE:
+            if (!query->value.profile)
+                return EINVAL;
+            *query->value.profile = device->profile;
         default:
             return EINVAL;
     }
