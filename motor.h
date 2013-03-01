@@ -189,6 +189,12 @@ enum motor_query_type {
 
     MCOPPROFILE,        // Set and retrieve operational profile
 
+    // General communication information
+    // Retrieves current device latency for RX and TX directions in
+    // nanoseconds
+    MCLATENCYRX,
+    MCLATENCYTX,
+
     // NOTE: Drivers may specify additional query types. Refer to individual
     // driver headers for specific query types supported by each respective
     // driver.
