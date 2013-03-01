@@ -3,6 +3,7 @@
 #include "motion.h"
 
 #include "motor.h"
+#include "event-motion.h"
 #include "locks.h"
 #include "message.h"
 #include "client.h"
@@ -77,6 +78,14 @@ _move_check_and_get_revs(Motor * motor, int amount,
         motor->profile.attrs.loaded = true;
     }
     command->profile = motor->profile;
+
+    // Handle motion completion checkback -- signal EV_MOTION when the move
+    // is completed
+    if (motor->movement.checkback_id)
+        mcMoveTrajectCompletionCancel(motor);
+
+    if (command->type != MCSLEW)
+        mcMoveTrajectCompletion(motor, command->amount);
 
     // TODO: Add tracing
 
