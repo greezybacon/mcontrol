@@ -53,6 +53,9 @@ _mcCallbackListPop(void) {
     }
 }
 
+static int
+mcCallbackDequeue(int id);
+
 /**
  * _mcCallbackThread
  *
