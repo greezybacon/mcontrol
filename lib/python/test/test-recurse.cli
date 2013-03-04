@@ -1,0 +1,14 @@
+create test-return
+
+debug on
+
+let var = [call fibonnaci with n=15]
+succeed "{var}"
+
+label fibonnaci
+    # Returns the fibonnaci number represented in variable [n]
+    if n < 3: return 1
+    return [call fibonnaci with n=n-2] + [call fibonnaci with n=n-1]
+
+save
+run test-return
