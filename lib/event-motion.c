@@ -163,22 +163,17 @@ mcMoveTrajectCompletion(Motor * motor, long long urevs) {
     // Compute time of completion into
     mcMoveProjectCompletionTime(motor, &motor->movement);
 
-    // Estimate checkback time
-    struct motor_query q = { .query = MCLATENCYRX };
-    // TODO: Something with the return value from the driver
-    INVOKE(motor, read, &q);
-
-    struct timespec exp = motor->movement.projected;
-    exp.tv_nsec -= q.value.number;
-
-    while (exp.tv_nsec < 0) {
-        exp.tv_sec -= 1;
-        exp.tv_nsec += (int)1e9;
-    }
+    // Ultimately, this method is called before the move is requested at the
+    // motor. Therefore, the move will actually occur t+latency time from
+    // now. Therefore, we should not consider the latency of the motor in
+    // the checkback time, because the move will finish approximately at the
+    // projected-time+latency. Since the latency occurs in both factors, it
+    // doesn't need to be considered.
 
     // TODO: Check if motor->movement.checkback_id is currently set
+
     // Request a checkback when the move is estimated to be completed
-    motor->movement.checkback_id = mcCallbackAbs(&exp,
+    motor->movement.checkback_id = mcCallbackAbs(&motor->movement.projected,
         mcMoveTrajectCompletionCheckback, motor);
 
     return 0;
