@@ -695,6 +695,8 @@ mdrive_motion_peek(mdrive_device_t * device, struct motor_query * query,
     };
     if (!device->movement.moving)
         motion->completed = !(motion->stalled || motion->failed);
+    else
+        motion->in_progress = !(motion->stalled || motion->failed);
 
 cleanup:
     device->ignore_errors = ignore_errors;
