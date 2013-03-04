@@ -103,17 +103,21 @@ mcMoveProjectCompletionTime(Motor * motor,
            t3 = 1. * motor->profile.vmax.value / motor->profile.decel.value;
     distance += (motor->profile.vmax.value >> 1) * t3;
 
-    // And the remaining distance, performed at vmax
-    double rem = fabs(details->urevs) - distance;
-
     // Now total time (in nano-seconds) is t1 + t2 + t3
-    long long total;
+    long long total, urevs = details->urevs;
+    
+    // Adjust for absolute position moves
+    if (details->type == MCABSOLUTE)
+        urevs -= details->pstart;
+
+    // And the remaining distance, performed at vmax
+    double rem = fabs(urevs) - distance;
 
     if (rem < 0) {
         // Unit will never reach vmax and will start decelerating at the
         // intersection of the acceleration and deceleration curves.
         struct travel_time_info info;
-        if (mcTravelToTime(motor, abs(details->urevs), &info))
+        if (mcTravelToTime(motor, abs(urevs), &info))
             return EINVAL;
 
         details->vmax_us = details->decel_us = info.accel_time * 1e6;
@@ -135,7 +139,7 @@ mcMoveProjectCompletionTime(Motor * motor,
 
     mcTraceF(30, LIB_CHANNEL,
         "Projected move time for %.3f revs is %dms",
-        details->urevs / 1e6, total / (int)1e6);
+        urevs / 1e6, total / (int)1e6);
 
     return 0;
 }
@@ -151,14 +155,13 @@ mcMoveTrajectCompletionCheckback(void *);
  * detect the actual resting time of the motor and will also signal events
  * to indicate when the motion stops and for what reason (fail, stall,
  * arrival at destination, etc.)
+ *
+ * Context:
+ * motor->movement should contain information about the new movement (.type,
+ * .pstart and .amount are required)
  */
 int
-mcMoveTrajectCompletion(Motor * motor, long long urevs) {
-
-    motor->movement = (struct motor_motion_details) {
-        .urevs = urevs
-    };
-    clock_gettime(CLOCK_REALTIME, &motor->movement.start);
+mcMoveTrajectCompletion(Motor * motor) {
 
     // Compute time of completion into
     mcMoveProjectCompletionTime(motor, &motor->movement);

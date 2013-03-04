@@ -2,7 +2,7 @@
 #define LIB_EVENT_MOTION_H
 
 extern int
-mcMoveTrajectCompletion(Motor * motor, long long urevs);
+mcMoveTrajectCompletion(Motor * motor);
 
 extern int
 mcMoveTrajectCompletionCancel(Motor * motor);

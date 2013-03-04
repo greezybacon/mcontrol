@@ -64,7 +64,7 @@ _move_check_and_get_revs(Motor * motor, int amount,
         return EBUSY;
 
     // Ensure the driver supports a move operation
-    if (motor->driver->class->move == NULL)
+    if (!SUPPORTED(motor, move))
         return ENOTSUP;
 
     // Ensure motor motion profile is available, check reflected profile on
@@ -79,13 +79,30 @@ _move_check_and_get_revs(Motor * motor, int amount,
     }
     command->profile = motor->profile;
 
+    if (!motor->pos_known) {
+        struct motor_query q = { .query = MCPOSITION };
+        INVOKE(motor, read, &q);
+        motor->position = q.value.number;
+        motor->pos_known = true;
+    }
+
+    // Track initial details of the motor motion details.
+    // NOTE: that mcMoveTrajectCompletion() expects the motor->movement to
+    // be filled out in advance
+    motor->movement = (struct motor_motion_details) {
+        .pstart = motor->position,
+        .type = command->type,
+        .urevs = command->amount,
+    };
+    clock_gettime(CLOCK_REALTIME, &motor->movement.start);
+
     // Handle motion completion checkback -- signal EV_MOTION when the move
     // is completed
     if (motor->movement.checkback_id)
         mcMoveTrajectCompletionCancel(motor);
 
     if (command->type != MCSLEW)
-        mcMoveTrajectCompletion(motor, command->amount);
+        mcMoveTrajectCompletion(motor);
 
     // TODO: Add tracing
 

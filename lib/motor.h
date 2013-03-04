@@ -47,6 +47,7 @@ struct backend_motor {
 
     struct motor_motion_details movement; // Current/previous movement info
 
+    bool        pos_known;      // If last-known position is known
     long long   position;       // Last-known position of the motor
 
     unsigned short subscriptions[EV__LAST];  // Bitmask of subscribed events
