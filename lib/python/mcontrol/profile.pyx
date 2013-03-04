@@ -43,6 +43,8 @@ cdef class MotorProfile(object):
 
     def __init__(self, motor):
         self._motor = motor
+        if not self._profile.attrs.loaded:
+            self.reset()
 
     cdef void use_profile(MotorProfile self, Profile profile):
         self._profile = profile
@@ -186,7 +188,11 @@ cdef class MotorProfile(object):
         values = []
         for a in attrs:
             v, u = getattr(self, a)
-            if u != self.motor.units:
+            if u == k.MICRO_REVS and self._motor.scale:
+                # Convert to motor's units
+                values.append("{0}={1:.3f}".format(a,
+                    float(v) / self._motor.scale))
+            elif u != self.motor.units:
                 values.append("{0}={1}{2}".format(a, v, all_units[u]))
             else:
                 values.append("{0}={1}".format(a, v))
