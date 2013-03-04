@@ -219,7 +219,10 @@ class OutputCapture(object):
         self.writes = []
 
     def write(self, what):
-        self.writes.append(what)
+        if what is OutputCapture.Flush:
+            self.writes = []
+        else:
+            self.writes.append(what)
 
     def as_result(self):
         if len(self.writes) == 1:
@@ -229,6 +232,8 @@ class OutputCapture(object):
 
     def isatty(self):
         return False
+
+OutputCapture.Flush = object()
 
 import cmd
 import re
@@ -289,9 +294,10 @@ class TestingRunContext(Shell):
         context = self if not motor else self.context['motors'][motor]
         if self.debug:
             if motor:
-                self.status("EXEC: {0} -> {1}".format(motor, command))
+                self.status("EXEC[{0}]: {1} -> {2}".format(len(self.stack),
+                    motor, command))
             else:
-                self.status("EXEC: {0}".format(command))
+                self.status("EXEC[{0}]: {1}".format(len(self.stack), command))
 
         # Capture the output of the command
         if capture:
@@ -313,6 +319,8 @@ class TestingRunContext(Shell):
         if capture:
             result = context['stdout'].as_result()
             context['stdout'] = stdout
+            if self.debug:
+                self.status("{0} => {1}".format(command, result))
 
         # TODO: Return value from stdout after bugging stdout to retrieve
         #       data written through self.out()
@@ -472,16 +480,29 @@ class TestingRunContext(Shell):
         statement following this one
         """
         self.stack.append(self.next)
-        return self.do_goto(name)
+        if name not in self.test.labels:
+            return self.error("{0}: Undefined label".format(name))
+        self.execute_script(start=self.test.labels[name])
 
     def do_return(self, line):
         """
         Returns to the statement immediately following the previous 'call'
-        statement
+        statement. If an argument is received the evaluated result is sent
+        to the output. Therefore, return can be used in a manner similar to
+        traditional functions:
+
+        let var = [call function]
+        succeed {var}
+
+        label function
+            return 13
         """
         if len(self.stack) == 0:
             return self.error("Unbalanced stack: Return without call")
+        self.out(OutputCapture.Flush)
+        self.out(self.eval(line))
         self.next = self.stack.pop()
+        return True
 
     def do_print(self, what):
         """

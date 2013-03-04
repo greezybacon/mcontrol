@@ -1,0 +1,14 @@
+create test-return
+
+debug on
+
+let var = [call function]
+succeed "{var}"
+
+label function
+    let a = 13
+    let b = 14
+    return a ** b
+
+save
+run test-return
