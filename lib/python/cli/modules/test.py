@@ -346,7 +346,6 @@ class TestingRunContext(Shell):
             return eval(expression, {}, self.vars)
         except SyntaxError:
             self.error("Syntax Error", expression)
-            raise
 
     def do_counter(self, line):
         """
