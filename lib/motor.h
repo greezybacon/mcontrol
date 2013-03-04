@@ -6,13 +6,13 @@
 
 struct motor_motion_details {
     // Starting information
-    int                 pstart;         // Starting position (steps)
+    long long           pstart;         // Starting position (urevs)
     struct timespec     start;          // Absolute start time
 
     // Motion timing information
-    long                vmax_us;        // Estimated end of acceleration
+    unsigned            vmax_us;        // Estimated end of acceleration
                                         // ramp -- usecs rel to start
-    long                decel_us;       // Estimated start of decel ramp
+    unsigned            decel_us;       // Estimated start of decel ramp
                                         // -- usecs rel to start
     struct timespec     projected;      // Estimated time of completion (abs)
 
@@ -22,7 +22,7 @@ struct motor_motion_details {
 
     // Details filled in after completion of motion request
     struct timespec     completed;      // Actual time of completion
-    int                 error;          // Following error (urevs)
+    unsigned            error;          // Following error (urevs)
 
     // Realtime/status information
     bool                moving;         // Stall event occured since start
