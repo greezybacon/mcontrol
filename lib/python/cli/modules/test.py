@@ -525,8 +525,9 @@ class TestingRunContext(Shell):
         """
         if len(self.stack) == 0:
             return self.error("Unbalanced stack: Return without call")
-        self.out(OutputCapture.Flush)
-        self.out(self.eval(line))
+        if line:
+            self.out(OutputCapture.Flush)
+            self.out(self.eval(line))
         self.next = self.stack.pop()
         return True
 

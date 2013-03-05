@@ -2,13 +2,24 @@ create test-return
 
 debug on
 
+atexit punt
+
 let var = [call function]
+call function2
+
 succeed "{var}"
 
 label function
     let a = 13
     let b = 14
     return a ** b
+
+label function2
+    return
+
+label punt
+    print "Post-mortem cleanup"
+    return
 
 save
 run test-return
