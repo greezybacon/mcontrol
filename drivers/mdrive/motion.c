@@ -474,10 +474,23 @@ mdrive_async_complete(mdrive_device_t * device) {
 
     // Call mdrive_async_completion_correct at the projected end-time of
     // this motion command
-    device->cb_complete = mcCallbackAbs(&exp,
-        mdrive_async_completion_correct, device);
-
-    device->trip.completion = true;
+    if (device->movement.vmax_us > 0) {
+        device->cb_complete = mcCallbackAbs(&exp,
+            mdrive_async_completion_correct, device);
+        device->trip.completion = true;
+    }
+    else {
+        // Signal motion complete
+        union event_data data = {
+            .motion = {
+                .completed = true,
+                .pos_known = true,
+                .position = device->movement.pstart,
+            }
+        };
+        mcTrace(10, MDRIVE_CHANNEL, "Signalling EV_MOTION event");
+        mdrive_signal_event(device, EV_MOTION, &data);
+    }
 
     return 0;
 }
