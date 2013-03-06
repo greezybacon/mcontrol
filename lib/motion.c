@@ -181,6 +181,8 @@ PROXYIMPL(mcStop, MOTOR motor) {
     if (!SUPPORTED(CONTEXT->motor, stop))
         return ENOTSUP;
 
+    mcMoveTrajectCompletionCancel(CONTEXT->motor);
+
     return INVOKE(CONTEXT->motor, stop, MCSTOP);
 }
 
@@ -191,6 +193,8 @@ PROXYIMPL(mcHalt, MOTOR motor) {
     if (!SUPPORTED(CONTEXT->motor, stop))
         return ENOTSUP;
 
+    mcMoveTrajectCompletionCancel(CONTEXT->motor);
+
     return INVOKE(CONTEXT->motor, stop, MCHALT);
 }
 
@@ -200,6 +204,8 @@ PROXYIMPL(mcEStop, MOTOR motor) {
     // Ensure the driver supports a stop operation
     if (!SUPPORTED(CONTEXT->motor, stop))
         return ENOTSUP;
+
+    mcMoveTrajectCompletionCancel(CONTEXT->motor);
 
     return INVOKE(CONTEXT->motor, stop, MCESTOP);
 }
