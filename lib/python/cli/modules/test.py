@@ -508,7 +508,11 @@ class TestingRunContext(Shell):
 
         # Execute the block and restore the previous name context
         self.execute_script(start=self.test.labels[name])
+        self.next = self.stack.pop()
         self.vars.update(saved)
+
+        # If a fail / succeed / abort was invoked bail at this level
+        return self.state != self.Status.RUNNING
 
     def do_return(self, line):
         """
@@ -528,7 +532,6 @@ class TestingRunContext(Shell):
         if line:
             self.out(OutputCapture.Flush)
             self.out(self.eval(line))
-        self.next = self.stack.pop()
         return True
 
     def do_print(self, what):
