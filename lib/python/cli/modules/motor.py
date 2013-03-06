@@ -139,8 +139,8 @@ class MotorContext(Shell):
         except ValueError as ex:
             return self.error(repr(ex))
 
-        func(value, units)
         self.last_move_event = self.motor.on(Event.EV_MOTION)
+        func(value, units)
         if wait:
             self.last_move_event.wait()
 

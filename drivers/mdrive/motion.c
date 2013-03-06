@@ -131,48 +131,6 @@ mdrive_move_assisted(mdrive_device_t * device, motion_instruction_t * command,
 }
 
 int
-mdrive_estimate_position_at(mdrive_device_t * device,
-        struct motion_details * details, int when) {
-
-    // Travel time is time in microseconds into the device movement. See if
-    // we are traveling at vmax, decelerating or still accelerating
-    int phase, dt_us;
-    long long pos_urev=0;
-    // TODO: Add case for motion already completed
-    if (details->decel_us < when)
-        // Unit is now decelerating
-        phase = 3;
-    else if (details->vmax_us < when)
-        // Unit is traveling at vmax
-        phase = 2;
-    else 
-        // Unit is accelerating
-        phase = 1;
-
-    switch (phase) {
-        case 3:
-            // Add decel ramp time. Change in position is velocity * time.
-            // Velocity is vmax - (decel * dt)
-            dt_us = when - details->decel_us;
-            pos_urev += dt_us
-                * (device->profile.decel.value * dt_us)
-                / (int)2e6;
-        case 2:
-            // Add travel time at vmax
-            pos_urev += device->profile.vmax.value
-                * (min(when, details->decel_us) - details->vmax_us);
-        case 1:
-            // Add accel ramp time
-            dt_us = min(when, details->vmax_us);
-            pos_urev += dt_us
-                * (device->profile.vstart.value
-                    + (device->profile.accel.value * dt_us))
-                / (int)2e6;
-    }
-    return mdrive_microrevs_to_steps(device, pos_urev / (int)1e6);
-}
-
-int
 mdrive_drive_enable(mdrive_device_t * device) {
     if (!device)
         return EINVAL;
