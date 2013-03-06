@@ -219,7 +219,10 @@ class OutputCapture(object):
         self.writes = []
 
     def write(self, what):
-        self.writes.append(what)
+        if what is OutputCapture.Flush:
+            self.writes = []
+        else:
+            self.writes.append(what)
 
     def as_result(self):
         if len(self.writes) == 1:
@@ -229,6 +232,8 @@ class OutputCapture(object):
 
     def isatty(self):
         return False
+
+OutputCapture.Flush = object()
 
 import cmd
 import re
@@ -244,6 +249,7 @@ class TestingRunContext(Shell):
     def __init__(self, test, *args, **kwargs):
         Shell.__init__(self, *args, **kwargs)
         self.test = test
+        self.instructions = list(self.test)
         self.context['counters'] = {}
         self.context['labels'] = []
         self.context['timers'] = {}
@@ -258,8 +264,9 @@ class TestingRunContext(Shell):
         except KeyboardInterrupt:
             return True
         except Exception as e:
-            self.error("{0}: (Unhandled) {1}".format(
-                type(e).__name__, e))
+            self.error("{0}: {1}: (Unhandled) {2}".format(
+                str, type(e).__name__, e))
+            raise
             return True
 
     def parse(self, command):
@@ -289,9 +296,10 @@ class TestingRunContext(Shell):
         context = self if not motor else self.context['motors'][motor]
         if self.debug:
             if motor:
-                self.status("EXEC: {0} -> {1}".format(motor, command))
+                self.status("EXEC[{0}]: {1} -> {2}".format(len(self.stack),
+                    motor, command))
             else:
-                self.status("EXEC: {0}".format(command))
+                self.status("EXEC[{0}]: {1}".format(len(self.stack), command))
 
         # Capture the output of the command
         if capture:
@@ -313,6 +321,8 @@ class TestingRunContext(Shell):
         if capture:
             result = context['stdout'].as_result()
             context['stdout'] = stdout
+            if self.debug:
+                self.status("{0} => {1}".format(command, result))
 
         # TODO: Return value from stdout after bugging stdout to retrieve
         #       data written through self.out()
@@ -336,7 +346,6 @@ class TestingRunContext(Shell):
             return eval(expression, {}, self.vars)
         except SyntaxError:
             self.error("Syntax Error", expression)
-            raise
 
     def do_counter(self, line):
         """
@@ -469,19 +478,58 @@ class TestingRunContext(Shell):
         """
         Like goto, except that the current location is stored, so that, if a
         'return' statement is encountered, the test will continue with the
-        statement following this one
+        statement following this one.
+
+        Optionally arguments can be passed which will be added to the
+        environment before the call and will be reset after the call. Any
+        valid expression is acceptable as the value of the variable passed.
+        The usual bracketed expressions as well as any valid Python
+        expression can be used.
+
+        call function with var=value
         """
         self.stack.append(self.next)
-        return self.do_goto(name)
+        parts = name.split()
+        name = parts.pop(0)
+        if name not in self.test.labels:
+            return self.error("{0}: Undefined label".format(name))
+
+        # Handle arguments passed to the function call
+        saved = {}
+        if 'with' in parts:
+            for x in parts[1:]:
+                if '=' not in x:
+                    return self.error("Function arguments must be keywords",
+                        "See 'help call'")
+                var, val = x.split('=', 1)
+                if var in self.vars:
+                    saved[var] = self.vars[var]
+                self.vars[var] = self.eval(val)
+
+        # Execute the block and restore the previous name context
+        self.execute_script(start=self.test.labels[name])
+        self.vars.update(saved)
 
     def do_return(self, line):
         """
         Returns to the statement immediately following the previous 'call'
-        statement
+        statement. If an argument is received the evaluated result is sent
+        to the output. Therefore, return can be used in a manner similar to
+        traditional functions:
+
+        let var = [call function]
+        succeed {var}
+
+        label function
+            return 13
         """
         if len(self.stack) == 0:
             return self.error("Unbalanced stack: Return without call")
+        if line:
+            self.out(OutputCapture.Flush)
+            self.out(self.eval(line))
         self.next = self.stack.pop()
+        return True
 
     def do_print(self, what):
         """
@@ -524,7 +572,7 @@ class TestingRunContext(Shell):
         """
         if not '=' in line:
             return self.error("Incorrect usage", "See 'help let'")
-        name, expression = line.split('=', 2)
+        name, expression = line.split('=', 1)
         self.vars[name.strip()] = self.eval(expression)
 
     def do_defined(self, line):
@@ -575,11 +623,10 @@ class TestingRunContext(Shell):
 
     def execute_script(self, start=0):
         self.next = start
-        instructions = list(self.test)
-        while self.next < len(instructions):
+        while self.next < len(self.instructions):
             # Evaluate each command. Goto commands will change self.next, so
             # don't do a simple iteration of the instructions
-            if self.execute(instructions[self.next]):
+            if self.execute(self.instructions[self.next]):
                 break
             if self.next is None:
                 break
