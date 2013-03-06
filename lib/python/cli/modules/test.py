@@ -429,7 +429,7 @@ class TestingRunContext(Shell):
         # Isolate the condition and statement
         # Evaluate the condition
         # Execute the statement
-        match = re.match(r'(?P<cond>[^:]+):(?P<stmt>.*)', line)
+        match = re.match(r'(?P<cond>[^:]+):\s*(?P<stmt>.*)', line)
         if not match:
             return self.error("Incorrect <if> usage.", "See 'help if'")
         if self.eval(match.groupdict()['cond']):
