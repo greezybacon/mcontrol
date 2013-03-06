@@ -244,6 +244,8 @@ mdrive_project_completion(mdrive_device_t * device,
 
         details->vmax_us = details->decel_us = info.accel_time * 1e6;
         total = (info.accel_time + info.decel_time) * 1e9;
+        if (total < 0)
+            total = 0;
     }
     else {
         t2 = rem / device->profile.vmax.value;
