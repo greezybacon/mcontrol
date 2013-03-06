@@ -48,6 +48,13 @@ struct travel_time_info {
 static int
 mcTravelToTime(Motor * motor, long long urevs,
         struct travel_time_info * info) {
+
+    // Ensure motor is actually going to move
+    if (urevs < motor->profile.accuracy.value) {
+        *info = (struct travel_time_info) { .accel_time = 0 };
+        return 0;
+    }
+
     double A = motor->profile.accel.value;
     double D = motor->profile.decel.value;
     double VI = motor->profile.vstart.value;
@@ -122,6 +129,8 @@ mcMoveProjectCompletionTime(Motor * motor,
 
         details->vmax_us = details->decel_us = info.accel_time * 1e6;
         total = (info.accel_time + info.decel_time) * 1e9;
+        if (total < 0)
+            total = 0;
     }
     else {
         t2 = rem / motor->profile.vmax.value;
@@ -176,8 +185,11 @@ mcMoveTrajectCompletion(Motor * motor) {
     // TODO: Check if motor->movement.checkback_id is currently set
 
     // Request a checkback when the move is estimated to be completed
-    motor->movement.checkback_id = mcCallbackAbs(&motor->movement.projected,
-        mcMoveTrajectCompletionCheckback, motor);
+    if (motor->movement.vmax_us > 1)
+        motor->movement.checkback_id = mcCallbackAbs(&motor->movement.projected,
+            mcMoveTrajectCompletionCheckback, motor);
+    else
+        mcMoveTrajectCompletion(motor);
 
     return 0;
 }
