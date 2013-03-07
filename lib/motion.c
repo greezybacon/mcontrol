@@ -81,9 +81,10 @@ _move_check_and_get_revs(Motor * motor, int amount,
 
     if (!motor->pos_known) {
         struct motor_query q = { .query = MCPOSITION };
-        INVOKE(motor, read, &q);
-        motor->position = q.value.number;
-        motor->pos_known = true;
+        if (INVOKE(motor, read, &q) == 0) {
+            motor->position = q.value.number;
+            motor->pos_known = true;
+        }
     }
 
     // Handle motion completion checkback -- signal EV_MOTION when the move
@@ -117,6 +118,14 @@ int PROXYIMPL(mcMoveAbsolute, MOTOR motor, int distance) {
     if (status != 0)
         return status;
 
+    // Cancel the absolute move if already in position. In terms of event
+    // triggering, the EV_MOTION event is already fired in
+    // _move_check_and_get_revs if the targeted position is 0 distance away
+    if (CONTEXT->motor->pos_known && (
+            abs(CONTEXT->motor->position - command.amount)
+            <= CONTEXT->motor->profile.accuracy.value))
+        return 0;
+
     CONTEXT->motor->pos_known = false;
     return INVOKE(CONTEXT->motor, move, &command);
 }
@@ -132,6 +141,14 @@ PROXYIMPL(mcMoveAbsoluteUnits, MOTOR motor, int distance,
         units, &command);
     if (status != 0)
         return status;
+
+    // Cancel the absolute move if already in position. In terms of event
+    // triggering, the EV_MOTION event is already fired in
+    // _move_check_and_get_revs if the targeted position is 0 distance away
+    if (CONTEXT->motor->pos_known && (
+            abs(CONTEXT->motor->position - command.amount)
+            <= CONTEXT->motor->profile.accuracy.value))
+        return 0;
 
     CONTEXT->motor->pos_known = false;
     return INVOKE(CONTEXT->motor, move, &command);
