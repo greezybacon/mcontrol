@@ -1,3 +1,7 @@
+#ifndef LIB_QUERY_H
+#define LIB_QUERY_H
+
+#include "message.h"
 
 PROXYSTUB(int, mcQueryInteger, MOTOR motor, motor_query_t query,
     OUT int * value);
@@ -28,3 +32,5 @@ PROXYSTUB(int, mcPokeIntegerWithStringItem, MOTOR motor, motor_query_t query,
     int value, String * item);
 PROXYSTUB(int, mcPokeIntegerWithIntegerItem, MOTOR motor, motor_query_t query,
     int value, int item);
+
+#endif

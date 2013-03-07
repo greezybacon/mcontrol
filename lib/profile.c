@@ -9,6 +9,14 @@
 
 int
 PROXYIMPL(mcProfileGet, MOTOR motor, OUT Profile * profile) {
+    if (!CONTEXT->motor->profile.attrs.loaded) {
+        struct motor_query q = {
+            .query = MCPROFILE,
+            .value.profile = &CONTEXT->motor->profile
+        };
+        INVOKE(CONTEXT->motor, read, &q);
+        CONTEXT->motor->profile.attrs.loaded = true;
+    }
     *profile = CONTEXT->motor->profile;
     return 0;
 }

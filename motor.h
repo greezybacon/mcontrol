@@ -30,25 +30,29 @@ typedef enum event_name event_t;
 typedef struct event_info event_info_t;
 typedef void (*event_cb_t)(event_info_t *evt);
 
+struct motion_update {
+    bool        completed;      // Move finished normally
+    bool        stalled;        // Move interrupted by stall
+    bool        cancelled;      // Move replaced with another move
+    bool        stopped;        // Stop was issued
+    bool        failed;         // Unable to arrive at dest
+    bool        in_progress;    // Still moving (progress update)
+    bool        pos_known;      // Position element is valid
+    bool        vel_known;      // Velocity field is valid
+    unsigned char tries;        // Number of tries if completed
+                                // successfully after retrying
+    unsigned    error;          // urevs of slip
+    long long   position;       // Current position (urevs), if known
+    unsigned    velocity;       // Current velocity (urevs/s), if known
+};
+
 typedef union event_data event_data_t;
 union event_data {                  // Data associated with the event
     long long   number;
     char        string[256];
 
     // EV_MOTION event payload
-    struct {
-        bool        completed;      // Move finished normally
-        bool        stalled;        // Move interrupted by stall
-        bool        cancelled;      // Move replaced with another move
-        bool        stopped;        // Stop was issued
-        bool        failed;         // Unable to arrive at dest
-        bool        in_progress;    // Still moving (progress update)
-        bool        pos_known;      // Position element is valid
-        unsigned char tries;        // Number of tries if completed
-                                    // successfully after retrying
-        unsigned    error;          // urevs of slip
-        long long   position;       // Current position (urevs), if known
-    } motion;
+    struct motion_update motion;
 
     // EV_OVERTEMP event payload
     struct {
@@ -170,6 +174,7 @@ enum motor_query_type {
     MCINPUT,            // Query value of unit input -- specify number
     MCOUTPUT,           // Query value of unit ouput -- specity number
     MCBUSY,             // Device is executing microcode
+    MCSTATUS,           // Retrive a (struct motion_update)
 
     // Individual items from motion profile
     MCPROFILE,          // Set and retrieve hardware profiles
@@ -183,6 +188,12 @@ enum motor_query_type {
     MCSLIPMAX,
 
     MCOPPROFILE,        // Set and retrieve operational profile
+
+    // General communication information
+    // Retrieves current device latency for RX and TX directions in
+    // nanoseconds
+    MCLATENCYRX,
+    MCLATENCYTX,
 
     // NOTE: Drivers may specify additional query types. Refer to individual
     // driver headers for specific query types supported by each respective

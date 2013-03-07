@@ -28,6 +28,7 @@ struct motor_query {
         } string;                       // As a string
         Profile *   profile;            // Peek/Poke an entire profile
         OpProfile * operating_profile;  // Peek/Poke operational profile
+        struct motion_update status;    // Peek motion status info
     } value;
 };
 

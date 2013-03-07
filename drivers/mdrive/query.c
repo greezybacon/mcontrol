@@ -28,6 +28,8 @@ static POKE(mdrive_ex_poke);
 static POKE(mdrive_io_poke);
 static POKE(mdrive_fd_poke);
 static PEEK(mdrive_ug_peek);
+static PEEK(mdrive_motion_peek);
+static PEEK(mdrive_latencyrx_peek);
 
 static struct query_variable query_xref[] = {
     { 9, MCPOSITION,        "P",    NULL,   mdrive_write_simple },
@@ -37,6 +39,7 @@ static struct query_variable query_xref[] = {
     { 1, MCSTALLED,         "ST",   NULL,   mdrive_write_simple },
     { 3, MCINPUT,           "I%d",  NULL,   NULL },
     { 19, MCOUTPUT,         "O%d",  NULL,   mdrive_write_simple },
+    { 5, MCSTATUS,          NULL,   mdrive_motion_peek, NULL },
 
     // Profile peeks
     { 5, MCACCEL,           NULL,   mdrive_profile_peek, NULL },
@@ -47,7 +50,11 @@ static struct query_variable query_xref[] = {
     { 5, MCRUNCURRENT,      NULL,   mdrive_profile_peek, NULL },
     { 5, MCHOLDCURRENT,     NULL,   mdrive_profile_peek, NULL },
     { 5, MCSLIPMAX,         NULL,   mdrive_profile_peek, NULL },
+    { 5, MCPROFILE,         NULL,   mdrive_profile_peek, NULL },
     { 1, MDRIVE_ENCODER,    "EE",   NULL,   mdrive_ee_poke },
+
+    // Statistics peeks
+    { 5, MCLATENCYRX,       NULL,   mdrive_latencyrx_peek, NULL },
 
     { 1, MDRIVE_VARIABLE,   NULL,   mdrive_var_peek, mdrive_var_poke },
     { 20, MDRIVE_EXECUTE,   NULL,   NULL, mdrive_ex_poke },
@@ -414,6 +421,10 @@ mdrive_profile_peek(mdrive_device_t * device, struct motor_query * query,
         case MCSLIPMAX:
             query->value.number = device->profile.slip_max.value;
             break;
+        case MCPROFILE:
+            if (!query->value.profile)
+                return EINVAL;
+            *query->value.profile = device->profile;
         default:
             return EINVAL;
     }
@@ -638,4 +649,63 @@ mdrive_ug_peek(mdrive_device_t * device, struct motor_query * query,
             sizeof query->value.string.buffer, "%s", serial);
 
     return query->value.string.size;
+}
+
+static int
+mdrive_motion_peek(mdrive_device_t * device, struct motor_query * query,
+        struct query_variable * q) {
+
+    if (device == NULL)
+        return EINVAL;
+
+    struct timespec now;
+    clock_gettime(CLOCK_REALTIME, &now);
+
+    int status = 0;
+
+    // Handle device errors here
+    bool ignore_errors = device->ignore_errors;
+    device->ignore_errors = true;
+
+    const char * vars[] = {"ST", "P", "V",
+        device->microcode.labels.following_error };
+    int stalled, pos, vel, error = 0, count = 3,
+        * vals[] = { &stalled, &pos, &vel, &error };
+
+    if (device->microcode.features.following_error)
+        count++;
+
+    if (mdrive_get_integers(device, vars, vals, count)) {
+        status = EIO;
+        goto cleanup;
+    }
+
+    struct motion_update * motion = &query->value.status;
+    *motion = (struct motion_update) {
+        .stalled = stalled,
+        .pos_known = true,
+        .position = mdrive_steps_to_microrevs(device, pos),
+        .vel_known = true,
+        .velocity = mdrive_steps_to_microrevs(device, vel),
+        .error = error
+    };
+    if (!device->movement.moving)
+        motion->completed = !(motion->stalled || motion->failed);
+    else
+        motion->in_progress = !(motion->stalled || motion->failed);
+
+cleanup:
+    device->ignore_errors = ignore_errors;
+    return status;
+}
+
+static int
+mdrive_latencyrx_peek(mdrive_device_t * device, struct motor_query * query,
+        struct query_variable * q) {
+    
+    if (device == NULL)
+        return EINVAL;
+
+    query->value.number = device->stats.latency;
+    return 0;
 }

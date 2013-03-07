@@ -1188,14 +1188,15 @@ mdrive_initialize_port(const char * port, int speed, bool async) {
 
     tty.c_cflag &= ~(PARENB | CSTOPB | CSIZE);
     tty.c_cflag |= CS8 | CREAD | CLOCAL;
-    tty.c_iflag &= ~ISTRIP & ~ICRNL;
+    tty.c_iflag &= ~(ISTRIP | ICRNL | INLCR | IGNCR | IXON);
     tty.c_iflag |= IGNPAR | IGNBRK;
     tty.c_oflag &= ~OPOST;                          // Raw output processing
     tty.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG); // Raw input processing
 
     tcflush(fd, TCIFLUSH);
     if (tcsetattr(fd, TCSAFLUSH, &tty)) {
-        mcTraceF(1, MDRIVE_CHANNEL, "Unable to configure tty: %d", errno);
+        mcTraceF(1, MDRIVE_CHANNEL, "Unable to configure tty: %s",
+            strerror(errno));
         return -1;
     }
 
@@ -1243,6 +1244,9 @@ mdrive_set_baudrate(mdrive_comm_device_t * channel, int speed) {
 
     if (status == 0)
         channel->speed = speed;
+    else
+        mcTraceF(10, MDRIVE_CHANNEL, "Unable to change device speed: %s",
+            strerror(errno));
 
     return status;
 }

@@ -21,9 +21,6 @@ extern int
 mdrive_lazyload_motion_config(mdrive_device_t * device);
 
 extern int
-mdrive_on_async_complete(mdrive_device_t * device, bool cancel);
-
-extern int
 mdrive_drive_enable(mdrive_device_t * device);
 
 extern int

@@ -3,6 +3,7 @@
 #include "motion.h"
 
 #include "motor.h"
+#include "event-motion.h"
 #include "locks.h"
 #include "message.h"
 #include "client.h"
@@ -63,12 +64,44 @@ _move_check_and_get_revs(Motor * motor, int amount,
         return EBUSY;
 
     // Ensure the driver supports a move operation
-    if (motor->driver->class->move == NULL)
+    if (!SUPPORTED(motor, move))
         return ENOTSUP;
 
     // Ensure motor motion profile is available, check reflected profile on
-    // the motor itself
+    // the motor itself. Sync motor profile from the driver if necessary
+    if (!motor->profile.attrs.loaded) {
+        struct motor_query q = {
+            .query = MCPROFILE,
+            .value.profile = &motor->profile
+        };
+        INVOKE(motor, read, &q);
+        motor->profile.attrs.loaded = true;
+    }
     command->profile = motor->profile;
+
+    if (!motor->pos_known) {
+        struct motor_query q = { .query = MCPOSITION };
+        INVOKE(motor, read, &q);
+        motor->position = q.value.number;
+        motor->pos_known = true;
+    }
+
+    // Handle motion completion checkback -- signal EV_MOTION when the move
+    // is completed
+    mcMoveTrajectCompletionCancel(motor);
+
+    // Track initial details of the motor motion details.
+    // NOTE: that mcMoveTrajectCompletion() expects the motor->movement to
+    // be filled out in advance
+    motor->movement = (struct motor_motion_details) {
+        .pstart = motor->position,
+        .type = command->type,
+        .urevs = command->amount,
+    };
+    clock_gettime(CLOCK_REALTIME, &motor->movement.start);
+
+    if (command->type != MCSLEW)
+        mcMoveTrajectCompletion(motor);
 
     // TODO: Add tracing
 
@@ -84,6 +117,7 @@ int PROXYIMPL(mcMoveAbsolute, MOTOR motor, int distance) {
     if (status != 0)
         return status;
 
+    CONTEXT->motor->pos_known = false;
     return INVOKE(CONTEXT->motor, move, &command);
 }
 
@@ -99,6 +133,7 @@ PROXYIMPL(mcMoveAbsoluteUnits, MOTOR motor, int distance,
     if (status != 0)
         return status;
 
+    CONTEXT->motor->pos_known = false;
     return INVOKE(CONTEXT->motor, move, &command);
 }
 
@@ -112,6 +147,7 @@ PROXYIMPL(mcMoveRelative, MOTOR motor, int distance) {
     if (status != 0)
         return status;
 
+    CONTEXT->motor->pos_known = false;
     return INVOKE(CONTEXT->motor, move, &command);
 }
 
@@ -127,6 +163,7 @@ PROXYIMPL(mcMoveRelativeUnits, MOTOR motor, int distance,
     if (status != 0)
         return status;
 
+    CONTEXT->motor->pos_known = false;
     return INVOKE(CONTEXT->motor, move, &command);
 }
 
@@ -147,6 +184,8 @@ PROXYIMPL(mcStop, MOTOR motor) {
     if (!SUPPORTED(CONTEXT->motor, stop))
         return ENOTSUP;
 
+    mcMoveTrajectCompletionCancel(CONTEXT->motor);
+
     return INVOKE(CONTEXT->motor, stop, MCSTOP);
 }
 
@@ -157,6 +196,8 @@ PROXYIMPL(mcHalt, MOTOR motor) {
     if (!SUPPORTED(CONTEXT->motor, stop))
         return ENOTSUP;
 
+    mcMoveTrajectCompletionCancel(CONTEXT->motor);
+
     return INVOKE(CONTEXT->motor, stop, MCHALT);
 }
 
@@ -166,6 +207,8 @@ PROXYIMPL(mcEStop, MOTOR motor) {
     // Ensure the driver supports a stop operation
     if (!SUPPORTED(CONTEXT->motor, stop))
         return ENOTSUP;
+
+    mcMoveTrajectCompletionCancel(CONTEXT->motor);
 
     return INVOKE(CONTEXT->motor, stop, MCESTOP);
 }
@@ -180,6 +223,7 @@ PROXYIMPL(mcSlew, MOTOR motor, int rate) {
     if (status != 0)
         return status;
 
+    CONTEXT->motor->pos_known = false;
     return INVOKE(CONTEXT->motor, move, &command);
 }
 
@@ -192,6 +236,7 @@ PROXYIMPL(mcSlewUnits, MOTOR motor, int rate, unit_type_t units) {
     if (status != 0)
         return status;
 
+    CONTEXT->motor->pos_known = false;
     return INVOKE(CONTEXT->motor, move, &command);
 }
 
@@ -202,6 +247,7 @@ PROXYIMPL(mcHome, MOTOR motor, enum home_type type,
     if (!SUPPORTED(CONTEXT->motor, home))
         return ENOTSUP;
 
+    CONTEXT->motor->pos_known = false;
     return INVOKE(CONTEXT->motor, home, type, direction);
 }
 
