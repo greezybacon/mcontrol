@@ -5,6 +5,7 @@
 #include "events.h"
 #include "queue.h"
 
+#include <assert.h>
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
@@ -827,6 +828,8 @@ int
 mdrive_communicate(mdrive_device_t * device, const char * command,
         const struct mdrive_send_opts * options) {
 
+    assert(options != NULL);
+
     int i, status=0, length, txid;
     char buffer[63];
     mdrive_response_t * response = NULL;
@@ -949,8 +952,10 @@ receive:
             // finished.
             if (!response->code) {
                 mcTrace(50, MDRIVE_CHANNEL_RX, "Waiting longer ...");
-                clock_gettime(CLOCK_REALTIME, &now);
-                tsAdd(&now, &more_waittime, &timeout);
+                if (!options->waittime) {
+                    clock_gettime(CLOCK_REALTIME, &now);
+                    tsAdd(&now, &more_waittime, &timeout);
+                }
                 goto receive;
             }
         }
@@ -968,8 +973,10 @@ receive:
                 response->length = 0;
                 response->echo = true;
                 // Wait for the real response
-                clock_gettime(CLOCK_REALTIME, &now);
-                tsAdd(&timeout, &more_waittime, &now);
+                if (!options->waittime) {
+                    clock_gettime(CLOCK_REALTIME, &now);
+                    tsAdd(&now, &more_waittime, &timeout);
+                }
                 goto receive;
             }
         }
