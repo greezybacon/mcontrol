@@ -224,7 +224,7 @@ mcMoveTrajectCompletion(Motor * motor) {
  */
 int
 mcMoveTrajectCompletionCancel(Motor * motor) {
-    if (!motor->movement.checkback_id)
+    if (motor->movement.checkback_id == 0)
         return 0;
 
     mcCallbackCancel(motor->movement.checkback_id);
@@ -312,7 +312,7 @@ mcMoveTrajectCompletionCheckback(void * arg) {
             .tv_sec = (int)dt,
             .tv_nsec = (int)1e9 * (dt - (int)dt)
         };
-        if (callback.tv_sec == 0 && callback.tv_nsec < latency)
+        if (callback.tv_sec == 0 && callback.tv_nsec < latency) {
             // For all intents and purposes, the unit is stopped, because we
             // won't be able to communicate with it again until well after
             // it stops.  Estimate the resting position of the unit and move
@@ -321,6 +321,8 @@ mcMoveTrajectCompletionCheckback(void * arg) {
             // distance travelled by the unit, which is 1/2 * b * h i
             // or 1/2 * dt * v
             motor->position = motion->position + dt * (motion->velocity >> 1);
+            motor->pos_known = true;
+        }
         else {
             mcTraceF(50, LIB_CHANNEL, "Early. Callback in %dns",
 		        callback.tv_nsec);
@@ -334,13 +336,15 @@ mcMoveTrajectCompletionCheckback(void * arg) {
             }
             // Call this routine again at the estimated time of completion
             // (minus about half of the unit's latency).
-            motor->movement.checkback_id = mcCallbackAbs(&callback,
+            motor->movement.checkback_id = mcCallback(&callback,
                 mcMoveTrajectCompletionCheckback, motor);
             completed = false;
         }
     }
-    else if (motion->pos_known)
+    else if (motion->pos_known) {
         motor->position = motion->position;
+        motor->pos_known = true;
+    }
 
     // Signal motion-completion event
     if (completed) {

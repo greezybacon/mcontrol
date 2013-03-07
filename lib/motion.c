@@ -118,6 +118,7 @@ int PROXYIMPL(mcMoveAbsolute, MOTOR motor, int distance) {
     if (status != 0)
         return status;
 
+    CONTEXT->motor->pos_known = false;
     return INVOKE(CONTEXT->motor, move, &command);
 }
 
@@ -133,6 +134,7 @@ PROXYIMPL(mcMoveAbsoluteUnits, MOTOR motor, int distance,
     if (status != 0)
         return status;
 
+    CONTEXT->motor->pos_known = false;
     return INVOKE(CONTEXT->motor, move, &command);
 }
 
@@ -146,6 +148,7 @@ PROXYIMPL(mcMoveRelative, MOTOR motor, int distance) {
     if (status != 0)
         return status;
 
+    CONTEXT->motor->pos_known = false;
     return INVOKE(CONTEXT->motor, move, &command);
 }
 
@@ -161,6 +164,7 @@ PROXYIMPL(mcMoveRelativeUnits, MOTOR motor, int distance,
     if (status != 0)
         return status;
 
+    CONTEXT->motor->pos_known = false;
     return INVOKE(CONTEXT->motor, move, &command);
 }
 
@@ -220,6 +224,7 @@ PROXYIMPL(mcSlew, MOTOR motor, int rate) {
     if (status != 0)
         return status;
 
+    CONTEXT->motor->pos_known = false;
     return INVOKE(CONTEXT->motor, move, &command);
 }
 
@@ -232,6 +237,7 @@ PROXYIMPL(mcSlewUnits, MOTOR motor, int rate, unit_type_t units) {
     if (status != 0)
         return status;
 
+    CONTEXT->motor->pos_known = false;
     return INVOKE(CONTEXT->motor, move, &command);
 }
 
@@ -242,6 +248,7 @@ PROXYIMPL(mcHome, MOTOR motor, enum home_type type,
     if (!SUPPORTED(CONTEXT->motor, home))
         return ENOTSUP;
 
+    CONTEXT->motor->pos_known = false;
     return INVOKE(CONTEXT->motor, home, type, direction);
 }
 
