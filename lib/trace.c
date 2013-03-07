@@ -87,12 +87,14 @@ mcTraceRemoteWrite(int pid, int level, int channel, const char * buffer) {
     struct event_message evt = {
         .motor = -1,    // XXX: Use a constant like ANY_MOTOR
         .event = EV_TRACE,
-        .id = level
+        .id = level,
+        .data = {
+            .trace = {
+                .level = level,
+                .channel = channel,
+            }
+        }
     };
-    // TODO: Decide where level argument should be placed in the event
-    //       message payload...
-    evt.data.trace.level = level;
-    evt.data.trace.channel = channel;
     snprintf(evt.data.trace.buffer, sizeof evt.data.trace.buffer,
         "%s", buffer);
 
@@ -102,6 +104,8 @@ mcTraceRemoteWrite(int pid, int level, int channel, const char * buffer) {
 static int
 mcTraceWrite(unsigned long long mask, int level, int channel,
         const char * buffer, int length) {
+
+    // XXX: Length is not used
 
     // Actually write the trace buffer to the subscribers
     struct trace_subscriber * s = subscribers;
