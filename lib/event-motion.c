@@ -186,10 +186,30 @@ mcMoveTrajectCompletion(Motor * motor) {
 
     // Request a checkback when the move is estimated to be completed
     if (motor->movement.vmax_us > 1)
-        motor->movement.checkback_id = mcCallbackAbs(&motor->movement.projected,
+        motor->movement.checkback_id = mcCallbackAbs(
+            &motor->movement.projected,
             mcMoveTrajectCompletionCheckback, motor);
-    else
-        mcMoveTrajectCompletion(motor);
+    else {
+        // Signal motion-complete event
+        // XXX: Can this always be assumed? Should we always query the motor
+        //      to ensure that it isn't really moving still?
+        union event_data data = {
+            .motion = {
+                .completed = true,
+                .pos_known = true,
+                .position = motor->position,
+            }
+        };
+        struct event_info info = {
+            .event = EV_MOTION,
+            .data = &data,
+        };
+        mcTraceF(50, LIB_CHANNEL, "Signalling EV_MOTION event (noop)");
+        mcSignalEvent(motor->driver, &info);
+        // Since we're assuming the device is not going to move, we should
+        // also assume the position of the device is still known
+        motor->pos_known = true;
+    }
 
     return 0;
 }
@@ -220,6 +240,7 @@ mcMoveTrajectCompletionCancel(Motor * motor) {
         .event = EV_MOTION,
         .data = &data,
     };
+    mcTraceF(50, LIB_CHANNEL, "Signalling EV_MOTION event (cancelled)");
     mcSignalEvent(motor->driver, &info);
     return 0;
 }
