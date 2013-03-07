@@ -20,7 +20,7 @@ motors.
 %setup -q
 
 %build
-make %{?_smp_mflags}
+make -j1 #%{?_smp_mflags}
 
 %install
 rm -rf %{buildroot}
