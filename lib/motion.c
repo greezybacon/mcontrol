@@ -86,6 +86,10 @@ _move_check_and_get_revs(Motor * motor, int amount,
         motor->pos_known = true;
     }
 
+    // Handle motion completion checkback -- signal EV_MOTION when the move
+    // is completed
+    mcMoveTrajectCompletionCancel(motor);
+
     // Track initial details of the motor motion details.
     // NOTE: that mcMoveTrajectCompletion() expects the motor->movement to
     // be filled out in advance
@@ -95,11 +99,6 @@ _move_check_and_get_revs(Motor * motor, int amount,
         .urevs = command->amount,
     };
     clock_gettime(CLOCK_REALTIME, &motor->movement.start);
-
-    // Handle motion completion checkback -- signal EV_MOTION when the move
-    // is completed
-    if (motor->movement.checkback_id)
-        mcMoveTrajectCompletionCancel(motor);
 
     if (command->type != MCSLEW)
         mcMoveTrajectCompletion(motor);
