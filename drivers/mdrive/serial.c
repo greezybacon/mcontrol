@@ -48,7 +48,8 @@ mdrive_get_string(mdrive_device_t * device, const char * variable,
         .expect_data = true,
         .result = &result
     };
-    if (mdrive_communicate(device, buffer, &options) != RESPONSE_OK)
+    if (mdrive_communicate(device, buffer, &options) != RESPONSE_OK
+            && result.length == 0)
         return -EIO;
 
     return snprintf(value, size, "%s", result.buffer);
@@ -66,7 +67,8 @@ mdrive_get_integer(mdrive_device_t * device, const char * variable, int * value)
         .result = &result
     };
 
-    if (mdrive_communicate(device, buffer, &options) != RESPONSE_OK)
+    if (mdrive_communicate(device, buffer, &options) != RESPONSE_OK
+            && result.length == 0)
         return EIO;
 
     errno = 0;
@@ -104,7 +106,8 @@ mdrive_get_integers(mdrive_device_t * device, const char * vars[],
         .expect_data = true,
         .result = &result
     };
-    if (mdrive_communicate(device, buffer, &options) != RESPONSE_OK)
+    if (mdrive_communicate(device, buffer, &options) != RESPONSE_OK
+            && result.length == 0)
         return EIO;
 
     errno = 0;
@@ -132,7 +135,8 @@ mdrive_get_integers(mdrive_device_t * device, const char * vars[],
  * properly consider the response of the command.
  *
  * Returns:
- * (int) error code currently set on the unit
+ * (int) error code currently set on the unit, -EIO if unable to retrieve
+ * the error code from the unit
  */
 int
 mdrive_get_error(mdrive_device_t * device) {
@@ -239,7 +243,9 @@ mdrive_classify_response(mdrive_device_t * device, mdrive_response_t * response)
             // unclear if the command was not processed by the unit or if an
             // error exists on the unit after the command was received.
             // Either way, we need to query the device for the error.
-            else if (response->nack)
+            //
+            // If CK=2, NACK is sent only to indicate NACK, not error
+            else if (response->nack && device->checksum == CK_ON)
                 response->error = true;
                 // Fall through to [if (response->error)] case
 
@@ -347,11 +353,6 @@ mdrive_process_response(char * buffer, mdrive_response_t * response,
                     }
                     else if (*(bufc+1) == '?') {
                         response->error = true;
-                        bufc++;
-                    }
-                    else if (*(bufc+1) == '\x06') {
-                        // If a procedure as EX'd and it printed something,
-                        // in checksum mode, the ACK will follow the CRLF
                         bufc++;
                     }
                     // Stock firmwares will not send the prompt in EM=1;
@@ -986,16 +987,26 @@ receive:
                 // retried unless the error was EOVERRUN, in which case
                 // status will be RETRY
                 break;
+            } else if (status == RESPONSE_BAD_CHECKSUM) {
+                // Response cannot be trusted and must be retried
+                device->stats.bad_checksums++;
             } else {
-                // Transmission will be retried due to unacceptable response
+                // Transmission may be retried due to unacceptable response
                 // from the unit. Keep interesting statistics, though.
                 if (status == RESPONSE_RETRY)
                     device->stats.overflows++;
-                else if (status == RESPONSE_BAD_CHECKSUM)
-                    device->stats.bad_checksums++;
-                else if (status == RESPONSE_UNKNOWN)
+                else if (status == RESPONSE_UNKNOWN) {
                     mcTrace(20, MDRIVE_CHANNEL_RX, "UNKNOWN response received");
-                // Wait and retry the transmission
+                    // If we have data, roll with it
+                    if (response && response->length && options->expect_data)
+                        break;
+                }
+                // Retry the transmission, unless we were expecting data and
+                // have a valid response, in which case, don't retry the
+                // transmission.
+                //
+                // XXX: Can we safely assume that if we have data and an
+                //      error 63 that we can avoid a resend?
             }
 
             device->stats.rx++;
