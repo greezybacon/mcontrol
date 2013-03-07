@@ -285,7 +285,7 @@ mcMoveTrajectCompletionCheckback(void * arg) {
         return NULL;
 
     bool completed = true;
-    if (motion->vel_known && motion->velocity > 0) {
+    if (motion->vel_known && motion->velocity != 0) {
         /*
          * (perhaps it's safe to) Assume that the unit is decelerating.
          * Currently, the velocity of the unit is given. The unit will
