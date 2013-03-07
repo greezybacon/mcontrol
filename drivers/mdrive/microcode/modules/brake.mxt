@@ -1,4 +1,4 @@
-#define BRAKE
+#define BRAKE 1
 
 ''
 ' TB
@@ -105,6 +105,8 @@ LB WB
     H
 
     ' Wait for move to finish and reset the profile to defaults
+    ST = 0
+    CL P2
     MA Q1
     H
 

@@ -135,17 +135,17 @@ LB SR
   ' Calculate the change in position. Positive is downward.
   R4 = Q1 - P
 
+  CL P3, R4 > 6144
+  CL P1, R4 < -6144
+
   ' Compute the absolute value of the distance, too
-  R3 = R4
-  BR S0, R3 > 0
-  ' if (R3 <= 0) {
-    R3 = R3 * -1
+  BR S0, R4 > 0
+  ' if (R4 <= 0) {
+    R4 = R4 * -1
   ' }
   LB S0
 
-  CL P3, R4 > 6144
-  CL P1, R4 < -6144
-  CL P2, R3 <= 6144
+  CL P2, R4 <= 6144
 
 RT
 
