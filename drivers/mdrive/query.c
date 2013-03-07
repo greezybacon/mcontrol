@@ -667,10 +667,10 @@ mdrive_motion_peek(mdrive_device_t * device, struct motor_query * query,
     bool ignore_errors = device->ignore_errors;
     device->ignore_errors = true;
 
-    const char * vars[] = {"ER", "P", "V",
+    const char * vars[] = {"ST", "P", "V",
         device->microcode.labels.following_error };
-    int flag, pos, vel, error = 0, count = 3,
-        * vals[] = { &flag, &pos, &vel, &error };
+    int stalled, pos, vel, error = 0, count = 3,
+        * vals[] = { &stalled, &pos, &vel, &error };
 
     if (device->microcode.features.following_error)
         count++;
@@ -680,13 +680,9 @@ mdrive_motion_peek(mdrive_device_t * device, struct motor_query * query,
         goto cleanup;
     }
 
-    if (flag)
-        mdrive_clear_error(device);
-
     struct motion_update * motion = &query->value.status;
     *motion = (struct motion_update) {
-        .failed = (error == MDRIVE_EDEADBAND),
-        .stalled = (error == MDRIVE_ESTALL),
+        .stalled = stalled,
         .pos_known = true,
         .position = mdrive_steps_to_microrevs(device, pos),
         .vel_known = true,
