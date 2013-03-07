@@ -27,9 +27,6 @@ extern struct worker * AllWorkers;
 extern int
 WorkerEnqueue(Worker * worker, request_message_t * message);
 
-static int
-WorkerDequeue(Worker * worker);
-
 extern int
 DaemonWorkerAdd(void);
 

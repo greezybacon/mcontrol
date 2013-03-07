@@ -16,6 +16,9 @@
 
 struct worker * AllWorkers;
 
+static int
+WorkerDequeue(Worker * worker);
+
 /**
  * DaemonWorkerThread
  *
