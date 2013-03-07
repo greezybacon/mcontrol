@@ -265,6 +265,8 @@ mcMoveTrajectCompletionCheckback(void * arg) {
     if (!arg)
         return NULL;
 
+    int checkback_id = motor->movement.checkback_id;
+
     // Request current device latency
     struct motor_query q = { .query = MCLATENCYRX };
     // TODO: Something with the return value from the driver
@@ -276,6 +278,11 @@ mcMoveTrajectCompletionCheckback(void * arg) {
     // TODO: Something with the return value from the driver
     INVOKE(motor, read, &q);
     struct motion_update * motion = &q.value.status;
+    
+    // Detect motion cancel
+    if (motor->movement.checkback_id != checkback_id)
+        // The move we're checking on here was canceled
+        return NULL;
 
     bool completed = true;
     if (motion->vel_known && motion->velocity > 0) {
@@ -343,6 +350,8 @@ mcMoveTrajectCompletionCheckback(void * arg) {
             .data = &data,
         };
         mcSignalEvent(motor->driver, &info);
+        mcTraceF(50, LIB_CHANNEL, "Signalling EV_MOTION event");
+        motor->movement.checkback_id = 0;
     }
 
     return NULL;
