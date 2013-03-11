@@ -274,7 +274,7 @@ mcMoveTrajectCompletionCheckback(void * arg) {
     int latency = q.value.number;
 
     // Request a status update from the motor
-    q.query = MCSTATUS;
+    q = (struct motor_query) { .query = MCSTATUS };
     // TODO: Something with the return value from the driver
     INVOKE(motor, read, &q);
     struct motion_update * motion = &q.value.status;
