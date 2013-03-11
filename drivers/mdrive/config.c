@@ -66,9 +66,11 @@ mdrive_config_commit(mdrive_device_t * device,
     if (mdrive_communicate(device, "S", &options) != RESPONSE_OK)
         return false;
 
-    if (mdrive_config_inspect(device, true))
+    // Reinspect communication settings unless requested not to do so
+    if ((!preserve || !preserve->dont_inspect)
+            && mdrive_config_inspect(device, true))
         return false;
-        
+
     return true;
 }
 
@@ -152,7 +154,10 @@ mdrive_config_set_baudrate(mdrive_device_t * device, int speed) {
     if (!mdrive_set_variable(device, "BD", selected->setting))
         return EIO;
 
-    if (!mdrive_config_commit(device, NULL)) // Saves the configuration
+    // Don't reinspect the communication settings because the unit is about
+    // to be rebooted
+    struct mdrive_config_flags flags = { .dont_inspect = true };
+    if (!mdrive_config_commit(device, &flags)) // Saves the configuration
         return EIO;
 
     // Reboot the unit for BD to take effect. Request the comm to the device

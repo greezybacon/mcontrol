@@ -6,6 +6,10 @@ struct mdrive_config_flags {
     bool        echo;               // EM
     bool        escape;             // ES
     bool        reset;              // CE
+
+    // (Don't) reinspect config settings after save (useful if about to
+    // reboot the motor)
+    bool        dont_inspect;
 };
 
 enum checksum_mode {
