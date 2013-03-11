@@ -412,7 +412,14 @@ mdrive_process_response(char * buffer, mdrive_response_t * response,
                         target--;
                         response->length--;
                     }
-                } else if (response->length) {
+                // NOTE: The size check here is for some odd cases in
+                // firmware-upgrade mode, where sometimes a reboot response
+                // will include a dollar-sign ('$') followed by this
+                // sequence. It should not be considered an echo and cleared
+                // from the buffer. Technically, the response would have to
+                // be at least 1 char in order to satisfy the if statement
+                // anyway.
+                } else if (response->length > 2) {
                     if (*(bufc-1) == '\n' || *(bufc-1) == '\x13') {
                         // Checksum was before ACK/NACK -- echo mode
                         // enabled.  Drop the received buffer. Also, on some
@@ -497,7 +504,7 @@ normal_char:
         bufc++;
     }
     // Handle strange responses when in upgrade mode
-    if (response->length == 1 && response->buffer[0] == '$')
+    if (response->buffer[0] == '$')
         // Reboot sends an single '$' char
         response->processed = true;
 
