@@ -32,7 +32,7 @@ mdrive_config_rollback(mdrive_device_t * device) {
     // Inspect the reset configuration, but don't set anything new
     if (mdrive_config_inspect(device, true))
         return false;
-    
+
     return true;
 }
 
@@ -155,18 +155,14 @@ mdrive_config_set_baudrate(mdrive_device_t * device, int speed) {
     if (!mdrive_config_commit(device, NULL)) // Saves the configuration
         return EIO;
 
-    // Reboot the unit for BD to take effect; however we won't be able to
-    // talk to the unit because we'll still be at the wrong speed
-    mdrive_reboot(device);            
-                                    
+    // Reboot the unit for BD to take effect. Request the comm to the device
+    // to change speeds as well.
+    //
     // NOTE: If the mdrive_set_baudrate fails, there will be no automated
     // way to correct it since we cannot set the baudrate and the unit is
     // already rebooted in the new baud setting.
-    mdrive_set_baudrate(device->comm, selected->human);
-
-    // Communication with this device should be at the new baudrate.
-    // NOTE: That other motors are allowed to be at different baudrates
-    device->speed = selected->human;
+    struct mdrive_reboot_opts options = { .baudrate = selected->human };
+    mdrive_reboot(device, &options);
 
     // Re-detect communication settings (reset by reboot)
     mdrive_config_inspect(device, true);
@@ -256,7 +252,7 @@ mdrive_config_inspect(mdrive_device_t * device, bool set) {
         // By default, the motors will not respond to global commands, and,
         // even if they did, it would likely get clobbered.
         return 0;
-    
+
     // Assume EM=0 which is the most difficult to work with
     device->echo = EM_ON;
 

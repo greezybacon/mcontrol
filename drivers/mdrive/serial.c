@@ -533,6 +533,12 @@ mdrive_async_read(void * arg) {
     char * load = buffer, * process = buffer;
     int txid = 0;
 
+    // Handle SIGUSR1 to indicate change in channel baudrate
+    sigset_t signals;
+    sigemptyset(&signals);
+    sigaddset(&signals, SIGUSR1);
+    pthread_sigmask(SIG_BLOCK, &signals, NULL);
+
     while (true) {
 
         // Try to read more than one char at a time
@@ -673,7 +679,14 @@ mdrive_write_buffer(mdrive_device_t * device, const char * buffer, int length) {
     // allows motors on the same comm channel to be at different speeds.
     // This doesn't make great sense for production units; however, it make
     // diagnostics and motor setup much easier.
-    mdrive_set_baudrate(device->comm, device->speed);
+    if (device->comm->speed != device->speed) {
+        mdrive_set_baudrate(device->comm, device->speed);
+        // Flush device buffers at this speed
+        if (device->party_mode)
+            write(device->comm->fd, "\n", 1);
+        else
+            write(device->comm->fd, "\r", 1);
+    }
 
     // Don't bother checking if [txwait] is in the past, because
     // clock_nanosleep() will too. No need checking twice
@@ -911,6 +924,11 @@ mdrive_communicate(mdrive_device_t * device, const char * command,
             status = RESPONSE_IOERROR;
             break;
         }
+
+        // Honor switch of baudrate if requested
+        if (options->baudrate
+                && mdrive_set_baudrate(device->comm, options->baudrate) == 0)
+            device->speed = options->baudrate;
 
         clock_gettime(CLOCK_REALTIME, &now);
         tsAdd(&now, &first_waittime, &timeout);
@@ -1258,7 +1276,14 @@ mdrive_set_baudrate(mdrive_comm_device_t * channel, int speed) {
     cfsetispeed(&tty, s->constant);
     cfsetospeed(&tty, s->constant);
 
+    mcTraceF(30, MDRIVE_CHANNEL, "Setting baudrate on %s to %d",
+        channel->name, speed);
+
     int status = tcsetattr(channel->fd, TCSADRAIN, &tty);
+
+    // Signal the read thread of the baudrate change
+    if (channel->read_thread)
+        pthread_kill(channel->read_thread, SIGUSR1);
 
     if (status == 0)
         channel->speed = speed;

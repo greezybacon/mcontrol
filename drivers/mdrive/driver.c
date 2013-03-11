@@ -101,49 +101,44 @@ void mdrive_uninit(Driver * self) {
     free(self->internal);
 }
 
-int mdrive_reboot(mdrive_device_t * device) {
-    static struct cmd_wait {
-        const char *    text;
-        int             wait;
-    } cmds[] = {
-        { "\x1b", 0 },
-        { "\x03", 950e6 },
-        { NULL, 0 }
-    };
+int mdrive_reboot(mdrive_device_t * device,
+        struct mdrive_reboot_opts * flags) {
+
+    // Halt the unit with the standard halt procedure
+    if (flags && !flags->no_halt)
+        mdrive_stop(device->driver, MCHALT);
+
     mdrive_response_t result;
-    struct timespec waittime;
+    struct timespec waittime = { .tv_nsec = 650e6 };
     struct mdrive_send_opts options = {
         .expect_data = false,
         .result = &result,
         .expect_err = true,
-        .raw = true
+        .waittime = &waittime,
+        .raw = true,
     };
+
+    // Request baudrate change in the mdrive_communicate routine
+    if (flags && flags->baudrate)
+        options.baudrate = flags->baudrate;
+
     // Don't retry the reboot in party-mode (the unit won't give any
     // indication of acceptance)
     if (device->party_mode)
         options.tries = 1;
 
-    for (struct cmd_wait * cmd = cmds; cmd->text; cmd++) {
-        if (cmd->wait) {
-            waittime = (struct timespec) { .tv_nsec = cmd->wait };
-            options.waittime = &waittime;
-        }
-        else
-            options.waittime = NULL;
+    mdrive_communicate(device, "\x03", &options);
 
-        mdrive_communicate(device, cmd->text, &options);
-
-        // Sense firmware upgrade mode
-        if (result.buffer[0] == '$')
-            device->upgrade_mode = true;
-    }
+    // Sense firmware upgrade mode
+    if (result.buffer[0] == '$')
+        device->upgrade_mode = true;
 
     return 0;
 }
 
 int mdrive_reset(Driver * self) {
     mdrive_device_t * device = self->internal;
-    return mdrive_reboot(device);
+    return mdrive_reboot(device, NULL);
 }
 
 int

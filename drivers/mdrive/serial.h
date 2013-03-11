@@ -19,6 +19,10 @@ struct mdrive_send_opts {
                                         // for retrieving the current error)
     bool                raw;            // Don't send EOL char
     unsigned short      tries;          // Number of tries (other than def)
+    // After the send, change to this baudrate. This is mostly useful for
+    // sending a soft reset command when the unit will switch baudrates
+    // after the soft reset.
+    unsigned int        baudrate;
 };
 
 extern int

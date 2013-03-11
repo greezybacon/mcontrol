@@ -30,27 +30,28 @@ mdrive_firmware_write(mdrive_device_t * device, const char * filename) {
     }
     mcTraceF(20, MDRIVE_CHANNEL_FW, "Entering firmware upgrade mode");
 
-    // Put device in upgrade mode
-    mdrive_send(device, "UG 2956102");
-
     // The unit may indicate NACKs, but will not respond to PR ER
     device->ignore_errors = true;
+
+    // Put device in upgrade mode. Don't expect a response, don't retry, and
+    // don't handle errors automatically
+    struct mdrive_send_opts options = {
+        .tries = 1,
+        .expect_err = true,
+    };
+    mdrive_communicate(device, "UG 2956102", &options);
 
     // Unset checksum mode and party mode -- the unit now has an address
     // of ':'
     device->checksum = CK_OFF;
     device->party_mode = false;
 
-    // Reset the motor
-    mdrive_reboot(device);
-
-    // Change to 19200 baud
-    if (mdrive_set_baudrate(device->comm, 19200) == 0)
-       device->speed = 19200;
-
-    // Reset the motor -- (which will allow reading the '$' prompt sent back
-    // from the unit when rebooted in upgrade mode)
-    mdrive_reboot(device);
+    // Reset the motor and change to 19200 baud
+    struct mdrive_reboot_opts reboot_opts = {
+        .baudrate = 19200,
+        .no_halt = true,
+    };
+    mdrive_reboot(device, &reboot_opts);
 
     // Ensure the device is in upgrade mode
     if (!device->upgrade_mode)
@@ -58,7 +59,7 @@ mdrive_firmware_write(mdrive_device_t * device, const char * filename) {
 
     // Prepare options for sending firmware lines
     mdrive_response_t result;
-    struct mdrive_send_opts options = {
+    options = (struct mdrive_send_opts) {
         .result = &result,      // Capture the received result
         .expect_data = true,
         .expect_err = true,     // Handle error condition here
@@ -80,7 +81,7 @@ mdrive_firmware_write(mdrive_device_t * device, const char * filename) {
     // :e -- Enter into programming mode
     char * magic_codes[] =
         { ":IMSInc\r", "::v\r", "::c\r", "::p\r", "::s\r", "::e\r", NULL };
-    struct timespec waittime = { .tv_nsec=15e6 },
+    struct timespec waittime = { .tv_nsec=11e6 },
         longer = { .tv_nsec=250e6 };
     for (char ** magic = magic_codes; *magic; magic++) {
         do {
@@ -167,8 +168,10 @@ mdrive_firmware_write(mdrive_device_t * device, const char * filename) {
     // in upgrade mode)
     device->upgrade_mode = false;
 
-    // Reboot the motor (again)
-    mdrive_reboot(device);
+    // Reboot the motor (again). Don't switch baudrates so that UG mode can
+    // be detected
+    reboot_opts.baudrate = 0;
+    mdrive_reboot(device, &reboot_opts);
 
     if (device->upgrade_mode)
         return EIO;
@@ -180,8 +183,7 @@ mdrive_firmware_write(mdrive_device_t * device, const char * filename) {
 
     // Unit is now factory defaulted. Change to default speed and re-inspect
     // comm settings
-    if (mdrive_set_baudrate(device->comm, DEFAULT_PORT_SPEED) == 0)
-        device->speed = DEFAULT_PORT_SPEED;
+    device->speed = DEFAULT_PORT_SPEED;
 
     mdrive_config_inspect(device, true);
     device->address = '!';
@@ -228,7 +230,7 @@ mdrive_check_ug_mode(mdrive_device_t * device, char * serial, int size) {
     device->speed = 19200;
     device->checksum = CK_OFF;
 
-    mdrive_reboot(device);
+    mdrive_reboot(device, NULL);
 
     mdrive_response_t result = { .ack = false };
     struct mdrive_send_opts options = {
@@ -249,7 +251,6 @@ mdrive_check_ug_mode(mdrive_device_t * device, char * serial, int size) {
     // Reset the speed setting
     device->speed = oldspeed;
     device->checksum = ckmode;
-
 
     if (result.ack) {
         snprintf(serial, size, "%s", result.buffer);
