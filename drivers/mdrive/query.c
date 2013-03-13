@@ -447,6 +447,7 @@ mdrive_var_peek(mdrive_device_t * device, struct motor_query * query,
         struct query_variable * q) {
 
     int value;
+    // XXX: Warning overflow from query->arg.string
     if (mdrive_get_integer(device, query->arg.string, &value))
         return EIO;
 
@@ -658,15 +659,6 @@ mdrive_motion_peek(mdrive_device_t * device, struct motor_query * query,
     if (device == NULL)
         return EINVAL;
 
-    struct timespec now;
-    clock_gettime(CLOCK_REALTIME, &now);
-
-    int status = 0;
-
-    // Handle device errors here
-    bool ignore_errors = device->ignore_errors;
-    device->ignore_errors = true;
-
     const char * vars[] = {"ST", "P", "V",
         device->microcode.labels.following_error };
     int stalled, pos, vel, error = 0, count = 3,
@@ -675,10 +667,8 @@ mdrive_motion_peek(mdrive_device_t * device, struct motor_query * query,
     if (device->microcode.features.following_error)
         count++;
 
-    if (mdrive_get_integers(device, vars, vals, count)) {
-        status = EIO;
-        goto cleanup;
-    }
+    if (mdrive_get_integers(device, vars, vals, count))
+        return EIO;
 
     struct motion_update * motion = &query->value.status;
     *motion = (struct motion_update) {
@@ -694,9 +684,7 @@ mdrive_motion_peek(mdrive_device_t * device, struct motor_query * query,
     else
         motion->in_progress = !(motion->stalled || motion->failed);
 
-cleanup:
-    device->ignore_errors = ignore_errors;
-    return status;
+    return 0;
 }
 
 static int
