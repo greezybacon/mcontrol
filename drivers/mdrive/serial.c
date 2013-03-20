@@ -5,6 +5,8 @@
 #include "events.h"
 #include "queue.h"
 
+#include "lib/trace.h"
+
 #include <assert.h>
 #include <errno.h>
 #include <signal.h>
@@ -976,7 +978,7 @@ receive:
             // However, if the unit indicated an error already, then we're
             // finished.
             if (!response->code) {
-                mcTrace(50, MDRIVE_CHANNEL_RX, "Waiting longer ...");
+                mcTraceF(50, MDRIVE_CHANNEL_RX, "Waiting longer ...");
                 if (!options->waittime) {
                     clock_gettime(CLOCK_REALTIME, &now);
                     tsAdd(&now, &more_waittime, &timeout);
@@ -1028,7 +1030,7 @@ receive:
                 if (status == RESPONSE_RETRY)
                     device->stats.overflows++;
                 else if (status == RESPONSE_UNKNOWN) {
-                    mcTrace(20, MDRIVE_CHANNEL_RX, "UNKNOWN response received");
+                    mcTraceF(20, MDRIVE_CHANNEL_RX, "UNKNOWN response received");
                     // If we have data, roll with it
                     if (response && response->length && options->expect_data)
                         break;

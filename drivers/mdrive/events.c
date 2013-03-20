@@ -5,6 +5,8 @@
 #include "config.h"
 #include "serial.h"
 
+#include "lib/trace.h"
+
 #include <errno.h>
 #include <stdio.h>
 

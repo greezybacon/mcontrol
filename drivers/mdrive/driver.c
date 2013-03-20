@@ -9,6 +9,9 @@
 #include "firmware.h"
 #include "microcode.h"
 
+#include "lib/driver.h"
+#include "lib/trace.h"
+
 #include <stdio.h>
 #include <time.h>
 #include <regex.h>
