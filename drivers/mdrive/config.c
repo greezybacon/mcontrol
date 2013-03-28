@@ -39,10 +39,20 @@ mdrive_config_rollback(mdrive_device_t * device) {
 /**
  * mdrive_config_commit
  *
- * Sends the save command (S) to commit changes to NVRAM
+ * Sends the save command (S) to commit changes to NVRAM. Settings involving
+ * communication to the motor (EM, CK, ES, and CE) are reset to their
+ * defaults before the save command is sent.
  *
  * Parameters:
  * device - (mdrive_device_t *) Device to commit config changes
+ * preserve - (struct mdrive_config_flags *) Flags to control what happens
+ *          before and after the save happens:
+ *      checksum - (bool) Don't reset checksum (CK) before save
+ *      echo - (bool) Don't reset echo (EM) before save
+ *      escape - (bool) Don't reset escape (ES) before save
+ *      reset - (bool) Don't reset soft-reset (CE) before save
+ *      dont_inspect - (bool) Don't inspect and set comm settings after
+ *          save. (Useful if about to reboot the unit.)
  *
  * Returns:
  * (bool) - TRUE if commit was completed successfully and FALSE otherwise
@@ -56,17 +66,21 @@ mdrive_config_commit(mdrive_device_t * device,
         mdrive_set_checksum(device, CK_OFF, false);
     if (!preserve || !preserve->echo)
         mdrive_set_echo(device, EM_ON, false);
+    if (device->party_mode) {
+        if (!preserve || !preserve->escape)
+            mdrive_set_variable(device, "ES", ES_ESC);
+        if (!preserve || !preserve->reset)
+            mdrive_set_variable(device, "CE", CE_CTRLC);
+    }
 
     struct timespec timeout = { .tv_nsec = 750e6 };
-    struct mdrive_send_opts options = {
-        .expect_data = false,
-        .waittime = &timeout
-    };
+    struct mdrive_send_opts options = { .waittime = &timeout };
 
     if (mdrive_communicate(device, "S", &options) != RESPONSE_OK)
         return false;
 
     // Reinspect communication settings unless requested not to do so
+    // XXX: This logic is not correct
     if ((!preserve || !preserve->dont_inspect)
             && mdrive_config_inspect(device, true))
         return false;
@@ -276,12 +290,22 @@ mdrive_config_inspect(mdrive_device_t * device, bool set) {
     // Configure motor in best performance mode for this driver
     if (set) {
         mdrive_set_echo(device, EM_PROMPT, false);
+        // TODO: Investigate using CK=2 which will disambiguate the meaning
+        //       of NACK, but will make detecting the error flag harder
         mdrive_set_checksum(device, CK_ON, false);
+
+        if (device->party_mode) {
+            // It's actually faster and safe to just set the party-mode
+            // settings for stop and reset. CE will automatically degrade to
+            // non-party mode if party-mode is unset
+
+            // Inspect ES setting (for E-stop)
+            mdrive_set_variable(device, "ES", ES_ESC_PARTY);
+
+            // Inspect CE setting (for reset (CTRL+C)
+            mdrive_set_variable(device, "CE", CE_CTRLC_PARTY);
+        }
     }
-
-    // Inspect ES setting (for E-stop)
-
-    // Inspect CE setting (for reset (CTRL+C)
 
     device->ignore_errors = ignore_errors;
     return 0;
