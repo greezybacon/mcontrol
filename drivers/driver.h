@@ -198,6 +198,7 @@ struct motor_driver {
      * driver_event_callback_t callback - Notify this client
      */
     int (*notify)(Driver *, event_t, int, driver_event_callback_t);
+    int (*subscribe)(Driver *, event_t, driver_event_callback_t);
     int (*unsubscribe)(Driver *, driver_event_callback_t);
     // XXX: Pause/unpause events ?
 
