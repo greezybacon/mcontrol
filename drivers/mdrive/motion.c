@@ -1,5 +1,6 @@
 #include "mdrive.h"
 
+#include "config.h"
 #include "events.h"
 #include "motion.h"
 #include "serial.h"
@@ -218,8 +219,9 @@ mdrive_stop(Driver * self, enum stop_type type) {
         case MCESTOP:
             global = *device;
             global.address = '*';
+            // Send with checksum toggled too, for safety
+            global.checksum = CK_ON;
             // XXX: Detect if the targeted device does not have party mode
-            // XXX: Send with checksum toggled too, for safety
             if (mdrive_send(&global, "\x1b"))
                 return EIO;
             // XXX: DE the motors too
