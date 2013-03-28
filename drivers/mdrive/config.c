@@ -174,16 +174,15 @@ mdrive_config_set_baudrate(mdrive_device_t * device, int speed) {
     if (!mdrive_config_commit(device, &flags)) // Saves the configuration
         return EIO;
 
-    // Reboot the unit for BD to take effect. Request the comm to the device
-    // to change speeds as well.
-    //
+    // Reboot the unit for BD to take effect.
     // NOTE: If the mdrive_set_baudrate fails, there will be no automated
     // way to correct it since we cannot set the baudrate and the unit is
     // already rebooted in the new baud setting.
-    struct mdrive_reboot_opts options = { .baudrate = selected->human };
-    mdrive_reboot(device, &options);
+    mdrive_reboot(device, NULL);
 
-    // Re-detect communication settings (reset by reboot)
+    // Re-detect communication settings (reset by reboot). Indicate that the
+    // baudrate is now switched.
+    device->speed = selected->human;
     mdrive_config_inspect(device, true);
 
     // Invalidate driver cache so that a request on the original connection
