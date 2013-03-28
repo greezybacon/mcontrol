@@ -190,7 +190,7 @@ DriverClass mdrive_driver = {
     .read = mdrive_read_variable,
     .write = mdrive_write_variable,
 
-    .notify = mdrive_notify,
+    .subscribe = mdrive_subscribe,
     .unsubscribe = mdrive_unsubscribe,
 
     .load_firmware = mdrive_load_firmware,
