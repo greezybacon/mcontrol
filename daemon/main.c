@@ -1,8 +1,9 @@
-#include "../drivers/driver.h"
-#include "../lib/driver.h"
-#include "../lib/message.h"
+#include "drivers/driver.h"
 
-#include "../lib/trace.h"
+#include "lib/client.h"
+#include "lib/driver.h"
+#include "lib/message.h"
+#include "lib/trace.h"
 
 #include "controller.h"
 #include "trace.h"
@@ -24,6 +25,9 @@ trace_output(int id, int level, int channel, const char * buffer) {
 int main(int argc, char * argv[]) {
     DaemonTraceInit();
     mcTraceSubscribe(50, ALL_CHANNELS, trace_output);
+
+    // Ensure that calls made from the daemon stay in process
+    mcClientCallModeSet(MC_CALL_IN_PROCESS);
 
     mcDriverLoad("mdrive.so");
 
