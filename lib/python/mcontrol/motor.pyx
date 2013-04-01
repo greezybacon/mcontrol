@@ -509,10 +509,13 @@ cdef class MotionDetails(object):
     cdef public bool stalled
     cdef public bool cancelled
     cdef public bool stopped
+    cdef public bool failed
     cdef public bool in_progress
     cdef public bool pos_known
+    cdef public bool vel_known
     cdef public int error
     cdef public object position
+    cdef public object velocity
 
     def __repr__(self):
         return self.__unicode__()
@@ -539,15 +542,26 @@ cdef MotionDetails mdFromEventData(event_data_t * data):
     self.stalled = not not data.motion.stalled
     self.cancelled = not not data.motion.cancelled
     self.stopped = not not data.motion.stopped
+    self.failed = not not data.motion.failed
     self.in_progress = not not data.motion.in_progress
     self.error = not not data.motion.error
     if data.motion.pos_known:
         self.position = data.motion.position
     else:
         self.position = None
+    if data.motion.vel_known:
+        self.velocity = data.motion.velocity
+    else:
+        self.velocity = None
     return self
 
 cdef class Event(object):
+    """
+    Represents a signal or notification event from the mcontrol library to
+    represent a transient state of a motor. Generally, Event instances are
+    created with the Motor::on() method in order to link the motor and the
+    event of interest together.
+    """
     EV_MOTION = defs.EV_MOTION
 
     cdef readonly Motor motor
@@ -562,6 +576,11 @@ cdef class Event(object):
         self.event = event
         self._callback = None
         self.id = 0
+        raise_status(
+            mcSubscribeWithData(
+                self.motor.id, self.event, &self.id,
+                pyEventCallback, <void *>self),
+            "Unable to subscribe to event")
         self.reset()
 
     def __dealloc__(self):
@@ -571,13 +590,6 @@ cdef class Event(object):
     def reset(self):
         self.isset = False
         self.data = None
-        if self.id:
-            mcUnsubscribe(self.motor.id, self.id)
-        raise_status(
-            mcSubscribeWithData(
-                self.motor.id, self.event, &self.id,
-                pyEventCallback, <void *>self),
-            "Unable to subscribe to event")
 
     cdef void callback(Event self, object data):
         self.isset = True

@@ -76,10 +76,13 @@ cdef extern from "motor.h":
         unsigned    stalled
         unsigned    cancelled
         unsigned    stopped
+        unsigned    failed
         unsigned    in_progress
         unsigned    pos_known
+        unsigned    vel_known
         unsigned    error
         long long   position
+        long long   velocity
 
     ctypedef union event_data_t:
         long long number

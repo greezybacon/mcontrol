@@ -27,6 +27,19 @@ enum echo_mode {
 };
 typedef enum echo_mode echo_mode_t;
 
+enum escape_mode {
+    ES_CTRLE,
+    ES_ESC,
+    ES_CTRLE_PARTY,
+    ES_ESC_PARTY,
+};
+
+enum reset_mode {
+    CE_OFF,
+    CE_CTRLC,
+    CE_CTRLC_PARTY
+};
+
 enum variable_persistence {
     TEMPORAL,
     PERSISTENT

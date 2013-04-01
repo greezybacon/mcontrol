@@ -1,0 +1,25 @@
+
+create block-test
+
+if True; do
+    print "Block"
+    print "Succeeded"
+done
+
+if False; do
+    print "Should have been skipped"
+    fail
+done
+
+if True: print "Single line works"
+
+if True: do
+    if True
+    do
+        print "Nested block succeeds"
+        succeed
+    done
+done;
+succeed
+
+save

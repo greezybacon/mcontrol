@@ -5,6 +5,8 @@
 #include "events.h"
 #include "queue.h"
 
+#include "lib/trace.h"
+
 #include <assert.h>
 #include <errno.h>
 #include <signal.h>
@@ -673,7 +675,9 @@ mdrive_write_buffer(mdrive_device_t * device, const char * buffer, int length) {
     struct timespec txwait, now,
         txspacetime = { .tv_nsec = MIN_TX_GAP_NSEC };
 
-    mcTraceBuffer(50, MDRIVE_CHANNEL_TX, buffer, length);
+    assert(device != NULL);
+    assert(buffer != NULL);
+    assert(length > 0);
 
     // NOTE: There needs to be at least a 10-20ms space between sends on
     // the wire. We need to wait here until it's safe to send more data.
@@ -694,6 +698,8 @@ mdrive_write_buffer(mdrive_device_t * device, const char * buffer, int length) {
         else
             write(device->comm->fd, "\r", 1);
     }
+
+    mcTraceBuffer(50, MDRIVE_CHANNEL_TX, buffer, length);
 
     // Don't bother checking if [txwait] is in the past, because
     // clock_nanosleep() will too. No need checking twice
@@ -947,6 +953,7 @@ mdrive_communicate(mdrive_device_t * device, const char * command,
             tsAdd(&timeout, &more_waittime, &timeout);
 
 receive:
+        status = RESPONSE_UNKNOWN;
         if (mdrive_receive_response(device, &timeout, &response)) {
             // Timed out
             if ((device->echo == EM_QUIET || device->address == '*')
@@ -976,7 +983,7 @@ receive:
             // However, if the unit indicated an error already, then we're
             // finished.
             if (!response->code) {
-                mcTrace(50, MDRIVE_CHANNEL_RX, "Waiting longer ...");
+                mcTraceF(50, MDRIVE_CHANNEL_RX, "Waiting longer ...");
                 if (!options->waittime) {
                     clock_gettime(CLOCK_REALTIME, &now);
                     tsAdd(&now, &more_waittime, &timeout);
@@ -1028,7 +1035,7 @@ receive:
                 if (status == RESPONSE_RETRY)
                     device->stats.overflows++;
                 else if (status == RESPONSE_UNKNOWN) {
-                    mcTrace(20, MDRIVE_CHANNEL_RX, "UNKNOWN response received");
+                    mcTraceF(20, MDRIVE_CHANNEL_RX, "UNKNOWN response received");
                     // If we have data, roll with it
                     if (response && response->length && options->expect_data)
                         break;
@@ -1049,6 +1056,11 @@ receive:
             mcTraceF(10, MDRIVE_CHANNEL, "Invalid TXID received: %d / %d",
                 txid, response->txid);
         }
+        // If response is considered OK although no response was received,
+        // then no retry is necessary
+        else if (status == RESPONSE_OK) {
+            break;
+        }
         device->stats.resends++;
 
     } // end while (i--)
@@ -1064,7 +1076,7 @@ receive:
     }
     else if (i == 0) {
         // Motor refused to ACK the command (no response)
-        mcTraceF(10, MDRIVE_CHANNEL, "Out of retries: %d, %d", i, status);
+        mcTraceF(10, MDRIVE_CHANNEL, "Out of retries: %d", status);
         status = RESPONSE_IOERROR;
     }
 
@@ -1072,7 +1084,8 @@ receive:
 
     pthread_mutex_unlock(&device->comm->txlock);
 
-    mcTraceF(50, MDRIVE_CHANNEL_RX, "Status is %d", status);
+    if (status != RESPONSE_OK)
+        mcTraceF(50, MDRIVE_CHANNEL_RX, "Status is %d", status);
     return status;
 }
 

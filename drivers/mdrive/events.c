@@ -5,6 +5,8 @@
 #include "config.h"
 #include "serial.h"
 
+#include "lib/trace.h"
+
 #include <errno.h>
 #include <stdio.h>
 
@@ -24,8 +26,11 @@ static struct event_xref {
 };
 
 int
-mdrive_notify(Driver * self, event_t code, int condition,
+mdrive_subscribe(Driver * self, event_t code,
         driver_event_callback_t callback) {
+    if (self == NULL)
+        return EINVAL;
+
     mdrive_device_t * device = self->internal;
 
     if (device == NULL)
@@ -45,7 +50,6 @@ mdrive_notify(Driver * self, event_t code, int condition,
     *event = (struct event_callback) {
         .callback = callback,
         .active = true,
-        .condition = condition,
         .event = code
     };
 
@@ -65,6 +69,9 @@ mdrive_notify(Driver * self, event_t code, int condition,
 
 int
 mdrive_unsubscribe(Driver * self, driver_event_callback_t callback) {
+    if (self == NULL)
+        return EINVAL;
+
     mdrive_device_t * device = self->internal;
 
     if (device == NULL)
@@ -81,7 +88,7 @@ mdrive_unsubscribe(Driver * self, driver_event_callback_t callback) {
         return EINVAL;
 
     // Remove the subscriber from the list by setting the active flag to false
-    device->event_handlers[i].active = false;
+    event->active = false;
 
     return 0;
 }
@@ -199,14 +206,9 @@ mdrive_signal_event(mdrive_device_t * device, int code, union event_data * data)
         .data = data
     };
     int i = MAX_SUBSCRIPTIONS;
-    for (; i; i--, event++) {
-        if (event->active && !event->paused && event->event == code) {
+    for (; i; i--, event++)
+        if (event->active && !event->paused && event->event == code)
             event->callback(device->driver, &info);
-            // Subscriber will have to request notification for the same
-            // type of event again
-            event->active = false;
-        }
-    }
     
     return 0;
 }

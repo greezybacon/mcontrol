@@ -193,10 +193,10 @@ PROXYIMPL(mcEventRegister, MOTOR motor, int event) {
         return EINVAL;
 
     // Subscribe to events received from the motor
-    if (!SUPPORTED(CONTEXT->motor, notify))
+    if (!SUPPORTED(CONTEXT->motor, subscribe))
         return ENOTSUP;
 
-    INVOKE(CONTEXT->motor, notify, event, 0, mcSignalEvent);
+    INVOKE(CONTEXT->motor, subscribe, event, mcSignalEvent);
 
     CONTEXT->motor->subscriptions[event]++;
     return 0;

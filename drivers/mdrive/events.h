@@ -1,5 +1,8 @@
 
 extern int
+mdrive_subscribe(Driver * self, event_t code, driver_event_callback_t callback);
+
+extern int
 mdrive_notify(Driver * self, event_t code, int cond, driver_event_callback_t callback);
 
 extern int
