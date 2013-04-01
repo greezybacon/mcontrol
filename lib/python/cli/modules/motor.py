@@ -23,7 +23,7 @@ class MotorContext(Shell):
     def __init__(self, parent, motor, name=""):
         Shell.__init__(self, context=parent.context)
         self.motor = motor
-        self.last_move_event = None
+        self.last_move_event = self.motor.on(Event.EV_MOTION)
         self.name = name
         self.prompt_text = Shell.prompt_text[:-2] + ":{0}> ".format(name)
         self.parent = parent
@@ -102,7 +102,8 @@ class MotorContext(Shell):
         self.motor.scale = int(scale), units
 
     def _do_get_stalled(self):
-        if self.last_move_event and self.last_move_event.data:
+        if self.last_move_event and self.last_move_event.isset \
+                and self.last_move_event.data:
             self.out(self.last_move_event.data.stalled)
         else:
             self.out(self.motor.stalled)
@@ -117,7 +118,6 @@ class MotorContext(Shell):
         return self.motor._get_value_and_units(float(value), units)
 
     def do_move(self, where):
-        self.last_move_event = None
         func = self.motor.move
         units = None
         wait = False
@@ -139,7 +139,7 @@ class MotorContext(Shell):
         except ValueError as ex:
             return self.error(repr(ex))
 
-        self.last_move_event = self.motor.on(Event.EV_MOTION)
+        self.last_move_event.reset()
         func(value, units)
         if wait:
             self.last_move_event.wait()
@@ -161,9 +161,7 @@ class MotorContext(Shell):
         """
         Wait indefinitely until current motion is completed
         """
-        if self.last_move_event and self.last_move_event.isset:
-            return
-        elif self.last_move_event:
+        if self.last_move_event and not self.last_move_event.isset:
             self.last_move_event.wait()
 
     def do_slew(self, line):
@@ -246,15 +244,14 @@ class MotorContext(Shell):
         rc = self.motor.profile.run_current
 
         def find_hard_stop(rate, units):
-            event = None
             # Somehow, MDrive motors will require a non-zero move command to
             # detect, signal, and clear the stall flag
             self.motor.slew(math.copysign(2, rate), all_units['mil'])
             self.motor.slew(0)
-            self.motor.stalled = False
+            event = self.motor.on(Event.EV_MOTION)
             while True:
                 if not self.motor.moving:
-                    if event and event.isset:
+                    if event.isset:
                         if event.data.stalled:
                             return self.motor.position
                         # Not a stall event, wait for a stall event
@@ -262,7 +259,6 @@ class MotorContext(Shell):
                             event.reset()
                     else:
                         self.motor.slew(rate, units)
-                        event = self.motor.on(Event.EV_MOTION)
                 time.sleep(0.2)
 
         # Find hard stop at fast speed
