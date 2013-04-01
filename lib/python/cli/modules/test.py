@@ -73,6 +73,20 @@ class TestingCommands(Mixin):
         for test in self.context['tests']:
             self.out(test)
 
+    def do_list(self, test):
+        if not test in self['tests']:
+            self.error('{0}: Test not defined',
+                'Use "tests" for a list of defined tests')
+            return
+        labels = dict((k,v) for v, k in self['tests'][test].labels.items())
+        indent = 0
+        for i, x in enumerate(self['tests'][test]):
+            if i in labels:
+                self.status("label {0}".format(labels[i]))
+                indent = 4
+            self.status(" " * indent + x)
+    complete_list = complete_run
+
 import os
 class Counter(object):
     """
