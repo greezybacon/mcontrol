@@ -575,6 +575,7 @@ cdef class Event(object):
         self.motor = motor
         self.event = event
         self._callback = None
+        self.isset = False
         self.id = 0
         raise_status(
             mcSubscribeWithData(
