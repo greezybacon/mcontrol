@@ -11,6 +11,9 @@ from . import Mixin, trim
 from .. import Shell
 
 import cmd
+import random
+import shlex
+import string
 
 class TestingCommands(Mixin):
 
@@ -74,6 +77,11 @@ class TestingCommands(Mixin):
             self.out(test)
 
     def do_list(self, test):
+        """
+        List the compiled source code for a `create`d script. The listed
+        source will not be exactly the same as the given source, as some
+        commands are rewritten at compile-time.
+        """
         if not test in self['tests']:
             self.error('{0}: Test not defined',
                 'Use "tests" for a list of defined tests')
@@ -140,14 +148,18 @@ class Timer(object):
 
 class TestingSetupContext(cmd.Cmd):
 
-    prompt_text = "recording $ "
+    prompt = "recording $ "
     intro = ""
 
     def __init__(self, *args, **kwargs):
         cmd.Cmd.__init__(self)
         self.test = []
         self.labels = {}
+        self.blocks = {}
         self.atexit = []
+        # Stack of blocks created by the `do` and `then` commands. Stack
+        # allows for nested blocks
+        self.block_stack = []
 
     def default(self, line):
         """
@@ -168,7 +180,37 @@ class TestingSetupContext(cmd.Cmd):
         if not re.match(r'^\s*$', line):
             # TODO: Basic evaluation of the command. Sanity checks, overflow to
             #       following line, etc.
+            #
+            # Split by ';' and ':' to form multiple commands and append each
+            # one separately
+            parts = self.split(line)
+            if len(parts) > 1:
+                self.cmdqueue[0:0] = parts
+            else:
+                self.emit(line)
+
+    def emit(self, line):
+        if len(self.block_stack):
+            self.block_stack[-1].append(line)
+        else:
             self.test.append(line)
+
+    def split(self, line):
+        # Thanks, http://stackoverflow.com/a/2787064
+        if ':' not in line and ';' not in line:
+            return [line]
+        return re.split(r'''((?:[^;:"']|"[^"]*"|'[^']*')+)''', line)[1::2]
+
+    def postloop(self):
+        if len(self.block_stack):
+            print("Unclosed block. do found without closing done",
+                "See 'help do'")
+            return True
+        self.test.append('return')
+        for label, code in self.blocks.items():
+            self.labels[label] = len(self.test)
+            self.test.extend(code)
+        self.blocks = {}
 
     def do_label(self, name):
         """
@@ -217,6 +259,41 @@ class TestingSetupContext(cmd.Cmd):
 
         if line not in self.atexit:
             self.atexit.append(line)
+
+    def do_do(self, what):
+        """
+        Allows for the creation of arbitrary blocks of code. The `do`
+        instruction will setup an anonymous block of code that will be
+        `call`ed when the block is invoked. This will allow for more complex
+        operations to be the target of an `if` statement and will allow for
+        better integration of `elif` and `else` statements
+        """
+        # Pick a random label name, then, scan the code down to the `done`
+        # keyword and move the code into the label block. Finally, add an
+        # unconditional `return` statment to the block and replace the code
+        # in the test instructions with a call to the anonymous block
+        while True:
+            label = ''.join(random.choice(string.letters) for x in range(8))
+            if label not in self.labels:
+                break
+        # Emit the `call` command to call the block before the block is
+        # started, so that it will be emitted into the current block
+        self.emit('call {0}'.format(label))
+        self.block_stack.append([])
+        self.blocks[label] = block = self.block_stack[-1]
+        if len(what.strip()):
+            block.append(what)
+
+    def do_done(self, what):
+        """
+        Completes a block defined by the `do` command
+        """
+        if not len(self.block_stack):
+            print("Unbalanced block. done found without do",
+                "See 'help do'")
+            return True
+        block = self.block_stack.pop()
+        block.append('return')
 
     def emptyline(self):
         pass
@@ -440,14 +517,11 @@ class TestingRunContext(Shell):
 
         if [a -> get stalled]: abort
         """
-        # Isolate the condition and statement
         # Evaluate the condition
         # Execute the statement
-        match = re.match(r'(?P<cond>[^:]+):\s*(?P<stmt>.*)', line)
-        if not match:
-            return self.error("Incorrect <if> usage.", "See 'help if'")
-        if self.eval(match.groupdict()['cond']):
-            return self.execute(match.groupdict()['stmt'])
+        if not self.eval(line):
+            # Skip the next command (the target of the if command)
+            self.next += 1
 
     def do_abort(self, line):
         """
