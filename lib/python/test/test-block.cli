@@ -11,9 +11,9 @@ if False; do
     fail
 done
 
-if True: print "Single line works"
+if True; print "Single line works"
 
-if True: do
+if True; do
     if True
     do
         print "Nested block succeeds"
