@@ -199,7 +199,7 @@ class TestingSetupContext(cmd.Cmd):
         # Thanks, http://stackoverflow.com/a/2787064
         if ':' not in line and ';' not in line:
             return [line]
-        return re.split(r'''((?:[^;:"']|"[^"]*"|'[^']*')+)''', line)[1::2]
+        return re.split(r'''((?:[^;"']|"[^"]*"|'[^']*')+)''', line)[1::2]
 
     def postloop(self):
         if len(self.block_stack):
