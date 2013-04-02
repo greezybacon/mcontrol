@@ -18,6 +18,8 @@ static struct client_callback * events = NULL;
 static int client_callback_count = 0;
 static int registration_uid = 0;
 
+static struct subscribe_list * subscriptions = NULL;
+
 /**
  * mcSubscribeWithData
  *
@@ -125,51 +127,51 @@ mcSignalEvent(Driver * driver, struct event_info * info) {
     // event, use mcEventSend to signal the client of the event.
     if (!info)
         return EINVAL;
-
-    Motor motors[32];
-    int count = mcMotorsForDriver(driver, motors, sizeof motors);
+    if (info->event > EV__LAST || info->event < EV__FIRST)
+        // Strange
+        return -1;
 
     struct event_message evt = {
-        .event = info->event
+        .event = info->event,
+        .id = 1,
     };
 
     if (info->data)
         evt.data = *info->data;
 
-    if (info->event > EV__LAST || info->event < EV__FIRST)
-        // Strange
-        return -1;
+    int status=0;
 
-    int status;
-    Motor * m = motors;
-
-    for (int i=count; i; i--, m++) {
-        if (m->subscriptions[info->event] < 1)
-            continue;
-
-        if (mcClientCallModeGet() == MC_CALL_IN_PROCESS) {
-            // Find the callback
-            struct event_message evt = {
-                .event = info->event,
-                .motor = m->id,
-            };
-            evt.data = *info->data,
-            status = mcDispatchSignaledEvent(&evt);
+    // Walk the subscription list to find subscriptions that match the
+    // event-id and motor-driver event being signaled.
+    struct subscribe_list * current = subscriptions;
+    while (current) {
+        // Ensure the event-type and motor-driver match. In terms of
+        // subscription active/inactive and callback information, that's all
+        // handled client-side. So the client will always receive the event
+        // as long as it is subscribed, it's up to the client to deliver the
+        // event or not.
+        if (current->event == info->event
+                && current->motor->driver == driver) {
+            evt.motor = current->motor->id;
+            // Use the registration ->inproc flag to determine if the client
+            // was in-process when it registered for the event
+            if (current->inproc)
+                status = mcDispatchSignaledEvent(&evt);
+            else {
+                status = mcEventSend(current->motor->client_pid, &evt);
+                if (status < 0)
+                    // Client went away -- and didn't say bye!
+                    mcInactivate(current->motor);
+            }
         }
-        else {
-            evt.id = 1;
-            evt.motor = m->id;
-            status = mcEventSend(m->client_pid, &evt);
-            if (status < 0)
-                // Client went away -- and didn't say bye!
-                mcInactivate(m);
-        }
-
-        // XXX: Reregistration might be necessary, if requested by the
-        //      subscriber. Otherwise, the event entry should be marked
-        //      inactive.
+        current = current->next;
     }
-    return 0;
+
+    // XXX: Reregistration might be necessary, if requested by the
+    //      subscriber. Otherwise, the event entry should be marked
+    //      inactive.
+
+    return status;
 }
 
 /**
@@ -196,9 +198,30 @@ PROXYIMPL(mcEventRegister, MOTOR motor, int event) {
     if (!SUPPORTED(CONTEXT->motor, subscribe))
         return ENOTSUP;
 
+    // XXX: Consider return status from driver
     INVOKE(CONTEXT->motor, subscribe, event, mcSignalEvent);
 
-    CONTEXT->motor->subscriptions[event]++;
+    struct subscribe_list * info = malloc(sizeof(struct subscribe_list));
+    *info = (struct subscribe_list) {
+        .event = event,
+        .motor = CONTEXT->motor,
+        .inproc = CONTEXT->inproc,
+    };
+
+    struct subscribe_list * current = subscriptions, * tail = NULL;
+    while (current) {
+        tail = current;
+        current = current->next;
+    }
+    // End of list
+    if (tail) {
+        tail->next = info;
+        info->prev = tail;
+    }
+    // Empty list?
+    else if (!subscriptions)
+        subscriptions = info;
+
     return 0;
 }
 
@@ -219,8 +242,38 @@ PROXYIMPL(mcEventUnregister, MOTOR motor, int event) {
     if (event > EV__LAST || event < EV__FIRST)
         return EINVAL;
 
-    CONTEXT->motor->subscriptions[event]--;
-    return 0;
+    // Search for given registration
+    struct subscribe_list * current = subscriptions;
+    while (current) {
+        if (current->event == event && current->motor->id == motor) {
+            // Remove the link from the list -- middle of the list
+            if (current->prev && current->next) {
+                current->prev->next = current->next;
+                current->next->prev = current->prev;
+            }
+            // end of the list
+            else if (current->prev) {
+                current->prev->next = NULL;
+            }
+            // beginning of a list with two or more items
+            else if (current == subscriptions && current->next) {
+                subscriptions = current->next;
+                subscriptions->prev = NULL;
+            }
+            // beginning and only item in the list
+            else if (current == subscriptions)
+                subscriptions = NULL;
+
+            free(current);
+            break;
+        }
+        current = current->next;
+    }
+
+    // XXX: Unsubscribe from driver if no clients remain subscribed to this
+    //      event id
+
+    return (current != NULL) ? 0 : EINVAL;
 }
 
 /**

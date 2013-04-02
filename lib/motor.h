@@ -49,8 +49,15 @@ struct backend_motor {
 
     bool        pos_known;      // If last-known position is known
     long long   position;       // Last-known position of the motor
-
-    unsigned short subscriptions[EV__LAST];  // Bitmask of subscribed events
 };
 
+typedef struct subscribe_list subscribe_list_t;
+struct subscribe_list {
+    int                 event;
+    Motor *             motor;
+    bool                inproc;
+
+    subscribe_list_t *  next;
+    subscribe_list_t *  prev;
+};
 #endif
