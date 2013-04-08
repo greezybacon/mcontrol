@@ -18,7 +18,9 @@ static struct client_callback * events = NULL;
 static int client_callback_count = 0;
 static int registration_uid = 0;
 
+// Server-side event subscription list
 static struct subscribe_list * subscriptions = NULL;
+static pthread_mutex_t subscription_lock = PTHREAD_MUTEX_INITIALIZER;
 
 /**
  * mcSubscribeWithData
@@ -144,6 +146,7 @@ mcSignalEvent(Driver * driver, struct event_info * info) {
     // Walk the subscription list to find subscriptions that match the
     // event-id and motor-driver event being signaled.
     struct subscribe_list * current = subscriptions;
+    pthread_mutex_lock(&subscription_lock);
     while (current) {
         // Ensure the event-type and motor-driver match. In terms of
         // subscription active/inactive and callback information, that's all
@@ -154,7 +157,10 @@ mcSignalEvent(Driver * driver, struct event_info * info) {
                 && current->motor->driver == driver) {
             evt.motor = current->motor->id;
             // Use the registration ->inproc flag to determine if the client
-            // was in-process when it registered for the event
+            // was in-process when it registered for the event. Call with
+            // the list unlocked in case the client changes the registration
+            // in its event handler
+            pthread_mutex_unlock(&subscription_lock);
             if (current->inproc)
                 status = mcDispatchSignaledEvent(&evt);
             else {
@@ -163,9 +169,12 @@ mcSignalEvent(Driver * driver, struct event_info * info) {
                     // Client went away -- and didn't say bye!
                     mcInactivate(current->motor);
             }
+            pthread_mutex_lock(&subscription_lock);
         }
         current = current->next;
     }
+
+    pthread_mutex_unlock(&subscription_lock);
 
     // XXX: Reregistration might be necessary, if requested by the
     //      subscriber. Otherwise, the event entry should be marked
@@ -209,6 +218,8 @@ PROXYIMPL(mcEventRegister, MOTOR motor, int event) {
     };
 
     struct subscribe_list * current = subscriptions, * tail = NULL;
+    pthread_mutex_lock(&subscription_lock);
+
     while (current) {
         tail = current;
         current = current->next;
@@ -221,6 +232,8 @@ PROXYIMPL(mcEventRegister, MOTOR motor, int event) {
     // Empty list?
     else if (!subscriptions)
         subscriptions = info;
+
+    pthread_mutex_unlock(&subscription_lock);
 
     return 0;
 }
@@ -244,6 +257,8 @@ PROXYIMPL(mcEventUnregister, MOTOR motor, int event) {
 
     // Search for given registration
     struct subscribe_list * current = subscriptions;
+    pthread_mutex_lock(&subscription_lock);
+
     while (current) {
         if (current->event == event && current->motor->id == motor) {
             // Remove the link from the list -- middle of the list
@@ -269,6 +284,7 @@ PROXYIMPL(mcEventUnregister, MOTOR motor, int event) {
         }
         current = current->next;
     }
+    pthread_mutex_unlock(&subscription_lock);
 
     // XXX: Unsubscribe from driver if no clients remain subscribed to this
     //      event id
