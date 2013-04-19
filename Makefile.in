@@ -31,3 +31,12 @@ TOOLS_DIR = $(INSTALL_ROOT)/tools
 DRIVER_DIR = $(OPT_DIR)/drivers
 MCODE_DIR = $(OPT_DIR)/microcode
 FIRMWARE_DIR = $(OPT_DIR)/firmware
+
+GIT_VERSION=$(shell git describe)
+CFLAGS += -DGIT_VERSION="${GIT_VERSION}"
+
+# git-describe format is <tag>-#-sha1, where <tag> is the last annotated tag
+# on this branch, is the number of commits since that tag, and the sha1 is
+# the first 8 chars of the latest sha1 commit-id
+VERSION_MAJOR=$(firstword $(subst -, ,$(GIT_VERSION)))
+VERSION_PATCH=$(shell echo $(GIT_VERSION) | cut -s -d- -f2- | sed -e s/-/_/)

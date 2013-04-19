@@ -1,7 +1,12 @@
 from __future__ import print_function
 
-from modules import trim
-from lib import term
+from .modules import trim
+from .lib import term
+
+try:
+    from .version import version as __version__
+except ImportError:
+    __version__ = 'development'
 
 import cmd
 import inspect
@@ -19,8 +24,8 @@ class Shell(cmd.Cmd, object):
 [ | )(_.(_)[ ) | [  (_)|     (_.||
 
 Copyright (c) 2012 Manchac Technologies, LLC
-Version 0.2-1
-"""[1:]
+Version {version}
+"""[1:].format(version=__version__)
 
     afterlife = None
     context = {
@@ -197,7 +202,7 @@ Version 0.2-1
 # Import modules from the module directory and finds all the subclasses of
 # the Mixin class. Of those, the Shell.mixin() method is called to add the
 # module pieces into the cli environment
-import modules
+from . import modules
 from types import ModuleType
 
 # More on dynamic importing here

@@ -1,16 +1,27 @@
+from __future__ import with_statement
+
 from distutils.core import setup, Extension
 
 from Cython.Distutils import build_ext
 
 import os
+
 if os.name == 'posix':
     mcontrol_cli = "bin/mcontrol-cli"
 else:
     mcontrol_cli = "bin/mcontrol-cli.py"
 
+if 'GIT_VERSION' in os.environ:
+    version = os.environ['GIT_VERSION']
+    with open(os.path.dirname(os.path.abspath(__file__)) + '/cli/version.py',
+            'wt') as vfile:
+        vfile.write('version="{0}"'.format(version))
+else:
+    version = 'development'
+
 setup(
     name="mcontrol",
-    version="0.1-2",
+    version=version,
     packages=["mcontrol", "mcontrol.cli", "mcontrol.cli.modules",
         "mcontrol.cli.lib"],
     package_dir={
