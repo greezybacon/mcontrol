@@ -13,9 +13,15 @@ lib/python/mcontrol/*.c
 lib/client.c
 lib/client.h
 lib/dispatch.h
+lib/python/cli/version.py
 
 # RPM build folder
 .rpmbuild
 
 # Compiled microcode
 drivers/mdrive/microcode/build
+
+# Binaries
+lib/libmcontrol.so
+daemon/mcontrold
+drivers/*.so
