@@ -30,6 +30,7 @@ int main(int argc, char * argv[]) {
     mcClientCallModeSet(MC_CALL_IN_PROCESS);
 
     mcDriverLoad("mdrive.so");
+    mcDriverLoad(DRIVER_DIR "/mdrive.so");
 
     signal(SIGINT, cleanup);
     signal(SIGHUP, cleanup);

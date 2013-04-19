@@ -33,7 +33,7 @@ MCODE_DIR = $(OPT_DIR)/microcode
 FIRMWARE_DIR = $(OPT_DIR)/firmware
 
 GIT_VERSION=$(shell git describe)
-CFLAGS += -DGIT_VERSION="${GIT_VERSION}"
+CFLAGS += -DGIT_VERSION="\"${GIT_VERSION}\""
 
 # git-describe format is <tag>-#-sha1, where <tag> is the last annotated tag
 # on this branch, is the number of commits since that tag, and the sha1 is

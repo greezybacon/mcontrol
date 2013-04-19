@@ -1,6 +1,9 @@
+include ../Makefile.in
+
 CC=gcc
-CFLAGS=--std=gnu99 -Wall -D_GNU_SOURCE -pedantic -I..
-LDFLAGS=-ldl -lrt -lrt -lpthread -lm
+CFLAGS+=--std=gnu99 -Wall -D_GNU_SOURCE -pedantic -I..
+CFLAGS+=-DDRIVER_DIR="\"${DRIVER_DIR}\""
+LDFLAGS+=-ldl -lrt -lrt -lpthread -lm
 
 SOURCES=main.c controller.c scheduler.c trace.c worker.c
 OBJECTS=$(SOURCES:.c=.o)
