@@ -50,7 +50,7 @@ mcSubscribeWithData(motor_t motor, event_t event, int * reg_id,
         .active = true,
         .event = event,
         .callback = callback,
-        .data = data
+        .data = data,
     };
     client_callback_count++;
 
@@ -358,9 +358,7 @@ mcEventWaitForMessage(motor_t motor, event_t event) {
         } while (msg.payload_size == 0);
 
         evt = (void *) msg.payload;
-        if (evt->motor == motor && evt->event == event)
-            break;
-    } while (true);
+    } while (evt->motor == motor && evt->event == event);
 
     // Mark event registration active (if not unsubscribed, which might make
     // reg be a registration for something else, now)
