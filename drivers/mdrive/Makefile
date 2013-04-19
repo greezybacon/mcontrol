@@ -1,6 +1,8 @@
+include ../../Makefile.in
+
 CC=gcc
-CFLAGS=-I../../ --std=gnu99 -O2 -march=native -Wall -fPIC -D_GNU_SOURCE -pedantic 
-LDFLAGS=-lrt -lm -lpthread -L../../lib -lmcontrol
+CFLAGS+=-I../../ --std=gnu99 -O2 -march=native -Wall -fPIC -D_GNU_SOURCE -pedantic 
+LDFLAGS+=-lrt -lm -lpthread -L../../lib -lmcontrol
 
 SOURCES=driver.c serial.c queue.c config.c query.c motion.c search.c \
 	events.c profile.c firmware.c microcode.c
