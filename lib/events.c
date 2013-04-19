@@ -404,7 +404,7 @@ mcEventWaitForMessage(motor_t motor, event_t event) {
         } while (msg.payload_size == 0);
 
         evt = (void *) msg.payload;
-    } while (evt->motor == motor && evt->event == event);
+    } while (!(evt->motor == motor && evt->event == event));
 
     // Mark event registration active (if not unsubscribed, which might make
     // reg be a registration for something else, now)
