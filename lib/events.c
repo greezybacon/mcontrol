@@ -111,6 +111,45 @@ mcUnsubscribe(motor_t motor, int eventid) {
     return 0;
 }
 
+static int
+mcDropEventSubscription(MOTOR motor, int event) {
+    // Search for given registration
+    pthread_mutex_lock(&subscription_lock);
+    struct subscribe_list * current = subscriptions;
+
+    while (current) {
+        if (current->event == event && current->motor->id == motor) {
+            // Remove the link from the list -- middle of the list
+            if (current->prev && current->next) {
+                current->prev->next = current->next;
+                current->next->prev = current->prev;
+            }
+            // end of the list
+            else if (current->prev) {
+                current->prev->next = NULL;
+            }
+            // beginning of a list with two or more items
+            else if (current == subscriptions && current->next) {
+                subscriptions = current->next;
+                subscriptions->prev = NULL;
+            }
+            // beginning and only item in the list
+            else if (current == subscriptions)
+                subscriptions = NULL;
+
+            free(current);
+            break;
+        }
+        current = current->next;
+    }
+    pthread_mutex_unlock(&subscription_lock);
+
+    // XXX: Unsubscribe from driver if no clients remain subscribed to this
+    //      event id
+
+    return (current) ? 0 : EINVAL;
+}
+
 /**
  * mcSignalEvent
  *
@@ -145,7 +184,7 @@ mcSignalEvent(Driver * driver, struct event_info * info) {
 
     // Walk the subscription list to find subscriptions that match the
     // event-id and motor-driver event being signaled.
-    struct subscribe_list * current = subscriptions;
+    struct subscribe_list * current = subscriptions, copy;
     pthread_mutex_lock(&subscription_lock);
     while (current) {
         // Ensure the event-type and motor-driver match. In terms of
@@ -154,20 +193,30 @@ mcSignalEvent(Driver * driver, struct event_info * info) {
         // as long as it is subscribed, it's up to the client to deliver the
         // event or not.
         if (current->event == info->event
-                && current->motor->driver == driver) {
+                && current->motor->driver == driver
+                && current->motor->active) {
             evt.motor = current->motor->id;
             // Use the registration ->inproc flag to determine if the client
             // was in-process when it registered for the event. Call with
             // the list unlocked in case the client changes the registration
             // in its event handler
+	    // NOTE: That current might be free()d while the lock is open.
+	    //       Therefore, operate on a copy of current
+	    copy = *current;
+            current = &copy;
             pthread_mutex_unlock(&subscription_lock);
             if (current->inproc)
                 status = mcDispatchSignaledEvent(&evt);
             else {
                 status = mcEventSend(current->motor->client_pid, &evt);
-                if (status < 0)
+                if (status < 0) {
+                    mcTraceF(10, LIB_CHANNEL,
+                        "Unable to send event to client: %s",
+                        strerror(-status));
                     // Client went away -- and didn't say bye!
                     mcInactivate(current->motor);
+                    mcDropEventSubscription(current->motor->id, current->event);
+                }
             }
             pthread_mutex_lock(&subscription_lock);
         }
@@ -255,41 +304,7 @@ PROXYIMPL(mcEventUnregister, MOTOR motor, int event) {
     if (event > EV__LAST || event < EV__FIRST)
         return EINVAL;
 
-    // Search for given registration
-    struct subscribe_list * current = subscriptions;
-    pthread_mutex_lock(&subscription_lock);
-
-    while (current) {
-        if (current->event == event && current->motor->id == motor) {
-            // Remove the link from the list -- middle of the list
-            if (current->prev && current->next) {
-                current->prev->next = current->next;
-                current->next->prev = current->prev;
-            }
-            // end of the list
-            else if (current->prev) {
-                current->prev->next = NULL;
-            }
-            // beginning of a list with two or more items
-            else if (current == subscriptions && current->next) {
-                subscriptions = current->next;
-                subscriptions->prev = NULL;
-            }
-            // beginning and only item in the list
-            else if (current == subscriptions)
-                subscriptions = NULL;
-
-            free(current);
-            break;
-        }
-        current = current->next;
-    }
-    pthread_mutex_unlock(&subscription_lock);
-
-    // XXX: Unsubscribe from driver if no clients remain subscribed to this
-    //      event id
-
-    return (current != NULL) ? 0 : EINVAL;
+    return mcDropEventSubscription(motor, event);
 }
 
 /**
