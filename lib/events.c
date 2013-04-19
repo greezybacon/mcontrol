@@ -112,13 +112,13 @@ mcUnsubscribe(motor_t motor, int eventid) {
 }
 
 static int
-mcDropEventSubscription(MOTOR motor, int event) {
+mcDropEventSubscription(Motor * motor, int event) {
     // Search for given registration
     pthread_mutex_lock(&subscription_lock);
     struct subscribe_list * current = subscriptions;
 
     while (current) {
-        if (current->event == event && current->motor->id == motor) {
+        if (current->event == event && current->motor == motor) {
             // Remove the link from the list -- middle of the list
             if (current->prev && current->next) {
                 current->prev->next = current->next;
@@ -142,10 +142,25 @@ mcDropEventSubscription(MOTOR motor, int event) {
         }
         current = current->next;
     }
-    pthread_mutex_unlock(&subscription_lock);
 
     // XXX: Unsubscribe from driver if no clients remain subscribed to this
     //      event id
+    int registered = 0;
+	current = subscriptions;
+    while (current) {
+        if (current->event == event && current->motor->driver == motor->driver)
+            registered++;
+        current = current->next;
+    }
+    pthread_mutex_unlock(&subscription_lock);
+
+  	if (registered == 0
+	    	&& SUPPORTED(motor, unsubscribe)) {
+
+		// Unubscribe from this event in the motor
+	    // XXX: Consider return status from driver
+	    INVOKE(motor, unsubscribe, event, mcSignalEvent);
+	}
 
     return (current) ? 0 : EINVAL;
 }
@@ -215,7 +230,7 @@ mcSignalEvent(Driver * driver, struct event_info * info) {
                         strerror(-status));
                     // Client went away -- and didn't say bye!
                     mcInactivate(current->motor);
-                    mcDropEventSubscription(current->motor->id, current->event);
+                    mcDropEventSubscription(current->motor, current->event);
                 }
             }
             pthread_mutex_lock(&subscription_lock);
@@ -304,7 +319,7 @@ PROXYIMPL(mcEventUnregister, MOTOR motor, int event) {
     if (event > EV__LAST || event < EV__FIRST)
         return EINVAL;
 
-    return mcDropEventSubscription(motor, event);
+    return mcDropEventSubscription(CONTEXT->motor, event);
 }
 
 /**
