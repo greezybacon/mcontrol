@@ -209,7 +209,7 @@ mcSignalEvent(Driver * driver, struct event_info * info) {
                 status = mcDispatchSignaledEvent(&evt);
             else {
                 status = mcEventSend(current->motor->client_pid, &evt);
-                if (status < 0) {
+                if (status < 0 && status != EAGAIN) {
                     mcTraceF(10, LIB_CHANNEL,
                         "Unable to send event to client: %s",
                         strerror(-status));
