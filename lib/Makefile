@@ -9,7 +9,6 @@ OBJECTS=$(SOURCES:.c=.o)
 LIBRARY=libmcontrol.so
 
 DIRS=python
-DEBUG=1
 
 ifeq ($(DEBUG), 1)
 CFLAGS += -g
