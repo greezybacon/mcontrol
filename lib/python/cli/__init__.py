@@ -203,7 +203,7 @@ from types import ModuleType
 # More on dynamic importing here
 # http://docs.python.org/2/library/functions.html#__import__
 mods = __import__('modules', globals(), locals(),
-        modules.__all__, -1)
+        modules.__all__, 1)
 
 for name in modules.__all__:
     mod = getattr(mods, name)
