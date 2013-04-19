@@ -6,7 +6,7 @@ extern int
 mdrive_notify(Driver * self, event_t code, int cond, driver_event_callback_t callback);
 
 extern int
-mdrive_unsubscribe(Driver * self, driver_event_callback_t callback);
+mdrive_unsubscribe(Driver * self, event_t code, driver_event_callback_t callback);
 
 extern int
 mdrive_signal_error_event(mdrive_device_t * device, int error);

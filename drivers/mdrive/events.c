@@ -41,8 +41,14 @@ mdrive_subscribe(Driver * self, event_t code,
 
     struct event_callback * event = device->event_handlers;
     int i = MAX_SUBSCRIPTIONS;
-    for (; i; i--, event++)
+    for (; i; i--, event++) {
+        // Avoid multiple subscriptions for the same event
+        if (event->active
+                && event->callback == callback && event->event == code)
+            return 0;
+
         if (!event->active) break;
+    }
 
     if (i == 0)
         return ER_TOO_MANY;
@@ -68,7 +74,8 @@ mdrive_subscribe(Driver * self, event_t code,
 }
 
 int
-mdrive_unsubscribe(Driver * self, driver_event_callback_t callback) {
+mdrive_unsubscribe(Driver * self, event_t code,
+        driver_event_callback_t callback) {
     if (self == NULL)
         return EINVAL;
 
@@ -80,7 +87,7 @@ mdrive_unsubscribe(Driver * self, driver_event_callback_t callback) {
     int i = MAX_SUBSCRIPTIONS;
     struct event_callback * event = device->event_handlers;
     for (; i; i--, event++)
-        if (event->callback == callback)
+        if (event->callback == callback && event->event == code)
             break;
 
     if (i == 0)
