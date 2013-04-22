@@ -135,7 +135,7 @@ normally would be.
 
 call
 ----
-    call <label-name>
+    call <label-name> [with <var=value> ...]
 
 The next command executed will be the first command following the given
 label. The label is allowed to be defined after the `call` command. In other
@@ -145,6 +145,20 @@ if the label is not defined at runtime.
 The current location of the test is saved on the stack. If a `return`
 command is encountered, script execution will resume with the following
 command.
+
+The call command can be used to treat the label as a function by passing
+arguments with the `with` statement. Following the `with` statement should
+be a list of space-separated variable name and value pairs. The variables
+will be defined to have the given value in the target label. Any valid
+Python expression is welcome as the target value of a variable argument. If
+the variable exists in the current scope, its value in the current scope
+will not be modified by the `call` command.
+
+The value of the `return` command can be captured if the `call` command is
+used as a bracketed sub-command, for instance
+
+    if [call safety-check with n=3]
+        abort "No longer safe to operate"
 
 count
 -----
@@ -275,7 +289,7 @@ Python expression is valid. For instance:
 
 return
 ------
-    return
+    return [expression]
 
 Returns script execution to the command following the previously-encountered
 `call` statement. If the call stack is empty, the script will be terminated
@@ -283,6 +297,10 @@ with an error.
 
 The call stack is limited by the available memory in the Python runtime.
 Ensure that your `call` and `return` commands are balanced.
+
+If an expression is given, its value will be returned and will be the value
+of the `call` command that invoked the current label. Any valid Python
+expression is welcome.
 
 save
 ----
