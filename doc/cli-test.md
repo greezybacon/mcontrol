@@ -13,14 +13,23 @@ details.
 
 Structure
 ---------
-Currently, blocks are not supported anywhere in the cli. All commands fit on
-exactly one line, and each single line defines exactly one command.
-Therefore, code written in tests can be subdivided by using labels.
-Execution can be moved around by using the "call", "return" and "goto"
-statements.
+All commands fit on exactly one line, and each single line defines exactly
+one command.  Therefore, code written in tests can be subdivided by using
+labels.  Execution can be moved around by using the "call", "return" and
+"goto" statements.
 
-Whitespace in the commands is ignored. Feel free to use whitespace to help
-in marking code as part of your respective labeled "blocks".
+Multiple commands can be placed on the same line if semi-colons are used to
+separate them. See the block example below.
+
+Blocks are supported with the "do" and "done" commands. So you can write
+code that looks something like
+
+    if condition; do
+        print "Something"
+    done
+
+Whitespace around the commands is ignored. Feel free to use whitespace to
+help in marking code as part of your respective labeled "blocks".
 
 Variable Substitution
 ---------------------
@@ -79,6 +88,14 @@ entered will not be executed immediately. Instead, the commands are recorded
 into a command list and will be executed as a script with the `run`
 command. Once entered, the `save` command is used inside the macro recording
 environment to commit the test commands and leave the recording context.
+
+list
+----
+    list <test-name>
+
+Shows the program source for the test given. The source may not be exactly
+the same as the original, as some features, like blocks, result in
+automatically generated breakout labels.
 
 run
 ---
@@ -162,6 +179,20 @@ defined
 Outputs `true` if the name is defined in the context currently and `false`
 otherwise.
 
+do
+--
+Begins a block. Blocks are completed with the `done` command. Under the hood
+(and you can inspect with the `list` command), blocks are rewritten to fall
+under a random label. The `do` command is replaced with a `call` command,
+and the `done` command is replaced with a `return` command.
+
+Nested blocks are welcome.
+
+done
+----
+Completes a block started with the `do` command. `done` will raise an error
+if there is no complimentary `do` command associated.
+
 expired
 -------
     expired <timer-name>
@@ -196,13 +227,18 @@ counters.
 
 if
 --
-    if <condition>: <statement>
+    if <condition>
+        <command>
 
-Executes the provided `statement` if and only if the `condition` evaluates
+Executes the following `command` if and only if the `condition` evaluates
 to `true`. The `condition` can be any valid Python expression, however, no
 Python built-in functions and types are valid. Therefore, comparing against
 the Python value `True` is not valid. Use brackets to perform sub-commands
 and evaluate their results.
+
+The `command` can be placed on the same line with the if statement if a
+semi-colon is used to separate the commands. **Note that this is a change
+from the 0.1 software release.**
 
 label
 -----
