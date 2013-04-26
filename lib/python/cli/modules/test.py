@@ -206,7 +206,8 @@ class TestingSetupContext(cmd.Cmd):
             print("Unclosed block. do found without closing done",
                 "See 'help do'")
             return True
-        self.test.append('return')
+        # Ensure that the blocks are not executed without a 'call' command
+        self.test.append('succeed')
         for label, code in self.blocks.items():
             self.labels[label] = len(self.test)
             self.test.extend(code)
