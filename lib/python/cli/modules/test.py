@@ -546,7 +546,9 @@ class TestingRunContext(Shell):
         """
         if len(condition.strip()) == 0:
             return self.error("while: Incorrect Syntax", "See 'help while'")
+        # Ensure instruction pointer and stack base are preserved
         next = self.next
+        depth = len(self.stack)
         while self.eval(condition):
             try:
                 self.execute_script(next+1, count=1)
@@ -555,6 +557,7 @@ class TestingRunContext(Shell):
             except Continue:
                 pass
         self.next = next + 1
+        self.stack = self.stack[:depth]
 
     def do_for(self, what):
         """
@@ -576,7 +579,9 @@ class TestingRunContext(Shell):
                 "See 'help for'")
 
         iterable = self.eval(parts[1])
+        # Ensure instruction pointer and stack base are preserved
         next = self.next
+        depth = len(self.stack)
         for x in iterable:
             try:
                 self.vars[var] = x
@@ -586,6 +591,7 @@ class TestingRunContext(Shell):
             except Continue:
                 pass
         self.next = next + 1
+        self.stack = self.stack[:depth]
 
     def do_abort(self, line):
         """
