@@ -361,7 +361,6 @@ class TestingRunContext(Shell):
         except Exception as e:
             self.error("{0}: {1}: (Unhandled) {2}".format(
                 str, type(e).__name__, e))
-            raise
             return True
 
     def parse(self, command):
@@ -511,7 +510,7 @@ class TestingRunContext(Shell):
 
         Usage:
 
-        if <condition>: <statement>
+        if <condition>; <statement>
 
         If the condition evaluates to a boolean True value, then the given
         statement will be executed.
