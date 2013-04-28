@@ -368,6 +368,10 @@ class TestingRunContext(Shell):
                 str, type(e).__name__, e))
             return True
 
+    def error(self, message):
+        self.state = self.Status.ABORTED
+        return super(TestingRunContext, self).error(message)
+
     def parse(self, command):
         """
         Parses a command and yields a tuple of the motor and the command.
@@ -805,7 +809,8 @@ class TestingRunContext(Shell):
 
     def execute_script(self, start=0, count=-1):
         self.next = start
-        while count and self.next < len(self.instructions):
+        while self.state == self.Status.RUNNING \
+                and count and self.next < len(self.instructions):
             # Evaluate each command. Goto commands will change self.next, so
             # don't do a simple iteration of the instructions
             if self.execute(self.instructions[self.next]):
