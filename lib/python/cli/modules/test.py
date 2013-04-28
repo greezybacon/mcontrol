@@ -212,6 +212,10 @@ class TestingSetupContext(cmd.Cmd):
             self.test.extend(code)
         self.blocks = {}
 
+    def error(self, what, help=''):
+        print("*** " + what + '. ' + help)
+        return True
+
     def do_label(self, name):
         """
         Creates a label that can be jumped to later.
@@ -749,7 +753,7 @@ for func in dir(TestingRunContext):
         item = getattr(TestingRunContext, func)
         def help(docstring):
             def help_output(self):
-                self.status(trim(docstring))
+                print(trim(docstring))
             return help_output
         setattr(TestingSetupContext, 'help_{0}'.format(func[3:]),
             help(item.__doc__))
