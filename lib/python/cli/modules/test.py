@@ -361,6 +361,7 @@ class TestingRunContext(Shell):
         self.vars = self.context['env']
         self.debug = False
         self.state = self.Status.READY
+        self.tasks = {}
 
     def onecmd(self, str):
         try:
@@ -823,6 +824,68 @@ class TestingRunContext(Shell):
         except ValueError:
             return self.error("Incorrect wait time", "See 'help wait'")
 
+    def do_tasklet(self, line):
+        """
+        Create a tasklet from a label or a test. Tasks created from tests
+        will still inherit the current runtime environment when invoked.
+
+        Subcommands:
+            <> fork {label} Create a tasklet from the given label
+            <> start with [var=val ...]
+                            Kickoff the tasklet, with optional environment
+            <> join         Wait for the tasklet to complete
+            <> send {what}  Send something to the tasklet
+            <> read         Read something from the tasklet (see yield)
+            <> wait         Wait for the tasklet to reach a yield command
+
+        Where <> represents the name of the target tasklet
+
+        Usage:
+            tasklet task1 from label1
+            tasklet task1 start
+            tasklet task1 join
+        """
+        parts = line.split()
+        if len(parts) < 2:
+            return self.error("tasklet: incorrect usage",
+                "See 'help tasklet'")
+        name = parts.pop(0)
+        command = parts.pop(0)
+        if command == 'fork':
+            if len(parts) != 1:
+                return self.error("tasklet: create: label name is the only argument",
+                    "See 'help tasklet'")
+            if parts[0] in self.test.labels:
+                self.tasks[name] = Tasklet(runtime=self,
+                    start=self.test.labels[parts[0]], **self.vars)
+            elif parts[0] in self.context['tests']:
+                test = TestingRunContext(test=self.context['tests'][parts[0]],
+                    context=self.context.copy())
+                self.tasks[name] = Tasklet(runtime=test, start=0,
+                    **self.vars)
+
+        elif name not in self.tasks:
+            return self.error("tasklet: {0}: Task not yet created".format(name))
+
+        task = self.tasks[name]
+        if command == 'start':
+            # TODO: Handle keyword arguments as environment
+            task.start()
+        elif command == 'join':
+            task.join()
+            if task.state != self.Status.SUCCEEDED:
+                self.state = task.state
+                return True
+        elif command == 'send':
+            if len(parts) == 0:
+                return self.error("tasklet: send: argument required",
+                    "See 'help tasklet'")
+            task.send(self.eval(' '.join(parts)))
+        elif command == 'read':
+            self.out(task.read())
+        elif command == 'wait':
+            task.read()
+
     def do_atexit(self, line):
         # This is handled at compile time
         pass
@@ -854,11 +917,79 @@ class TestingRunContext(Shell):
             self.stack.append(None)
             self.execute_script(self.test.labels[atexit])
 
+        for task in self.tasks.values():
+            task.state = self.state
+
         # Assume success if not otherwise set
         if self.state == self.Status.RUNNING:
             self.state = self.Status.SUCCEEDED
 
     postloop = Shell.halt_all_motors
+
+Nothing = object()
+import threading
+class Tasklet(TestingRunContext, threading.Thread):
+    """
+    Provides a simple mechanism for running parallel tasks. Tasks can be
+    created in the runtime context with an assignment and subcommand such as
+
+    Tasklets can behave like Python generators/coroutines, so you can send()
+    values to them and yield() values from them.
+
+    Tasklets inherit the context from the originating runtime; however,
+    changes made to variables inside the tasklet context are not replicated
+    outside the context to the original runtime. Therefore, traditional
+    thread locking mechanics are not required.
+    """
+    def __init__(self, runtime, start, **context):
+        super(Tasklet, self).__init__(runtime.test)
+        threading.Thread.__init__(self)
+        self.vars = context
+        self.starting = start
+        self.writecond = threading.Condition()
+        self.readcond = threading.Condition()
+        self.daemon = True
+        self.inkitty = Nothing
+
+    def run(self, **kwargs):
+        self.vars.update(kwargs)
+        self.state = self.Status.RUNNING
+        self.execute_script(start=self.starting)
+
+    def do_yield(self, what):
+        """
+        Yield execution of this thread until another item is retrieved from
+        the task as an iterator.
+        """
+        self.writecond.acquire()
+        self.outkitty = self.eval(what or 'None')
+        self.writecond.notify()
+        self.writecond.release()
+
+        # Only wait for sub-command invocation
+        if type(self['stdout']) is OutputCapture:
+            self.readcond.acquire()
+            while self.inkitty is Nothing:
+                self.readcond.wait()
+            self.out(self.inkitty)
+            self.inkitty = Nothing
+            self.readcond.release()
+
+    def send(self, what):
+        if self.inkitty is not Nothing:
+            # Wait until [yield] is called
+            self.read()
+        self.readcond.acquire()
+        self.inkitty = what
+        self.readcond.notify()
+        self.readcond.release()
+
+    def read(self):
+        self.writecond.acquire()
+        self.writecond.wait()
+        retval = self.outkitty
+        self.writecond.release()
+        return retval
 
 # Add help for the commands in the Run context into the setup context
 for func in dir(TestingRunContext):
