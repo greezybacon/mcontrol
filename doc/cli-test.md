@@ -133,6 +133,17 @@ label. The last instruction to be executed in this label can optionally be
 Any other "goto" and "call" instructions will still be interpreted as they
 normally would be.
 
+break
+-----
+    break
+
+Used with the `for` and `while` loop constructs to exit the loop earlier
+than what would normally cause loop to exit. For loops will exit when all
+the items in the iterable have been exhausted. While loops will exit when
+the provided condition evaluates to False. The loop closest to the break
+statement found when unwinding the stack will be aborted. Script execution
+will continue with the command following the loop.
+
 call
 ----
     call <label-name> [with <var=value> ...]
@@ -159,6 +170,17 @@ used as a bracketed sub-command, for instance
 
     if [call safety-check with n=3]
         abort "No longer safe to operate"
+
+continue
+--------
+    continue
+
+Causes script execution flow to immediately resume at the top of the
+previous loop found when unwinding the stack. While loops will still
+evaluate the leading condition before continuing with the looped command or
+block. For loops will continue with the next item in the iterable if there
+is another. If a continue statement causes the loop to end, it would be the
+same as a `break` statement.
 
 count
 -----
@@ -213,6 +235,16 @@ expired
 
 Returns `true` if the timer has expired, and `false` if there is at least
 one second remaining on the timer. Refer to `timeout` for creating timers.
+
+for
+---
+    for <var> in <iterable>
+        <command or block>
+
+Executes the command or block following the for command for each item in the
+iterable given. The named var is defined to point to each item in the
+iteration and will also be valid as the last item in the iterable following
+the completion of the for command.
 
 fail
 ----
@@ -332,3 +364,14 @@ wait
 
 Pauses execution for the amount of time specified, in seconds. Fractional
 seconds can be expressed as a floating point number.
+
+while
+-----
+    while <condition>
+        <command or block>
+
+Executes the following command or block as long as the provided condition
+evaluates to True. If the condition evaluates to True initially, the
+following command or block will not be executed. As with the `for` loop,
+`break` and `continue` commands can be used to alter the normal control flow
+of the loop.

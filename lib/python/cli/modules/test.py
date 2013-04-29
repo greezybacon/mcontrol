@@ -213,6 +213,10 @@ class TestingSetupContext(cmd.Cmd):
             self.test.extend(code)
         self.blocks = {}
 
+    def error(self, what, help=''):
+        print("*** " + what + '. ' + help)
+        return True
+
     def do_label(self, name):
         """
         Creates a label that can be jumped to later.
@@ -326,6 +330,9 @@ class OutputCapture(object):
         return False
 
 OutputCapture.Flush = object()
+class LoopControl(Exception): pass
+class Continue(LoopControl): pass
+class Break(LoopControl): pass
 
 import cmd
 import re
@@ -355,11 +362,16 @@ class TestingRunContext(Shell):
             return cmd.Cmd.onecmd(self, str)
         except KeyboardInterrupt:
             return True
+        except LoopControl:
+            raise
         except Exception as e:
             self.error("{0}: {1}: (Unhandled) {2}".format(
                 str, type(e).__name__, e))
-            raise
             return True
+
+    def error(self, message):
+        self.state = self.Status.ABORTED
+        return super(TestingRunContext, self).error(message)
 
     def parse(self, command):
         """
@@ -407,6 +419,8 @@ class TestingRunContext(Shell):
             if self.debug:
                 self.status("CTRL+C -- Aborting")
             return self.do_abort(None)
+        except LoopControl:
+            raise
         except Exception as ex:
             return self.error("Unexpected Error: {0!r}".format(ex))
 
@@ -508,7 +522,7 @@ class TestingRunContext(Shell):
 
         Usage:
 
-        if <condition>: <statement>
+        if <condition>; <statement>
 
         If the condition evaluates to a boolean True value, then the given
         statement will be executed.
@@ -516,13 +530,73 @@ class TestingRunContext(Shell):
         Sub commands can be used if enclosed in the usual brackets. Otherwise,
         any valid Python expression is supported in the condition.
 
-        if [a -> get stalled]: abort
+        if [a -> get stalled]; abort
         """
         # Evaluate the condition
-        # Execute the statement
         if not self.eval(line):
             # Skip the next command (the target of the if command)
             self.next += 1
+
+    def do_while(self, condition):
+        """
+        Continues to execute the following command or block as long as the
+        provided condition evaluates to a boolean True. Inside the following
+        block, `break` and `continue` can be used to short-circuit the
+        normal control flow.
+
+        Usage:
+            while <condition>; do
+                something
+            done
+        """
+        if len(condition.strip()) == 0:
+            return self.error("while: Incorrect Syntax", "See 'help while'")
+        # Ensure instruction pointer and stack base are preserved
+        next = self.next
+        depth = len(self.stack)
+        while self.eval(condition):
+            try:
+                self.execute_script(next+1, count=1)
+            except Break:
+                break
+            except Continue:
+                pass
+        self.next = next + 1
+        self.stack = self.stack[:depth]
+
+    def do_for(self, what):
+        """
+        Executes the following command or block for every item in the given
+        iterable. Inside the following block, `break` and `continue` can be
+        used to short-circuit the normal control flow of the commands.
+
+        Usage:
+            for <var> in <iterable>; do
+                print str(var)
+            done
+        """
+        parts = what.split(' ', 2)
+        if len(parts) != 3:
+            return self.error("for: Incorrect Syntax", "See 'help for'")
+        var = parts.pop(0)
+        if parts[0] != 'in':
+            return self.error("for: Incorrect Syntax: expected 'in'",
+                "See 'help for'")
+
+        iterable = self.eval(parts[1])
+        # Ensure instruction pointer and stack base are preserved
+        next = self.next
+        depth = len(self.stack)
+        for x in iterable:
+            try:
+                self.vars[var] = x
+                self.execute_script(next+1, count=1)
+            except Break:
+                break
+            except Continue:
+                pass
+        self.next = next + 1
+        self.stack = self.stack[:depth]
 
     def do_abort(self, line):
         """
@@ -622,6 +696,27 @@ class TestingRunContext(Shell):
             self.out(OutputCapture.Flush)
             self.out(self.eval(line))
         return True
+
+    def do_continue(self, ignored):
+        """
+        Used inside a loop to continue the loop fresh from the top. If
+        continue is used inside a block of function inside a loop, the loop
+        at the closest outer level will intercept the `continue` command
+        """
+        if len(ignored.strip()):
+            return self.error("continue: Incorrect syntax",
+                "See 'help continue'")
+        raise Continue
+
+    def do_break(self, ignored):
+        """
+        Used inside a loop to abort out of the loop. If `break` is used
+        inside a block or function call, the closest enclosing loop will
+        receive the `break` signal
+        """
+        if len(ignored.strip()):
+            return self.error("break: Incorrect syntax", "See 'help break'")
+        raise Break
 
     def do_print(self, what):
         """
@@ -727,9 +822,10 @@ class TestingRunContext(Shell):
         # This is handled at compile time
         pass
 
-    def execute_script(self, start=0):
+    def execute_script(self, start=0, count=-1):
         self.next = start
-        while self.next < len(self.instructions):
+        while self.state == self.Status.RUNNING \
+                and count and self.next < len(self.instructions):
             # Evaluate each command. Goto commands will change self.next, so
             # don't do a simple iteration of the instructions
             if self.execute(self.instructions[self.next]):
@@ -737,6 +833,7 @@ class TestingRunContext(Shell):
             if self.next is None:
                 break
             self.next += 1
+            count -= 1
 
     def cmdloop(self):
         self.state = self.Status.RUNNING
@@ -764,7 +861,7 @@ for func in dir(TestingRunContext):
         item = getattr(TestingRunContext, func)
         def help(docstring):
             def help_output(self):
-                self.status(trim(docstring))
+                print(trim(docstring))
             return help_output
         setattr(TestingSetupContext, 'help_{0}'.format(func[3:]),
             help(item.__doc__))

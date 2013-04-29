@@ -1,0 +1,54 @@
+create test1
+let i = 10
+while i; do
+    print str(i)
+    let i = i -1
+done
+if i == 0; succeed
+fail "simple while loop: {i} != 0"
+save
+
+create test2
+let i = 0
+let x = 0
+while True; do
+    let x = x + i
+    let i = i + 1
+    if i > 10; do
+        print str(i)
+        break
+    done
+done
+if i == 11 and x == 55; succeed
+fail "while with nested break"
+save
+
+create test3
+let i = 3
+for x in range(100); do
+    let i = i * 3
+    if x == 60; do
+        print "3 ** 60 = {i}"
+        break
+    done
+done
+if x == 60; succeed
+fail "for with nested break"
+save
+
+create test4
+let j = list()
+for x in range(10); do
+    for y in range(10); do
+        let blah = j.append(0)
+    done
+done
+
+if len(j) == 100; succeed
+fail "nested for loop: 100 != {0}".format(len(j))
+save
+
+run test1
+run test2
+run test3
+run test4
