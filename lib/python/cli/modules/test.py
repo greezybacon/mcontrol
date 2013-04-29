@@ -369,9 +369,9 @@ class TestingRunContext(Shell):
                 str, type(e).__name__, e))
             return True
 
-    def error(self, message):
+    def error(self, message, hint=""):
         self.state = self.Status.ABORTED
-        return super(TestingRunContext, self).error(message)
+        return super(TestingRunContext, self).error(message, hint)
 
     def parse(self, command):
         """
