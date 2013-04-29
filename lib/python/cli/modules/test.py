@@ -638,6 +638,20 @@ class TestingRunContext(Shell):
         """
         self.status(self.eval(what))
 
+    def do_eval(self, what):
+        """
+        Evaluate the rest of the line as a Python expression. Eval can be
+        used as a subcommand as well. Note that only expressions are
+        supported. Python control structures like 'for' and 'import' are not
+        valid.
+
+        Usage:
+
+        eval list_var.append(value)
+        print [eval value + 32]
+        """
+        self.out(self.eval(what))
+
     def do_pause(self, what):
         """
         Outputs a message and waits for the user to press the [Enter] key
