@@ -15,6 +15,11 @@ import random
 import shlex
 import string
 
+import sys
+# Python3k clobbered 'input' and 'raw_input'
+if sys.version_info >= (3,0):
+    raw_input = input
+
 class TestingCommands(Mixin):
 
     def do_create(self, line):
@@ -751,7 +756,7 @@ class TestingRunContext(Shell):
         """
         Outputs a message and waits for the user to press the [Enter] key
         """
-        raw_input(self.eval(what))
+        raw_input(self.eval(what or "'Press Enter to continue '"))
 
     def do_label(self, line):
         # Handled at compile time in the Setup context.
