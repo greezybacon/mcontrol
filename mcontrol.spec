@@ -52,6 +52,7 @@ rm -rf %{buildroot}
 %package libs
 Summary:    mcontrol libraries
 Group:      Manchac Technologies, LLC
+Provides:   libmcontrol.so
 %description libs
 Libraries for the mcontrol software
 
