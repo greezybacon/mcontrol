@@ -563,6 +563,8 @@ class TestingRunContext(Shell):
         next = self.next
         depth = len(self.stack)
         while self.eval(condition):
+            if self.state != self.Status.RUNNING:
+                break
             try:
                 self.execute_script(next+1, count=1)
             except Break:
@@ -596,6 +598,8 @@ class TestingRunContext(Shell):
         next = self.next
         depth = len(self.stack)
         for x in iterable:
+            if self.state != self.Status.RUNNING:
+                break
             try:
                 self.vars[var] = x
                 self.execute_script(next+1, count=1)
