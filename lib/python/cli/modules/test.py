@@ -1016,15 +1016,15 @@ class Task(TestingRunContext, threading.Thread):
             self.inkitty = Empty
 
     def send(self, what):
-        with self.sendcond:
-            self.inkitty = what
-            self.sendcond.notify()
-        # Wait until [yield] is called
+        # Wait until [yield] is called first
         with self.yieldcond:
             while self.outkitty is Empty:
                 self.yieldcond.wait()
             retval = self.outkitty
             self.outkitty = Empty
+        with self.sendcond:
+            self.inkitty = what
+            self.sendcond.notify()
         return retval
 
 # Add help for the commands in the Run context into the setup context
