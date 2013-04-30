@@ -1,0 +1,55 @@
+create cotask
+
+    tasklet consumer fork consumer
+    tasklet producer fork producer
+    tasklet consumer start
+    tasklet producer start
+    tasklet consumer join
+
+    succeed
+
+    label producer
+        let i = 1
+        while True; do
+            tasklet consumer send i
+            let i = i + 1
+        done
+
+    label consumer
+        debug on
+        for x in range(20); do
+            let j = [yield]
+            print "Got {j}"
+        done
+        succeed
+
+save
+
+create cotask2
+
+    tasklet consumer fork consumer
+    tasklet producer fork producer
+    tasklet consumer start
+    tasklet producer start
+
+    for x in range(30)
+        tasklet consumer send [tasklet producer send]
+
+    succeed
+
+    label producer
+        let i = 1
+        while True; do
+            yield i
+            let i = i + i
+        done
+
+    label consumer
+        while True
+            print "Got [yield]"
+        succeed
+
+save
+
+run cotask
+run cotask2
