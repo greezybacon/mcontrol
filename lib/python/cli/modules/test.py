@@ -361,7 +361,8 @@ class TestingRunContext(Shell):
         self.vars = self.context['env']
         self.debug = False
         self.state = self.Status.READY
-        self.tasks = {}
+        self.context['tasks'] = {}
+        self.taskname = ""
 
     def onecmd(self, str):
         try:
@@ -406,10 +407,11 @@ class TestingRunContext(Shell):
         context = self if not motor else self.context['motors'][motor]
         if self.debug:
             if motor:
-                self.status("EXEC[{0}]: {1} -> {2}".format(len(self.stack),
-                    motor, command))
+                self.status("EXEC[{0}]:{3}: {1} -> {2}".format(len(self.stack),
+                    motor, command, self.taskname))
             else:
-                self.status("EXEC[{0}]: {1}".format(len(self.stack), command))
+                self.status("EXEC[{0}]:{2}: {1}".format(len(self.stack),
+                    command, self.taskname))
 
         # Capture the output of the command
         if capture:
@@ -831,19 +833,27 @@ class TestingRunContext(Shell):
 
         Subcommands:
             <> fork {label} Create a tasklet from the given label
-            <> start with [var=val ...]
+            <> start [with var=val ...]
                             Kickoff the tasklet, with optional environment
             <> join         Wait for the tasklet to complete
             <> send {what}  Send something to the tasklet
-            <> read         Read something from the tasklet (see yield)
-            <> wait         Wait for the tasklet to reach a yield command
 
         Where <> represents the name of the target tasklet
 
         Usage:
-            tasklet task1 from label1
-            tasklet task1 start
-            tasklet task1 join
+            tasklet <> fork label1
+            tasklet <> start
+            tasklet <> join
+
+        Communication:
+            Tasklets can be configured to operate around data in and output.
+            Inside the tasklet, the `yield` command is used to send and
+            receive data. Outside the tasklet, the `send` and `read`
+            subcommands are used to communicate with the tasklet.
+
+            tasklet <> send                     # Read from `yield`
+            tasklet <> send 42                  # Send to `yield`
+            let output = [tasklet <> send 42]   # Send/read to/from `yield`
         """
         parts = line.split()
         if len(parts) < 2:
@@ -856,35 +866,54 @@ class TestingRunContext(Shell):
                 return self.error("tasklet: create: label name is the only argument",
                     "See 'help tasklet'")
             if parts[0] in self.test.labels:
-                self.tasks[name] = Tasklet(runtime=self,
-                    start=self.test.labels[parts[0]], **self.vars)
+                self['tasks'][name] = Tasklet(runtime=self,
+                    start=self.test.labels[parts[0]], name=name, **self.vars)
             elif parts[0] in self.context['tests']:
                 test = TestingRunContext(test=self.context['tests'][parts[0]],
                     context=self.context.copy())
-                self.tasks[name] = Tasklet(runtime=test, start=0,
+                self['tasks'][name] = Tasklet(runtime=test, start=0,
                     **self.vars)
 
-        elif name not in self.tasks:
+        elif name not in self['tasks']:
             return self.error("tasklet: {0}: Task not yet created".format(name))
 
-        task = self.tasks[name]
+        task = self['tasks'][name]
         if command == 'start':
             # TODO: Handle keyword arguments as environment
             task.start()
         elif command == 'join':
-            task.join()
+            task.join(100000) # Timeout required from interruption
             if task.state != self.Status.SUCCEEDED:
                 self.state = task.state
                 return True
         elif command == 'send':
-            if len(parts) == 0:
-                return self.error("tasklet: send: argument required",
-                    "See 'help tasklet'")
-            task.send(self.eval(' '.join(parts)))
-        elif command == 'read':
-            self.out(task.read())
-        elif command == 'wait':
-            task.read()
+            what = self.eval(' '.join(parts)) if len(parts) else None
+            message =task.send(what)
+            if type(self['stdout']) is OutputCapture:
+                self.out(message)
+
+    def do_yield(self, what):
+        """
+        Yield execution of this tasklet until another item is read from this
+        task. Yield is only valid inside a tasklet. See 'help tasklet' for
+        information on tasklets. If yield is used in a bracketed subcommand,
+        the value given in `tasklet <> send` is returned.
+
+        Yield is used to pause the execution of a task, to pass information
+        to a parent or co-task, and to pause until data is ready to be sent
+        into the task.
+
+        Usage:
+            yield                       # Wait until tasklet send
+            yield <what>                # Output and wait for send
+            let input = [yield]         # Wait and capture data from send
+            let input = [yield <what>]  # Output and capture data from send
+
+        Where <what> is the value to be yielded to the sending tasklet and
+        is always optional. Python None is yielded if nothing is given
+        """
+        return self.error("yield: only valid in tasklets",
+            "See 'help tasklet'")
 
     def do_atexit(self, line):
         # This is handled at compile time
@@ -917,16 +946,16 @@ class TestingRunContext(Shell):
             self.stack.append(None)
             self.execute_script(self.test.labels[atexit])
 
-        for task in self.tasks.values():
-            task.state = self.state
-
         # Assume success if not otherwise set
         if self.state == self.Status.RUNNING:
             self.state = self.Status.SUCCEEDED
 
+        for task in self['tasks'].values():
+            task.state = self.state
+
     postloop = Shell.halt_all_motors
 
-Nothing = object()
+Empty = object()
 import threading
 class Tasklet(TestingRunContext, threading.Thread):
     """
@@ -937,19 +966,22 @@ class Tasklet(TestingRunContext, threading.Thread):
     values to them and yield() values from them.
 
     Tasklets inherit the context from the originating runtime; however,
-    changes made to variables inside the tasklet context are not replicated
+    changes made to variables inside the tasklet context are not reflected
     outside the context to the original runtime. Therefore, traditional
-    thread locking mechanics are not required.
+    thread locking mechanics are not (necessarily) required.
     """
-    def __init__(self, runtime, start, **context):
+    def __init__(self, runtime, start, name, **context):
         super(Tasklet, self).__init__(runtime.test)
         threading.Thread.__init__(self)
         self.vars = context
+        self.context = runtime.context.copy()
         self.starting = start
-        self.writecond = threading.Condition()
-        self.readcond = threading.Condition()
+        self.yieldcond = threading.Condition()
+        self.sendcond = threading.Condition()
         self.daemon = True
-        self.inkitty = Nothing
+        self.inkitty = Empty
+        self.outkitty = Empty
+        self.taskname = name
 
     def run(self, **kwargs):
         self.vars.update(kwargs)
@@ -957,38 +989,27 @@ class Tasklet(TestingRunContext, threading.Thread):
         self.execute_script(start=self.starting)
 
     def do_yield(self, what):
-        """
-        Yield execution of this thread until another item is retrieved from
-        the task as an iterator.
-        """
-        self.writecond.acquire()
-        self.outkitty = self.eval(what or 'None')
-        self.writecond.notify()
-        self.writecond.release()
-
-        # Only wait for sub-command invocation
-        if type(self['stdout']) is OutputCapture:
-            self.readcond.acquire()
-            while self.inkitty is Nothing:
-                self.readcond.wait()
-            self.out(self.inkitty)
-            self.inkitty = Nothing
-            self.readcond.release()
+        with self.yieldcond:
+            self.outkitty = self.eval(what) if what.strip() else None
+            self.yieldcond.notify()
+        # Wait until [send] is called
+        with self.sendcond:
+            while self.inkitty is Empty:
+                self.sendcond.wait()
+            if type(self['stdout']) is OutputCapture:
+                self.out(self.inkitty)
+            self.inkitty = Empty
 
     def send(self, what):
-        if self.inkitty is not Nothing:
-            # Wait until [yield] is called
-            self.read()
-        self.readcond.acquire()
-        self.inkitty = what
-        self.readcond.notify()
-        self.readcond.release()
-
-    def read(self):
-        self.writecond.acquire()
-        self.writecond.wait()
-        retval = self.outkitty
-        self.writecond.release()
+        with self.sendcond:
+            self.inkitty = what
+            self.sendcond.notify()
+        # Wait until [yield] is called
+        with self.yieldcond:
+            while self.outkitty is Empty:
+                self.yieldcond.wait()
+            retval = self.outkitty
+            self.outkitty = Empty
         return retval
 
 # Add help for the commands in the Run context into the setup context
