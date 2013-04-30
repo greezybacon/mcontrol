@@ -826,94 +826,94 @@ class TestingRunContext(Shell):
         except ValueError:
             return self.error("Incorrect wait time", "See 'help wait'")
 
-    def do_tasklet(self, line):
+    def do_task(self, line):
         """
-        Create a tasklet from a label or a test. Tasks created from tests
-        will still inherit the current runtime environment when invoked.
+        Create a task from a label or a test. Tasks created from tests will
+        still inherit the current runtime environment when invoked.
 
         Subcommands:
-            <> fork {label} Create a tasklet from the given label
+            <> fork {label} Create a task from the given label
             <> start [with var=val ...]
-                            Kickoff the tasklet, with optional environment
-            <> join         Wait for the tasklet to complete
-            <> send {what}  Send something to the tasklet
+                            Kickoff the task, with optional environment
+            <> join         Wait for the task to complete
+            <> send {what}  Send something to the task
 
-        Where <> represents the name of the target tasklet
+        Where <> represents the name of the target task
 
         Usage:
-            tasklet <> fork label1
-            tasklet <> start
-            tasklet <> join
+            task <> fork label1
+            task <> start
+            task <> join
 
         Communication:
-            Tasklets can be configured to operate around data in and output.
-            Inside the tasklet, the `yield` command is used to send and
-            receive data. Outside the tasklet, the `send` and `read`
-            subcommands are used to communicate with the tasklet.
+            Tasks can be configured to operate around data in and output.
+            Inside the task, the `yield` command is used to send and receive
+            data. Outside the task, the `send` and `read` subcommands are
+            used to communicate with the task.
 
-            tasklet <> send                     # Read from `yield`
-            tasklet <> send 42                  # Send to `yield`
-            let output = [tasklet <> send 42]   # Send/read to/from `yield`
+            task <> send                     # Read from `yield`
+            task <> send 42                  # Send to `yield`
+            let output = [task <> send 42]   # Send/read to/from `yield`
         """
         parts = line.split()
         if len(parts) < 2:
-            return self.error("tasklet: incorrect usage",
-                "See 'help tasklet'")
+            return self.error("task: incorrect usage",
+                "See 'help task'")
         name = parts.pop(0)
         command = parts.pop(0)
         if command == 'fork':
             if len(parts) != 1:
-                return self.error("tasklet: create: label name is the only argument",
-                    "See 'help tasklet'")
+                return self.error("task: create: label name is the only argument",
+                    "See 'help task'")
             if parts[0] in self.test.labels:
-                self['tasks'][name] = Tasklet(runtime=self,
+                self['tasks'][name] = Task(runtime=self,
                     start=self.test.labels[parts[0]], name=name, **self.vars)
             elif parts[0] in self.context['tests']:
                 test = TestingRunContext(test=self.context['tests'][parts[0]],
                     context=self.context.copy())
-                self['tasks'][name] = Tasklet(runtime=test, start=0,
+                self['tasks'][name] = Task(runtime=test, start=0,
                     **self.vars)
 
         elif name not in self['tasks']:
-            return self.error("tasklet: {0}: Task not yet created".format(name))
+            return self.error("task: {0}: Task not yet created".format(name))
 
         task = self['tasks'][name]
         if command == 'start':
             # TODO: Handle keyword arguments as environment
             task.start()
-        elif command == 'join':
-            task.join(100000) # Timeout required from interruption
-            if task.state != self.Status.SUCCEEDED:
+        elif command in ('join', 'send'):
+            if command == 'join':
+                task.join(100000) # Timeout required for interruption
+            else:
+                what = self.eval(' '.join(parts)) if len(parts) else None
+                message = task.send(what)
+                if type(self['stdout']) is OutputCapture:
+                    self.out(message)
+            if task.state not in (self.Status.SUCCEEDED, self.Status.RUNNING):
                 self.state = task.state
                 return True
-        elif command == 'send':
-            what = self.eval(' '.join(parts)) if len(parts) else None
-            message =task.send(what)
-            if type(self['stdout']) is OutputCapture:
-                self.out(message)
 
     def do_yield(self, what):
         """
-        Yield execution of this tasklet until another item is read from this
-        task. Yield is only valid inside a tasklet. See 'help tasklet' for
-        information on tasklets. If yield is used in a bracketed subcommand,
-        the value given in `tasklet <> send` is returned.
+        Yield execution of this task until another item is read from this
+        task. Yield is only valid inside a task. See 'help task' for
+        information on tasks. If yield is used in a bracketed subcommand,
+        the value given in `task <> send` is returned.
 
         Yield is used to pause the execution of a task, to pass information
         to a parent or co-task, and to pause until data is ready to be sent
         into the task.
 
         Usage:
-            yield                       # Wait until tasklet send
+            yield                       # Wait until task send
             yield <what>                # Output and wait for send
             let input = [yield]         # Wait and capture data from send
             let input = [yield <what>]  # Output and capture data from send
 
-        Where <what> is the value to be yielded to the sending tasklet and
-        is always optional. Python None is yielded if nothing is given
+        Where <what> is the value to be yielded to the sending task and is
+        always optional. Python None is yielded if nothing is given
         """
-        return self.error("yield: only valid in tasklets",
-            "See 'help tasklet'")
+        return self.error("yield: only valid in tasks", "See 'help task'")
 
     def do_atexit(self, line):
         # This is handled at compile time
@@ -952,26 +952,27 @@ class TestingRunContext(Shell):
 
         for task in self['tasks'].values():
             task.state = self.state
+            task.exit()
 
     postloop = Shell.halt_all_motors
 
 Empty = object()
 import threading
-class Tasklet(TestingRunContext, threading.Thread):
+class Task(TestingRunContext, threading.Thread):
     """
     Provides a simple mechanism for running parallel tasks. Tasks can be
     created in the runtime context with an assignment and subcommand such as
 
-    Tasklets can behave like Python generators/coroutines, so you can send()
+    Tasks can behave like Python generators/coroutines, so you can send()
     values to them and yield() values from them.
 
-    Tasklets inherit the context from the originating runtime; however,
-    changes made to variables inside the tasklet context are not reflected
-    outside the context to the original runtime. Therefore, traditional
-    thread locking mechanics are not (necessarily) required.
+    Tasks inherit the context from the originating runtime; however, changes
+    made to variables inside the task context are not reflected outside the
+    context to the original runtime. Therefore, traditional thread locking
+    mechanics are not (necessarily) required.
     """
     def __init__(self, runtime, start, name, **context):
-        super(Tasklet, self).__init__(runtime.test)
+        super(Task, self).__init__(runtime.test)
         threading.Thread.__init__(self)
         self.vars = context
         self.context = runtime.context.copy()

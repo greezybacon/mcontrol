@@ -1,17 +1,17 @@
 create cotask
 
-    tasklet consumer fork consumer
-    tasklet producer fork producer
-    tasklet consumer start
-    tasklet producer start
-    tasklet consumer join
+    task consumer fork consumer
+    task producer fork producer
+    task consumer start
+    task producer start
+    task consumer join
 
     succeed
 
     label producer
         let i = 1
         while True; do
-            tasklet consumer send i
+            task consumer send i
             let i = i + 1
         done
 
