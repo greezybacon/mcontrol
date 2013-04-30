@@ -27,13 +27,13 @@ save
 
 create cotask2
 
-    tasklet consumer fork consumer
-    tasklet producer fork producer
-    tasklet consumer start
-    tasklet producer start
+    task consumer fork consumer
+    task producer fork producer
+    task consumer start
+    task producer start
 
     for x in range(30)
-        tasklet consumer send [tasklet producer send]
+        task consumer send [task producer send]
 
     succeed
 
