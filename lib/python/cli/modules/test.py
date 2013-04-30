@@ -992,6 +992,16 @@ class Task(TestingRunContext, threading.Thread):
         self.vars.update(kwargs)
         self.state = self.Status.RUNNING
         self.execute_script(start=self.starting)
+        # Free a sender if yield was never reached
+        self.exit()
+
+    def exit(self):
+        # Free from a [yield] command
+        with self.sendcond:
+            self.inkitty = self.outkitty = None
+            self.sendcond.notify()
+        with self.yieldcond:
+            self.yieldcond.notify()
 
     def do_yield(self, what):
         with self.yieldcond:
