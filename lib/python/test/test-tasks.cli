@@ -16,7 +16,6 @@ create cotask
         done
 
     label consumer
-        debug on
         for x in range(20); do
             let j = [yield]
             print "Got {j}"
@@ -45,11 +44,44 @@ create cotask2
         done
 
     label consumer
-        while True
+        while True; do
             print "Got [yield]"
+            wait 0.01
+        done
+save
+
+create parallel-tasks
+
+    label main
+        task task1 fork task1
+        task task2 fork task2
+
+        task task1 start
+        task task2 start
+
+        task task1 join
+        task task2 join
+
+        succeed
+
+    label task1
+        for x in range(10); do
+            wait 0.08
+            print "Task1: {x}"
+        done
+
+        succeed
+
+    label task2
+        for x in range(20); do
+            wait 0.03
+            print "Task2: {x}"
+        done
+
         succeed
 
 save
 
 run cotask
 run cotask2
+run parallel-tasks
