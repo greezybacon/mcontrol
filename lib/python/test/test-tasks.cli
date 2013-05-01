@@ -1,9 +1,6 @@
 create cotask
-
     task consumer fork consumer
     task producer fork producer
-    task consumer start
-    task producer start
     task consumer join
 
     succeed
@@ -24,12 +21,12 @@ create cotask
 
 save
 
+# Demonstrates an infinite producer and infinite consumer. The outer test
+# controls both of them
 create cotask2
 
     task consumer fork consumer
     task producer fork producer
-    task consumer start
-    task producer start
 
     for x in range(30)
         task consumer send [task producer send]
@@ -56,9 +53,6 @@ create parallel-tasks
         task task1 fork task1
         task task2 fork task2
 
-        task task1 start
-        task task2 start
-
         task task1 join
         task task2 join
 
@@ -82,6 +76,32 @@ create parallel-tasks
 
 save
 
+# Demonstrates a subtask that receives an argument and does processing
+# based on the argument, which is not present in the outer environment
+
+create task-with-args
+    
+    label main
+
+        for x in range(1, 5); do
+            let i = x * 30
+            task worker fork worker with target=i
+            task worker join
+        done
+        if [defined target]; fail "Scope leaked"
+        succeed
+
+    label worker
+
+        let i = 1
+        for x in range(target); do
+            let i = i * 1.1
+        done;
+        print "1.1 ** {target} = {i}"
+        succeed
+save
+
 run cotask
 run cotask2
 run parallel-tasks
+run task-with-args
