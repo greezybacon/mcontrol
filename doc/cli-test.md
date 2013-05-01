@@ -73,6 +73,31 @@ Would have the same effect as
 
 Motor commands are also valid inside bracketed subcommands.
 
+Parallel Tasks
+--------------
+Testing can be divided into parallel components and controlled via tasks.
+Tasks are created from a label in the same test. Take care to ensure that
+the same code is not being executed at the same time by placing `succeed`
+commands at the end of your parallel labels, or you might end up with
+something like soldiers from core wars.
+
+Tasks can be synchronized with the `task send` and `yield` commands. Yield
+causes a task to suspended until a corresponding send is made to the task.
+The mechanism can be used to exchange data between the tasks as well. Data
+can be included with both the `task send` and `yield` commands and both of
+them can return values if used in a subcommand. This model follows the
+coroutine pattern like the one found in Python generators.
+
+Under the hood, tasks are implemented with standard daemon threads.
+Therefore, their execution will be canceled with the main thread that
+created them exits. To cause a task or the main thread to suspend until the
+completion of a task (by reaching the end of the script or a `succeed` or
+`fail` line or such), use the `task join` command. The state of the task is
+propagated to the joining task when the join command completes. Therefore,
+if a task fails or aborts, it will cause the joining task to fail or abort
+as well. The same happens when communicating to a task with the `task send`
+command.
+
 Test Commands
 =============
 These commands are available inside the testing environment too, but not
@@ -349,6 +374,80 @@ Exits the test indicating success. Any labels registered with `atexit` are
 executed as usual.  If `message` is provided, it is included in the output
 of the test indicating success.
 
+task
+----
+Create or manages a task, with the following subcommands, where `<>` is the
+name of the task to create or manage.
+
+    task <> fork {label} [with var=value ...]
+    task <> send [something]
+    task <> join
+
+### task <> fork {at} [with var=value ...]
+Creates a new parallel task by forking execution at the given label or by
+executing the named test in parallel. The label is defined by the `label`
+command as usual, and a test is defined with the `create` command as usual.
+Forked tasks do not start immediately, they are kicked off with the `task
+start` command.
+
+The current environment is also copied into the forked task. Therefore, the
+current values of all local and global variables are copied and frozen in
+the new task. Changes to variables and environment made in tasks are not
+reflected in other tasks with one caveat. Changes to complex variables such
+as lists and dicts are reflected, because the same object is being operated
+on in the task.
+
+The task will start executing in parallel immediately and can be controlled
+with the `task send` command if the task makes use of the `yield` command.
+
+Initial environment (local variable scope) can be controlled with the `with`
+keyword followed by space-separated keyword arguments for the tasks initial
+scope.
+
+### task <> join
+Suspends the calling task until the joined task completes. Completion is as
+usual, where the task executes until the end of the script, or reaches a
+`succeed` or `fail` command.
+
+The state of the joined task is also synchronized with the join command, so
+if the joined task failed or aborted, it will cause the joining task to
+also fail or abort respectively.
+
+### task <> send [something]
+Sends data into a task when the task reaches a `yield` command. If the task
+has not yet reached a `yield` command, the sending task will be suspended
+until the task reaches a `yield` command. If the receiving task does not
+reach a `yield` command, the send will block until the task exits, which
+would be the same as a join.
+
+Send can be used in a few manners:
+
+Allow the task to continue past a `yield` command. This will provide for
+something like checkpoint based synchronization
+
+    task <> send
+
+Send some data to the task at a `yield` command and allow the task to
+continue to the following `yield` command or completion
+
+    task <> send 42
+
+Receive data from the task and allow it to continue on from its current
+`yield` command
+
+    let output = [task <> send]
+
+Full duplex communication and synchronization, allowing the receiving task
+to continue onward to the following `yield` command
+
+    let output = [task <> send 42]
+
+Any valid Python expression can be sent with the `task send` and `yield`
+commands.
+
+Note again that `task send` will cause the sender to suspend until the
+receiving task reaches a `yield` command and visa versa.
+
 timeout
 -------
     timeout <timer-name> [time=0]
@@ -357,6 +456,25 @@ Defines a timer to expire after the given number of seconds (`time`). If
 time is not specified the timer will begin expired. Timers can be reloaded
 by using the `timeout` command with the same `timer-name`. Refer to the
 `expired` command for checking the time remaining on the timer.
+
+yield
+-----
+    yield [something]
+
+If used as a subcommand, input is possible
+
+    let input = [yield something]
+    let input = [yield]
+
+Suspends a task until data is sent to it via the `task send` command. If not
+used as a subcommand, the received data is discarded; however, send will
+always cause the task to resume and continue to completion or the following
+`yield` command.
+
+Yield is also used to produce data for an outside task. Any valid Python
+expression is valid as the argument to the `yield` command, and its value
+will be received as the result of a `task send` command, if it is used as a
+subcommand.
 
 wait
 ----

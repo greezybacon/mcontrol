@@ -361,12 +361,14 @@ class TestingRunContext(Shell):
         self.vars = self.context['env']
         self.debug = False
         self.state = self.Status.READY
+        self.context['tasks'] = {}
+        self.taskname = ""
 
     def onecmd(self, str):
         try:
             return cmd.Cmd.onecmd(self, str)
         except KeyboardInterrupt:
-            return True
+            self.do_abort(None)
         except LoopControl:
             raise
         except Exception as e:
@@ -405,10 +407,11 @@ class TestingRunContext(Shell):
         context = self if not motor else self.context['motors'][motor]
         if self.debug:
             if motor:
-                self.status("EXEC[{0}]: {1} -> {2}".format(len(self.stack),
-                    motor, command))
+                self.status("EXEC[{0}]:{3}: {1} -> {2}".format(len(self.stack),
+                    motor, command, self.taskname))
             else:
-                self.status("EXEC[{0}]: {1}".format(len(self.stack), command))
+                self.status("EXEC[{0}]:{2}: {1}".format(len(self.stack),
+                    command, self.taskname))
 
         # Capture the output of the command
         if capture:
@@ -559,7 +562,7 @@ class TestingRunContext(Shell):
         # Ensure instruction pointer and stack base are preserved
         next = self.next
         depth = len(self.stack)
-        while self.eval(condition):
+        while self.state == self.Status.RUNNING and self.eval(condition):
             try:
                 self.execute_script(next+1, count=1)
             except Break:
@@ -593,6 +596,8 @@ class TestingRunContext(Shell):
         next = self.next
         depth = len(self.stack)
         for x in iterable:
+            if self.state != self.Status.RUNNING:
+                break
             try:
                 self.vars[var] = x
                 self.execute_script(next+1, count=1)
@@ -823,6 +828,104 @@ class TestingRunContext(Shell):
         except ValueError:
             return self.error("Incorrect wait time", "See 'help wait'")
 
+    def do_task(self, line):
+        """
+        Create a task from a label. Tasks inherit the current runtime
+        environment when invoked.
+
+        Subcommands:
+            <> fork {label} [with var=val ...]
+                            Create a task from the given label. Task starts
+                            immediately, with optional environment
+            <> join         Wait for the task to complete
+            <> send {what}  Send something to the task
+
+        Where <> represents the name of the target task
+
+        Usage:
+            task <> fork label1
+            task <> join
+
+        Communication:
+            Tasks can be configured to operate around data in and output.
+            Inside the task, the `yield` command is used to send and receive
+            data. Outside the task, the `send` and `read` subcommands are
+            used to communicate with the task.
+
+            task <> send                     # Read from `yield`
+            task <> send 42                  # Send to `yield`
+            let output = [task <> send 42]   # Send/read to/from `yield`
+        """
+        parts = line.split()
+        if len(parts) < 2:
+            return self.error("task: incorrect usage",
+                "See 'help task'")
+        name = parts.pop(0)
+        command = parts.pop(0)
+        if command == 'fork':
+            if len(parts) < 1:
+                return self.error("task: create: label name is the only argument",
+                    "See 'help task'")
+            label = parts.pop(0)
+            if label not in self.test.labels:
+                return self.error("task: {0}: Label does not exist"
+                    .format(label))
+            # Abort task if already existing
+            if name in self['tasks']:
+                self['tasks'][name].exit(self.Status.ABORTED)
+            # Process keyword args for target task environment
+            env = self.vars.copy()
+            if 'with' in parts:
+                for x in parts[1:]:
+                    if '=' not in x:
+                        return self.error("Task arguments must be keywords",
+                            "See 'help task'")
+                    var, val = x.split('=', 1)
+                    env[var] = self.eval(val)
+            self['tasks'][name] = task = Task(runtime=self,
+                start=self.test.labels[label], name=name, locals=env)
+            return task.start()
+
+        elif name not in self['tasks']:
+            return self.error("task: {0}: Task not yet created".format(name))
+
+        task = self['tasks'][name]
+        if command in ('join', 'send'):
+            if command == 'join':
+                task.join(100000) # Timeout required for interruption
+            else:
+                what = self.eval(' '.join(parts)) if len(parts) else None
+                message = task.send(what)
+                if type(self['stdout']) is OutputCapture:
+                    self.out(message)
+            if task.state not in (self.Status.SUCCEEDED, self.Status.RUNNING):
+                self.state = task.state
+                return True
+        else:
+            return self.error("task: Incorrect usage", "See 'help task'")
+
+    def do_yield(self, what):
+        """
+        Yield execution of this task until another item is read from this
+        task. Yield is only valid inside a task. See 'help task' for
+        information on tasks. If yield is used in a bracketed subcommand,
+        the value given in `task <> send` is returned.
+
+        Yield is used to pause the execution of a task, to pass information
+        to a parent or co-task, and to pause until data is ready to be sent
+        into the task.
+
+        Usage:
+            yield                       # Wait until task send
+            yield <what>                # Output and wait for send
+            let input = [yield]         # Wait and capture data from send
+            let input = [yield <what>]  # Output and capture data from send
+
+        Where <what> is the value to be yielded to the sending task and is
+        always optional. Python None is yielded if nothing is given
+        """
+        return self.error("yield: only valid in tasks", "See 'help task'")
+
     def do_atexit(self, line):
         # This is handled at compile time
         pass
@@ -858,7 +961,80 @@ class TestingRunContext(Shell):
         if self.state == self.Status.RUNNING:
             self.state = self.Status.SUCCEEDED
 
+        for task in self['tasks'].values():
+            self.state = task.exit(self.state)
+
     postloop = Shell.halt_all_motors
+
+Empty = object()
+import threading
+class Task(TestingRunContext, threading.Thread):
+    """
+    Provides a simple mechanism for running parallel tasks. Tasks can be
+    created in the runtime context with an assignment and subcommand such as
+
+    Tasks can behave like Python generators/coroutines, so you can send()
+    values to them and yield() values from them.
+
+    Tasks inherit the context from the originating runtime; however, changes
+    made to variables inside the task context are not reflected outside the
+    context to the original runtime. Therefore, traditional thread locking
+    mechanics are not (necessarily) required.
+    """
+    def __init__(self, runtime, start, name, locals):
+        super(Task, self).__init__(runtime.test)
+        threading.Thread.__init__(self)
+        self.vars = locals
+        self.context = runtime.context.copy()
+        self.starting = start
+        self.yieldcond = threading.Condition()
+        self.sendcond = threading.Condition()
+        self.daemon = True
+        self.inkitty = Empty
+        self.outkitty = Empty
+        self.taskname = name
+
+    def run(self, **kwargs):
+        self.vars.update(kwargs)
+        self.state = self.Status.RUNNING
+        self.execute_script(start=self.starting)
+        # Free a sender if yield was never reached
+        self.exit(self.Status.SUCCEEDED)
+
+    def exit(self, status):
+        # Free from a [yield] command
+        self.state = max(self.state, status)
+        with self.sendcond:
+            self.inkitty = None
+            self.sendcond.notify()
+        with self.yieldcond:
+            self.outkitty = None
+            self.yieldcond.notify()
+        return self.state
+
+    def do_yield(self, what):
+        with self.yieldcond:
+            self.outkitty = self.eval(what) if what.strip() else None
+            self.yieldcond.notify()
+        # Wait until [send] is called
+        with self.sendcond:
+            while self.inkitty is Empty:
+                self.sendcond.wait()
+            if type(self['stdout']) is OutputCapture:
+                self.out(self.inkitty)
+            self.inkitty = Empty
+
+    def send(self, what):
+        # Wait until [yield] is called first
+        with self.yieldcond:
+            while self.outkitty is Empty:
+                self.yieldcond.wait()
+            retval = self.outkitty
+            self.outkitty = Empty
+        with self.sendcond:
+            self.inkitty = what
+            self.sendcond.notify()
+        return retval
 
 # Add help for the commands in the Run context into the setup context
 for func in dir(TestingRunContext):
