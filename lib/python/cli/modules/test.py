@@ -562,9 +562,7 @@ class TestingRunContext(Shell):
         # Ensure instruction pointer and stack base are preserved
         next = self.next
         depth = len(self.stack)
-        while self.eval(condition):
-            if self.state != self.Status.RUNNING:
-                break
+        while self.state == self.Status.RUNNING and self.eval(condition):
             try:
                 self.execute_script(next+1, count=1)
             except Break:
