@@ -952,8 +952,7 @@ class TestingRunContext(Shell):
             self.state = self.Status.SUCCEEDED
 
         for task in self['tasks'].values():
-            task.state = self.state
-            task.exit()
+            self.state = task.exit(self.state)
 
     postloop = Shell.halt_all_motors
 
@@ -990,15 +989,18 @@ class Task(TestingRunContext, threading.Thread):
         self.state = self.Status.RUNNING
         self.execute_script(start=self.starting)
         # Free a sender if yield was never reached
-        self.exit()
+        self.exit(self.Status.SUCCEEDED)
 
-    def exit(self):
+    def exit(self, status):
         # Free from a [yield] command
+        self.state = max(self.state, status)
         with self.sendcond:
-            self.inkitty = self.outkitty = None
+            self.inkitty = None
             self.sendcond.notify()
         with self.yieldcond:
+            self.outkitty = None
             self.yieldcond.notify()
+        return self.state
 
     def do_yield(self, what):
         with self.yieldcond:
