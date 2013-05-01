@@ -832,8 +832,8 @@ class TestingRunContext(Shell):
 
     def do_task(self, line):
         """
-        Create a task from a label or a test. Tasks created from tests will
-        still inherit the current runtime environment when invoked.
+        Create a task from a label. Tasks inherit the current runtime
+        environment when invoked.
 
         Subcommands:
             <> fork {label} Create a task from the given label
@@ -869,14 +869,11 @@ class TestingRunContext(Shell):
             if len(parts) != 1:
                 return self.error("task: create: label name is the only argument",
                     "See 'help task'")
-            if parts[0] in self.test.labels:
-                self['tasks'][name] = Task(runtime=self,
-                    start=self.test.labels[parts[0]], name=name, **self.vars)
-            elif parts[0] in self.context['tests']:
-                test = TestingRunContext(test=self.context['tests'][parts[0]],
-                    context=self.context.copy())
-                self['tasks'][name] = Task(runtime=test, start=0,
-                    **self.vars)
+            if parts[0] not in self.test.labels:
+                return self.error("task: {0}: Label does not exist"
+                    .format(parts[0]))
+            self['tasks'][name] = Task(runtime=self,
+                start=self.test.labels[parts[0]], name=name, **self.vars)
 
         elif name not in self['tasks']:
             return self.error("task: {0}: Task not yet created".format(name))
