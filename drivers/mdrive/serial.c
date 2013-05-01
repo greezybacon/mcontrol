@@ -815,12 +815,12 @@ mdrive_receive_response(mdrive_device_t * device,
  * communicate with the unit, the transmission will be automatically retried
  * up to MAX_RETRIES times.
  *
- * The timeout period for the received response is autosensed at 55ms. This
- * value will float as the current latency of the unit plus 40ms. If an
- * incomplete response is received, an additional 25ms + the time to receive
+ * The timeout period for the received response is autosensed at 45ms. This
+ * value will float as the current latency of the unit plus 30ms. If an
+ * incomplete response is received, an additional 30ms + the time to receive
  * the rest of the buffer (62 chars) will be added to the timeout time. In
  * order to make use of the delayed response detection, set the
- * <expects_data> flag.
+ * {options->expect_data} flag.
  *
  * Parameters:
  * device - Mdrive device to communicate with
@@ -857,7 +857,7 @@ mdrive_communicate(mdrive_device_t * device, const char * command,
     assert(options != NULL);
 
     int i, status=0, length, txid;
-    char buffer[63];
+    char buffer[64];
     mdrive_response_t * response = NULL;
 
     // Split the receive timeout in half. The first timeout will await the
@@ -867,7 +867,7 @@ mdrive_communicate(mdrive_device_t * device, const char * command,
     // additional wait time (requires checksum mode and responds == true)
     int onechartime = mdrive_xmit_time(device->comm, 1);
     struct timespec now, timeout, first_waittime = { .tv_sec = 0 },
-        more_waittime = { .tv_nsec = (int)25e6 + onechartime * 62 };
+        more_waittime = { .tv_nsec = (int)30e6 + onechartime * 62 };
 
     if (device->party_mode)
         // NOTE: Dec the buffer size to save room for the checksum byte
@@ -890,7 +890,7 @@ mdrive_communicate(mdrive_device_t * device, const char * command,
         buffer[++length] = 0;
     }
 
-    // Use 55ms waittime if no waittime is specified in the options
+    // Use 45ms waittime if no waittime is specified in the options
     if (device->stats.latency == 0 || device->echo == EM_QUIET)
         // Start with a reasonable value (15ms)
         device->stats.latency = (int)15e6;
@@ -1014,7 +1014,10 @@ receive:
         }
 
         if (response && response->txid == txid) {
-            status = mdrive_classify_response(device, response);
+            // Handle if early ACK was received, but the rest of the data
+            // was not. Current status will be RESPONSE_TIMEOUT
+            if (status != RESPONSE_TIMEOUT)
+                status = mdrive_classify_response(device, response);
 
             if (status == RESPONSE_OK || options->expect_err) {
                 // Error was handled in the classify_response routine (if
