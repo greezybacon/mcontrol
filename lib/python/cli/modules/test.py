@@ -834,9 +834,9 @@ class TestingRunContext(Shell):
         environment when invoked.
 
         Subcommands:
-            <> fork {label} Create a task from the given label
-            <> start [with var=val ...]
-                            Kickoff the task, with optional environment
+            <> fork {label} [with var=val ...]
+                            Create a task from the given label. Task starts
+                            immediately, with optional environment
             <> join         Wait for the task to complete
             <> send {what}  Send something to the task
 
@@ -844,7 +844,6 @@ class TestingRunContext(Shell):
 
         Usage:
             task <> fork label1
-            task <> start
             task <> join
 
         Communication:
@@ -864,23 +863,34 @@ class TestingRunContext(Shell):
         name = parts.pop(0)
         command = parts.pop(0)
         if command == 'fork':
-            if len(parts) != 1:
+            if len(parts) < 1:
                 return self.error("task: create: label name is the only argument",
                     "See 'help task'")
-            if parts[0] not in self.test.labels:
+            label = parts.pop(0)
+            if label not in self.test.labels:
                 return self.error("task: {0}: Label does not exist"
-                    .format(parts[0]))
-            self['tasks'][name] = Task(runtime=self,
-                start=self.test.labels[parts[0]], name=name, **self.vars)
+                    .format(label))
+            # Abort task if already existing
+            if name in self['tasks']:
+                self['tasks'][name].exit(self.Status.ABORTED)
+            # Process keyword args for target task environment
+            env = self.vars.copy()
+            if 'with' in parts:
+                for x in parts[1:]:
+                    if '=' not in x:
+                        return self.error("Task arguments must be keywords",
+                            "See 'help task'")
+                    var, val = x.split('=', 1)
+                    env[var] = self.eval(val)
+            self['tasks'][name] = task = Task(runtime=self,
+                start=self.test.labels[label], name=name, locals=env)
+            return task.start()
 
         elif name not in self['tasks']:
             return self.error("task: {0}: Task not yet created".format(name))
 
         task = self['tasks'][name]
-        if command == 'start':
-            # TODO: Handle keyword arguments as environment
-            task.start()
-        elif command in ('join', 'send'):
+        if command in ('join', 'send'):
             if command == 'join':
                 task.join(100000) # Timeout required for interruption
             else:
@@ -891,6 +901,8 @@ class TestingRunContext(Shell):
             if task.state not in (self.Status.SUCCEEDED, self.Status.RUNNING):
                 self.state = task.state
                 return True
+        else:
+            return self.error("task: Incorrect usage", "See 'help task'")
 
     def do_yield(self, what):
         """
@@ -969,10 +981,10 @@ class Task(TestingRunContext, threading.Thread):
     context to the original runtime. Therefore, traditional thread locking
     mechanics are not (necessarily) required.
     """
-    def __init__(self, runtime, start, name, **context):
+    def __init__(self, runtime, start, name, locals):
         super(Task, self).__init__(runtime.test)
         threading.Thread.__init__(self)
-        self.vars = context
+        self.vars = locals
         self.context = runtime.context.copy()
         self.starting = start
         self.yieldcond = threading.Condition()
