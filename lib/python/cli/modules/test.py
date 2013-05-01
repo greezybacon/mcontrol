@@ -368,7 +368,7 @@ class TestingRunContext(Shell):
         try:
             return cmd.Cmd.onecmd(self, str)
         except KeyboardInterrupt:
-            return True
+            self.do_abort(None)
         except LoopControl:
             raise
         except Exception as e:
