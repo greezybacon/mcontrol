@@ -20,8 +20,8 @@ JE=0
 TE=0
 HC=25
 RC=100
-HT=2
-MT=50
+HT=50
+MT=20
 A=20480
 D=40000
 VI=200
@@ -213,7 +213,7 @@ LB G4
 LB G8
   CL P1
   PR "1"
-  TT = 2000, TB
+  TT = 40000, TB
   TE = TE | 8
 E
 
@@ -221,7 +221,7 @@ E
 LB G9
   CL P1
   PR "0"
-  TT = 2000, TB
+  TT = 40000, TB
   TE = TE | 8
 E
 

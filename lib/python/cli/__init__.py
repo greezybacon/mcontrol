@@ -23,7 +23,7 @@ class Shell(cmd.Cmd, object):
 ._ _  _. _ ._ -+-._. _ | ___  _.|*
 [ | )(_.(_)[ ) | [  (_)|     (_.||
 
-Copyright (c) 2012 Manchac Technologies, LLC
+Copyright (c) 2013 Manchac Technologies, LLC
 Version {version}
 """[1:].format(version=__version__)
 
