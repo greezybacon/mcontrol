@@ -18,8 +18,8 @@ class Shell(cmd.Cmd, object):
 ._ _  _. _ ._ -+-._. _ | ___  _.|*
 [ | )(_.(_)[ ) | [  (_)|     (_.||
 
-Copyright (c) 2012 Manchac Technologies, LLC
-Version 0.1-3
+Copyright (c) 2013 Manchac Technologies, LLC
+Version 0.1-4
 """[1:]
 
     afterlife = None

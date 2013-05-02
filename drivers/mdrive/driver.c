@@ -178,7 +178,7 @@ static
 DriverClass mdrive_driver = {
     .name = "mdrive",
     .description = "Schneider MDrive / MForce",
-    .revision = "0.1-3",
+    .revision = "0.1-4",
 
     .initialize = mdrive_init,
     .destroy = mdrive_uninit,

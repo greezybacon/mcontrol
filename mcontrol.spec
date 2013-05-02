@@ -2,7 +2,7 @@
 
 Name:       mcontrol
 Version:    0.1
-Release:    3%{?dist}
+Release:    4%{?dist}
 Summary:    Comprehensive motor control suite
 Group:      Manchac Technologies, LLC
 License:    Proprietary
