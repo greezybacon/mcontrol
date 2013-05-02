@@ -20,6 +20,21 @@
 int MDRIVE_CHANNEL, MDRIVE_CHANNEL_TX, MDRIVE_CHANNEL_RX,
     MDRIVE_CHANNEL_FW;
 
+// Thanks, http://stackoverflow.com/a/7700425
+static unsigned long
+hashstring(const char * key) {
+    if (key == NULL)
+        return EINVAL;
+
+    unsigned long hash = 5381;
+    int c;
+    while ((c = *key++))
+        // hash = hash * 33 + c
+        hash = ((hash << 5) + hash) + c;
+
+    return hash;
+}
+
 /**
  * mdrive_init -- (DriverClass::initialize)
  *
@@ -75,6 +90,9 @@ int mdrive_init(Driver * self, const char * cxn) {
     if (mdrive_connect(&address, device) != 0)
         // XXX: Set some error indication (or set it in mdrive_connect)
         return -1;
+
+    // Write out driver group based on connecting port
+    self->group = hashstring(address.port);
 
     // Write the device address into the driver "name"
     snprintf(self->name, 2, "%c", address.address);

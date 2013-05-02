@@ -79,12 +79,17 @@ DaemonWorkerInit(Worker * worker) {
 }
 
 int
-DaemonWorkerAdd(void) {
-    Worker * worker = AllWorkers;
-    for (int i = 0; i < MAX_WORKERS; worker++, i++)
-        if (!worker->thread_id)
-            return DaemonWorkerInit(worker);
-
+DaemonWorkerAdd(Worker ** worker) {
+    Worker * w = AllWorkers;
+    for (int i = 0; i < MAX_WORKERS; w++, i++) {
+        if (!w->thread_id) {
+            if (!DaemonWorkerInit(w)) {
+                if (worker)
+                    *worker = w;
+                return 0;
+            }
+        }
+    }
     return E2BIG;
 }
 

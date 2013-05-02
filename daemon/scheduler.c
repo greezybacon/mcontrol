@@ -8,6 +8,9 @@
 #include "scheduler.h"
 
 #include "worker.h"
+#include "trace.h"
+#include "lib/connect.h"
+#include "lib/trace.h"
 
 /**
  * ScheduleLeastBusy
@@ -53,6 +56,31 @@ ScheduleLeastBusy(request_message_t * message) {
  */
 static int
 ScheduleDriverGroup(request_message_t * message) {
+    // Find the group number of the driver the message is targeted at
+    Motor * m = find_motor_by_id(message->motor_id, message->pid);
+    if (!m || !m->driver)
+        // Not connected to an active motor. Use the least busy worker
+        return ScheduleLeastBusy(message);
+
+    // Find a worker with this group number
+    Worker * worker = AllWorkers;
+    for (int i = 0; i < MAX_WORKERS; worker++, i++) {
+        if (!worker->thread_id)
+            continue;
+        if (worker->group == m->driver->group)
+            return WorkerEnqueue(worker, message);
+    }
+
+    // Create a worker to handle the connection if there is a group number
+    if (m->driver->group) {
+        mcTraceF(40, DAEMON_CHANNEL, "Creating worker for group %d",
+            m->driver->group);
+        if (!DaemonWorkerAdd(&worker)) {
+            worker->group = m->driver->group;
+            return WorkerEnqueue(worker, message);
+        }
+    }
+    // Unable to queue -- no worker found or addable
     return -1;
 }
 
@@ -72,11 +100,15 @@ SchedulerConfigure(void) {
     //  For now, use the least-busy scheduler which will add the message to
     //  the work queue of the least-busy worker -- the one with the shortest
     //  work queue length.
-    current_scheduler = ScheduleLeastBusy;
+    current_scheduler = ScheduleDriverGroup;
 
-    // Start up a few workers
-    for (int i=0; i<4; i++)
-        DaemonWorkerAdd();
+    // Start up a few workers.  The LeastBusyScheduler will need at least 2
+    // threads to be effective. The ScheduleDriverGroup needs at least 1
+    // thread here. ScheduleDriverGroup will automatically add more threads,
+    // but it needs one seed thread to handle new connections.
+    // TODO: Make this configurable
+    for (int i=0; i<1; i++)
+        DaemonWorkerAdd(NULL);
 
     return 0;
 }

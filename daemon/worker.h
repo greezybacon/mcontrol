@@ -28,6 +28,6 @@ extern int
 WorkerEnqueue(Worker * worker, request_message_t * message);
 
 extern int
-DaemonWorkerAdd(void);
+DaemonWorkerAdd(Worker ** worker);
 
 #endif
