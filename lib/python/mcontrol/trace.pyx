@@ -88,6 +88,11 @@ cdef class Trace(object):
 
     @classmethod
     def enum(cls):
+        """
+        Enumerate the currently-registered trace channels. Returns a list of
+        strings representing channel names that can be passed to the ::add()
+        method of a Trace instance.
+        """
         cdef String buf
         cdef int count = mcTraceChannelEnum(&buf)
         cdef char * pos = buf.buffer
