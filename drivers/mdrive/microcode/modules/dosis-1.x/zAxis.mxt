@@ -1,5 +1,4 @@
 
-
 'Setup
 CE=2
 DG=1
@@ -72,7 +71,7 @@ VA K2=50		'Hold Current
 'Move Profiles (MOTION 3) (fast -- long, downward distances)
 VA A3=158141        	'Acceleration (0.3 g)
 VA B3=105428        	'Deceleration (0.2 g)
-VA V3=34133          	'V Max (1000rpm)
+VA V3=27307          	'V Max (1000rpm)
 VA W3=200            	'V Initial
 VA F3=1200            	'Following Error (SF)
 VA Z3=5            	'Dead Band
